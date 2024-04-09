@@ -1,1 +1,3 @@
 standalones/
+.idea
+servers/__pycache__/
