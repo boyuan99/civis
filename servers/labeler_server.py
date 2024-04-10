@@ -125,7 +125,7 @@ def labeler_bkapp(doc):
         neuron_index_input.value = str(neuron_id)
         update_button_styles()
 
-    neuron_id_slider.on_change('value_throttled', update_from_slider)
+    neuron_id_slider.on_change('value', update_from_slider)
 
     """
     ========================================================================================================================
@@ -277,7 +277,7 @@ def labeler_bkapp(doc):
     """
 
     # Filename input
-    sessionname_input = TextInput(value=filename, title="SessionName:", width=600)
+    sessionname_input = TextInput(value=filename, title="SessionName:", width=400)
     load_data_button = Button(label="Load Data", button_type="success")
 
     def load_and_update_data(filename):
