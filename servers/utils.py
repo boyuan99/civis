@@ -1,6 +1,7 @@
 import numpy as np
 import h5py
 import pandas as pd
+from scipy.signal import savgol_filter, find_peaks
 
 def compute_deltaF_over_F(fluorescence, baseline_indices=None):
     """
@@ -76,6 +77,11 @@ def load_data(filename):
             coor_matrix = np.array(coor_data)  # Convert to a NumPy array
 
             Coor.append(np.transpose(coor_matrix))
+
+        # C = np.zeros_like(C_raw)
+        # for i, C_pick in enumerate(C_raw):
+        #     C_base = savgol_filter(C_pick, window_length=2000, polyorder=2, mode='interp')
+        #     C[i] = C_pick - C_base
 
     return C, C_raw, Cn, ids, Coor, centroids, virmenPath
 
