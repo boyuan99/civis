@@ -99,3 +99,17 @@ def read_and_process_data(file_path, usecols=[0, 1, 2], threshold=[70.0, -70.0])
             start = i + 1
 
     return trials
+
+def read_and_process_data_v2(file_path, usecols=[0, 1, 2], threshold=[175.0, -175.0]):
+    data = pd.read_csv(file_path, sep=r'\s+|,', engine='python', header=None,
+                       usecols=usecols, names=['x', 'y', 'face_angle'])
+
+    # Identifying trials
+    trials = []
+    start = 0
+    for i in range(len(data)):
+        if abs(data.iloc[i]['y']) + abs(data.iloc[i]['x']) >= threshold[0]:
+            trials.append(data[start:i + 1].to_dict(orient='list'))
+            start = i + 1
+
+    return trials
