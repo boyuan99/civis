@@ -4,7 +4,7 @@ from threading import Thread
 from tornado.ioloop import IOLoop
 from bokeh.server.server import Server
 from bokeh.embed import server_document
-from servers import labeler_bkapp, trajectory_bkapp, connection_bkapp, trajectory_old_bkapp, raster_bkapp
+from servers import labeler_bkapp, trajectory_v1_bkapp, connection_bkapp, trajectory_v0_bkapp, raster_bkapp
 
 app = Flask(__name__)
 
@@ -18,10 +18,10 @@ def labeler_app():
     script = server_document(f'http://localhost:{args.bokeh_port}/labeler_bkapp')
     return render_template("labeler.html", script=script, template="Flask", port=args.flask_port)
 
-@app.route('/trajectory/')
-def trajectory_app():
-    script = server_document(f'http://localhost:{args.bokeh_port}/trajectory_bkapp')
-    return render_template("trajectory.html", script=script, template="Flask", port=args.flask_port)
+@app.route('/trajectory/v1/')
+def trajectory_v1_app():
+    script = server_document(f'http://localhost:{args.bokeh_port}/trajectory_v1_bkapp')
+    return render_template("trajectory_v1.html", script=script, template="Flask", port=args.flask_port)
 
 @app.route('/connection/')
 def connection_app():
@@ -29,8 +29,8 @@ def connection_app():
     return render_template("connection.html", script=script, template="Flask", port=args.flask_port)
 
 @app.route('/trajectory/v0/')
-def trajectory_old_app():
-    script = server_document(f'http://localhost:{args.bokeh_port}/trajectory_old_bkapp')
+def trajectory_v0_app():
+    script = server_document(f'http://localhost:{args.bokeh_port}/trajectory_v0_bkapp')
     return render_template("trajectory_v0.html", script=script, template="Flask", port=args.flask_port)
 
 @app.route('/raster/')
@@ -42,9 +42,9 @@ def raster_app():
 def bk_worker(bokeh_port, flask_port):
     # Configure the Bokeh server with applications
     bokeh_apps = {'/labeler_bkapp': labeler_bkapp,
-                  '/trajectory_bkapp': trajectory_bkapp,
+                  '/trajectory_v1_bkapp': trajectory_v1_bkapp,
                   '/connection_bkapp': connection_bkapp,
-                  '/trajectory_old_bkapp': trajectory_old_bkapp,
+                  '/trajectory_v0_bkapp': trajectory_v0_bkapp,
                   '/raster_bkapp': raster_bkapp}
 
     server = Server(bokeh_apps,
