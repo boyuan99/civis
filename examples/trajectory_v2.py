@@ -11,7 +11,7 @@ parent_dir = os.path.abspath(os.path.join(current_dir, '..'))
 sys.path.insert(0, parent_dir)
 from servers.utils import read_and_process_data_v2
 
-
+global source, trials, progress_slider
 
 trials = []
 source = ColumnDataSource({'x': [], 'y': [], 'face_angle': []})
@@ -47,9 +47,8 @@ load_button = Button(label="Load Data", button_type="success")
 trial_slider.disabled = True
 progress_slider.disabled = True
 play_button.disabled = True
-
 def load_data():
-    global source, trials
+    global source, trials, progress_slider
 
     with open('config.json', 'r') as file:
         config = json.load(file)
@@ -74,21 +73,25 @@ def load_data():
         trial_slider.end = len(trials) - 1
         trial_slider.value = 0
 
-        progress_slider.end = 100
+        progress_slider.end = len(initial_trial['x'])
         progress_slider.value = 0
 
 load_button.on_click(load_data)
 
 def update_plot(attr, old, new):
     trial_index = trial_slider.value
-    progress = progress_slider.value / 100
     trial_data = trials[trial_index]
-    max_index = int(len(trial_data['x']) * progress)
 
-    if max_index > 0:
-        last_x = trial_data['x'][max_index - 1]
-        last_y = trial_data['y'][max_index - 1]
-        angle_rad = trial_data['face_angle'][max_index - 1] + np.pi / 2  # Adjust angle to make arrow face up
+    if progress_slider.value > len(trial_data['x']) - 1:
+        progress_slider.value = len(trial_data['x']) - 1
+
+    progress = progress_slider.value
+    progress_slider.end = len(trial_data['x']) - 1
+
+    if progress > 0:
+        last_x = trial_data['x'][progress - 1]
+        last_y = trial_data['y'][progress - 1]
+        angle_rad = trial_data['face_angle'][progress - 1] + np.pi / 2  # Adjust angle to make arrow face up
         arrow_length = 1  # Adjust as necessary for your visualization
 
         arrow.x_start = last_x
@@ -101,9 +104,9 @@ def update_plot(attr, old, new):
         arrow.x_end = 0
         arrow.y_end = 1
 
-    new_data = {'x': trial_data['x'][:max_index],
-                'y': trial_data['y'][:max_index],
-                'face_angle': trial_data['face_angle'][:max_index]}
+    new_data = {'x': trial_data['x'][:progress],
+                'y': trial_data['y'][:progress],
+                'face_angle': trial_data['face_angle'][:progress]}
     source.data = new_data
 
 trial_slider.on_change('value', update_plot)
@@ -131,7 +134,7 @@ def toggle_play():
         play_button.label = "❚❚ Pause"
         is_playing = True
         # Schedule the periodic callback with an interval of 100ms (0.1 seconds)
-        play_interval_id = curdoc().add_periodic_callback(update_progress, 100)
+        play_interval_id = curdoc().add_periodic_callback(update_progress, 50)
     else:
         play_button.label = "► Play"
         is_playing = False
