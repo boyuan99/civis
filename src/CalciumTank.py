@@ -109,32 +109,10 @@ class CalciumTank:
 
     @staticmethod
     def read_and_process_data(file_path, threshold=None):
-        if threshold is None:
-            threshold = [70.0, -70.0]
-        data = pd.read_csv(file_path, sep=r'\s+|,', engine='python', header=None,
-                           usecols=[0, 1, 2, 3, 4, 5, 6],
-                           names=['x', 'y', 'face_angle', 'dx', 'dy', 'lick', 'timeStamp'])
-
-        # Identifying trials
-        trials = []
-        start = 0
-        for i in range(len(data)):
-            if data.iloc[i]['y'] >= threshold[0] or data.iloc[i]['y'] <= threshold[1]:
-                trials.append(data[start:i + 1].to_dict(orient='list'))
-                start = i + 1
-
-        return [trials, data]
+        raise NotImplementedError("Subclasses are required to read and process the virmen data.")
 
     def calculate_virmen_trials_end_indices(self):
-        """
-        Calculate the end indices for virmen trials based on the specified threshold.
-
-        :return: List of indices where 'y' value exceeds the threshold.
-        """
-        indices = np.array(self.virmen_data.index[self.virmen_data['y'].abs() > self.threshold[0]].tolist())
-        indices = indices[np.where(indices < self.ci_rate * self.session_duration)]
-        return indices
-
+        raise NotImplementedError("Subclasses are required to get the end indices for the virmen data.")
     def find_lick_data(self):
         lick_all = np.array(self.virmen_data['lick'])
         # Convert lick data into binary
@@ -691,8 +669,7 @@ class CalciumTank:
         else:
             show(layout)
 
-    @staticmethod
-    def plot_ca_around_indices(map_data, indices, cut_interval=50, notebook=False, save_path=None):
+    def plot_ca_around_indices(self, map_data, indices, cut_interval=50, title="None", notebook=False, save_path=None):
         """
         Plot the calcium temporal traces around the specified indices.
         :param map_data  A 2D NumPy array containing the calcium traces.
@@ -704,15 +681,19 @@ class CalciumTank:
         """
 
         from bokeh.plotting import figure, show
-        from bokeh.models import ColumnDataSource, LinearColorMapper, ColorBar, LabelSet
+        from bokeh.models import ColumnDataSource, LinearColorMapper, ColorBar, LabelSet, CustomJSTickFormatter
         from bokeh.io import output_notebook, output_file, save
+        from bokeh.layouts import column
 
         if notebook:
             output_notebook()
 
+
+        x_value = (np.array(range(2 * cut_interval)) - cut_interval)/self.ci_rate
+
         mapper = LinearColorMapper(palette="Viridis256", low=0, high=1)
 
-        p = figure(width=800, height=800, title="Calcium Temporal Traces Aligned Velocity Peak Heatmap",
+        p = figure(width=800, height=800, title=title,
                    x_axis_label='Time', y_axis_label='Neuron Number', active_scroll='wheel_zoom',
                    x_range=(-cut_interval, cut_interval), y_range=(0, map_data.shape[0]))
 
@@ -731,13 +712,26 @@ class CalciumTank:
                           x_offset=-20, y_offset=5, source=source, text_font_size="8pt", text_color="black")
         p.add_layout(labels)
 
+        p.xaxis.formatter = CustomJSTickFormatter(code="""
+            return (tick / 20).toFixed(2);
+        """)
+
+        v = figure(width=800, height=250, active_scroll="wheel_zoom",
+                   toolbar_location=None,
+                   x_range=(min(x_value), max(x_value)))
+        v.line(x_value,
+               np.mean(map_data, axis=0), line_width=2,
+               color='red')
+
+        layout = column(p, v)
+
         if save_path is not None:
             output_file(
                 filename=save_path,
-                title="Calcium Temporal Traces Aligned Heatmap")
-            save(p)
+                title=title)
+            save(layout)
         else:
-            show(p)
+            show(layout)
 
     @staticmethod
     def create_outlier_visualization(precomputed_data, coefficients_all_numpy, threshold=4, notebook=False,

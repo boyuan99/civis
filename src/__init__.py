@@ -1,1 +1,2 @@
 from src.CalciumTank import CalciumTank
+from src.StraightMazeTank import StraightMazeTank
