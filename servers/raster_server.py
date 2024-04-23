@@ -5,7 +5,7 @@ from bokeh.events import SelectionGeometry, Reset
 import pickle
 import numpy as np
 import json
-from src.CalciumTank import CalciumTank
+from src import StraightMazeTank
 
 
 def raster_bkapp(doc):
@@ -17,7 +17,7 @@ def raster_bkapp(doc):
         neuron_path = config['ProcessedFilePath'] + session_name + '/' + session_name + '_v7.mat'
         peak_indices_path = config['ProcessedFilePath'] + session_name + "/" + session_name + "_peak_indices.pkl"
 
-        ci = CalciumTank(neuron_path)
+        ci = StraightMazeTank(neuron_path)
         print("Successful loaded: " + neuron_path)
 
         with open(peak_indices_path, 'rb') as f:
