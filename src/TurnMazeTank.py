@@ -35,7 +35,6 @@ class TurnMazeTank(CalciumTank):
 
         return [trials, data]
 
-
     def calculate_virmen_trials_end_indices(self):
         """
         Calculate the end indices for virmen trials based on the specified threshold.
