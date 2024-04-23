@@ -113,6 +113,7 @@ class CalciumTank:
 
     def calculate_virmen_trials_end_indices(self):
         raise NotImplementedError("Subclasses are required to get the end indices for the virmen data.")
+
     def find_lick_data(self):
         lick_all = np.array(self.virmen_data['lick'])
         # Convert lick data into binary
@@ -208,6 +209,7 @@ class CalciumTank:
         dr = dr[: self.session_duration * self.ci_rate]
 
         return dr, dr_raw
+
     @staticmethod
     def find_outliers_indices(data, threshold=3):
         mean = np.mean(data)
@@ -583,42 +585,58 @@ class CalciumTank:
 
         return real_cor_all
 
-    def plot_t_ca_all(self, notebook=False, save_path=None):
+    @staticmethod
+    def output_bokeh_plot(plot, save_path, title, notebook, overwrite):
+        import os
+        from bokeh.io import output_notebook, output_file, reset_output, save, show
+
+        reset_output()
+        if save_path is not None:
+            if os.path.exists(save_path):
+                if overwrite:
+                    output_file(save_path, title=title)
+                    save(plot)
+                    print("File overwritten.")
+                else:
+                    print("File already exists and overwrite is set to False.")
+            else:
+                output_file(save_path, title=title)
+                save(plot)
+                print("File saved.")
+
+        if notebook:
+            reset_output()
+            output_notebook()
+            show(plot)
+
+    def plot_t_ca_all(self, notebook=False, save_path=None, overwrite=False):
         """
         Plot the average calcium trace for all neurons.
         :param notebook: Flag to indicate if the plot is for a Jupyter notebook.
         :param save_path: Path to save the plot as an HTML file.
         :return:
         """
-        from bokeh.plotting import figure, show
-        from bokeh.io import output_notebook, output_file, save
+        from bokeh.plotting import figure
 
-        if notebook:
-            output_notebook()
         p = figure(width=800, height=400, active_scroll="wheel_zoom", title="Average Calcium Trace (Δf/f)")
         p.line(self.t, self.ca_all, line_width=2)
-        if save_path is not None:
-            output_file(
-                filename=save_path,
-                title=str(p.title.text))
-            save(p)
-        else:
-            show(p)
 
-    def plot_lick_and_velocity(self, notebook=False, save_path=None):
+        self.output_bokeh_plot(p, save_path=save_path, title=str(p.title.text), notebook=notebook, overwrite=overwrite)
+
+        return p
+
+    def plot_lick_and_velocity(self, title="Lick And Velocity", notebook=False, save_path=None, overwrite=False):
         """
         Plot the lick data and velocity data.
         :param notebook: Flag to indicate if the plot is for a Jupyter notebook.
         :param save_path:  Path to save the plot as an HTML file.
+        :param overwrite: Flag to indicate whether to overwrite the existing plot
         :return: None
         """
-        from bokeh.plotting import figure, show
+        from bokeh.plotting import figure
         from bokeh.models import Span, HoverTool
         from bokeh.layouts import column
-        from bokeh.io import output_notebook, output_file, save
 
-        if notebook:
-            output_notebook()
         p = figure(width=800, height=400, y_range=[0, 1.2], active_drag='pan', active_scroll='wheel_zoom', title='Lick')
         p.line(self.t, self.lick_raw, line_color='navy', legend_label='raw', line_width=1)
         p.line(self.t, self.lick_raw_mask, line_color='palevioletred', legend_label='mask', line_width=2)
@@ -661,15 +679,12 @@ class CalciumTank:
 
         layout = column(p, p_v)
 
-        if save_path is not None:
-            output_file(
-                filename=save_path,
-                title="Lick And Velocity")
-            save(layout)
-        else:
-            show(layout)
+        self.output_bokeh_plot(layout, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite)
 
-    def plot_ca_around_indices(self, map_data, indices, cut_interval=50, title="None", notebook=False, save_path=None):
+        return layout
+
+    def plot_ca_around_indices(self, map_data, indices, cut_interval=50, title="None", notebook=False, save_path=None,
+                               overwrite=False):
         """
         Plot the calcium temporal traces around the specified indices.
         :param map_data  A 2D NumPy array containing the calcium traces.
@@ -677,19 +692,15 @@ class CalciumTank:
         :param cut_interval: Interval to cut around the indices.
         :param notebook: Flag to indicate if the plot is for a Jupyter notebook.
         :param save_path: Path to save the plot as an HTML file.
+        :param overwrite: Flag to indicate whether to overwrite the existing file
         :return: None
         """
 
-        from bokeh.plotting import figure, show
+        from bokeh.plotting import figure
         from bokeh.models import ColumnDataSource, LinearColorMapper, ColorBar, LabelSet, CustomJSTickFormatter
-        from bokeh.io import output_notebook, output_file, save
         from bokeh.layouts import column
 
-        if notebook:
-            output_notebook()
-
-
-        x_value = (np.array(range(2 * cut_interval)) - cut_interval)/self.ci_rate
+        x_value = (np.array(range(2 * cut_interval)) - cut_interval) / self.ci_rate
 
         mapper = LinearColorMapper(palette="Viridis256", low=0, high=1)
 
@@ -725,17 +736,12 @@ class CalciumTank:
 
         layout = column(p, v)
 
-        if save_path is not None:
-            output_file(
-                filename=save_path,
-                title=title)
-            save(layout)
-        else:
-            show(layout)
+        self.output_bokeh_plot(layout, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite)
 
-    @staticmethod
-    def create_outlier_visualization(precomputed_data, coefficients_all_numpy, threshold=4, notebook=False,
-                                     save_path=None):
+        return layout
+
+    def create_outlier_visualization(self, precomputed_data, coefficients_all_numpy, threshold=4, title=None,
+                                     notebook=False, save_path=None, overwrite=False):
         """
         Creates an interactive visualization to display outliers and mean value for a set of coefficients.
 
@@ -837,14 +843,9 @@ class CalciumTank:
         row_slider.js_on_change('value', callback)
         layout = column(row_slider, row(p, details_div))
 
-        if save_path is not None:
-            output_file(
-                filename=save_path,
-                title="Outlier Visualization")
-            save(layout)
+        self.output_bokeh_plot(layout, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite)
 
-        else:
-            show(layout)
+        return layout
 
     def generate_colors(self, num_categories):
         """
@@ -909,7 +910,7 @@ class CalciumTank:
         return categories
 
     def create_neuron_categories_pie_chart(self, neuron_categories, title="Neuron Categories", notebook=False,
-                                           save_path=None):
+                                           save_path=None, overwrite=False):
         """
         Create a pie chart to visualize the distribution of neurons across different categories.
         :param neuron_categories: dictionary containing neuron categories as keys and neuron indices as values (e.g., {'Category 1': [0, 1, 2], 'Category 2': [3, 4, 5]})
@@ -922,9 +923,6 @@ class CalciumTank:
         from bokeh.plotting import figure, show
         from bokeh.models import ColumnDataSource
         from bokeh.io import output_notebook, output_file, save
-
-        if notebook:
-            output_notebook()
 
         counts = {category: len(neurons) for category, neurons in neuron_categories.items()}
 
@@ -951,11 +949,46 @@ class CalciumTank:
         p.grid.grid_line_color = None
         p.legend.location = "top_right"
 
-        if save_path is not None:
-            output_file(filename=save_path, title="Neuron Categories Pie Chart")
-            save(p)
-        else:
-            show(p)
+        self.output_bokeh_plot(p, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite)
+
+        return p
+
+    def create_heatmap_with_trace(self, sorted_indices, trace, cutoff_index=10000, title=None,
+                                  save_path=None, notebook=False, overwrite=False):
+
+        from bokeh.plotting import figure
+        from bokeh.models import LinearColorMapper, ColorBar, CustomJSTickFormatter
+        from bokeh.layouts import column
+
+        map_data = self.C_raw[sorted_indices, :cutoff_index]
+
+        mapper = LinearColorMapper(palette="Viridis256", low=-0.2, high=0.2)
+
+        p = figure(width=800, height=800, title="Calcium Temporal Traces Velocity Peak Heatmap",
+                   x_axis_label='Time', y_axis_label='Neuron Number', active_scroll='wheel_zoom',
+                   x_range=(0, 5000), y_range=(0, map_data.shape[0]))
+
+        p.image(image=[map_data], x=0, y=0, dw=map_data.shape[1], dh=map_data.shape[0], color_mapper=mapper)
+
+        p.xaxis.formatter = CustomJSTickFormatter(code="""
+            return (tick / 20).toFixed(2);
+        """)
+
+        color_bar = ColorBar(color_mapper=mapper, label_standoff=12, location=(0, 0))
+        p.add_layout(color_bar, 'right')
+
+        v = figure(width=800, height=200, x_range=p.x_range, active_scroll="wheel_zoom")
+        v.line(np.arange(0, len(self.t), 1), trace, line_width=2, color='red')
+
+        v.xaxis.formatter = CustomJSTickFormatter(code="""
+            return (tick / 20).toFixed(2);
+        """)
+
+        layout = column(p, v)
+
+        self.output_bokeh_plot(layout, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite)
+
+        return layout
 
 
 if __name__ == "__main__":
