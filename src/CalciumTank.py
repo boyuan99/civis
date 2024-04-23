@@ -588,21 +588,19 @@ class CalciumTank:
     @staticmethod
     def output_bokeh_plot(plot, save_path, title, notebook, overwrite):
         import os
-        from bokeh.io import output_notebook, output_file, reset_output, save, show
+        from bokeh.io import output_notebook, output_file, reset_output, save, show, curdoc
 
-        reset_output()
         if save_path is not None:
-            if os.path.exists(save_path):
-                if overwrite:
-                    output_file(save_path, title=title)
-                    save(plot)
-                    print("File overwritten.")
-                else:
-                    print("File already exists and overwrite is set to False.")
+            reset_output()
+            if os.path.exists(save_path) and not overwrite:
+                print("File already exists and overwrite is set to False.")
             else:
                 output_file(save_path, title=title)
-                save(plot)
-                print("File saved.")
+                curdoc().clear()
+                curdoc().add_root(plot)
+                save(curdoc())
+                print("File saved or overwritten.")
+                curdoc().clear()
 
         if notebook:
             reset_output()
@@ -955,6 +953,19 @@ class CalciumTank:
 
     def create_heatmap_with_trace(self, sorted_indices, trace, cutoff_index=10000, title=None,
                                   save_path=None, notebook=False, overwrite=False):
+        """
+         Create a heatmap
+         :param sorted_indices: sorted indices (could be based on correlation coefficient)
+         :param trace: trace to plot
+         :param cutoff_index: Only plot part of the calcium heatmap
+         :param title: title of the plot
+         :param save_path: path to save the plot
+         :param notebook: whether use notebook to visualize the heatmap
+         :param overwrite: whether to overwrite the existing plot
+
+         :return: the heatmap plot
+
+        """
 
         from bokeh.plotting import figure
         from bokeh.models import LinearColorMapper, ColorBar, CustomJSTickFormatter
@@ -964,7 +975,7 @@ class CalciumTank:
 
         mapper = LinearColorMapper(palette="Viridis256", low=-0.2, high=0.2)
 
-        p = figure(width=800, height=800, title="Calcium Temporal Traces Velocity Peak Heatmap",
+        p = figure(width=800, height=800, title=title,
                    x_axis_label='Time', y_axis_label='Neuron Number', active_scroll='wheel_zoom',
                    x_range=(0, 5000), y_range=(0, map_data.shape[0]))
 
