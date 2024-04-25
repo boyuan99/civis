@@ -42,6 +42,11 @@ class CalciumTank:
         self.smoothed_velocity = savgol_filter(self.velocity, self.window_length, self.polyorder)
         self.dr, self.dr_raw = self.find_rotation()
 
+        # for analysis usage:
+        self.velocity_peak_indices = find_peaks(self.smoothed_velocity, height=8, distance=self.velocity_distance)[0]
+        self.lick_edge_indices = np.where(np.diff(self.lick) > 0)[0]
+        self.movement_onset_indices = self.find_movement_onset(self.smoothed_velocity, self.velocity_peak_indices)
+
     @staticmethod
     def compute_deltaF_over_F(fluorescence, baseline_indices=None):
         if baseline_indices is None:
@@ -173,6 +178,7 @@ class CalciumTank:
         dx = np.diff(data_array[:, 0])
         dy = np.diff(data_array[:, 1])
         velocity_raw = np.sqrt(dx ** 2 + dy ** 2)
+        velocity = None
         if method == 'fixed':
             velocity = np.where(velocity_raw > reset_threshold, 0, velocity_raw)
         elif method == 'outlier':
@@ -211,26 +217,32 @@ class CalciumTank:
         return dr, dr_raw
 
     @staticmethod
-    def find_outliers_indices(data, threshold=3):
+    def find_outliers_indices(data, threshold=3.0):
         mean = np.mean(data)
         std_dev = np.std(data)
         z_scores = (data - mean) / std_dev
         outliers = np.where(np.abs(z_scores) > threshold)[0]
         return outliers
 
-    def find_peaks_in_traces(self):
+    def find_peaks_in_traces(self, notebook=False, use_tqdm=True):
         """
         Finds peaks in each calcium trace in C_raw.
         Applies baseline correction using Savitzky-Golay filter before finding peaks.
 
         Returns:
-        - peak_indices_all: List of arrays, each containing peak indices for corresponding trace.
         - peak_indices_filtered_all: List of arrays, each containing peak indices for the filtered signal of corresponding trace.
         """
+        if notebook:
+            from tqdm.notebook import tqdm
+        else:
+            from tqdm import tqdm
+
         peak_indices_all = []
         peak_indices_filtered_all = []
 
-        for C_pick in self.C_raw:
+        iterator = tqdm(self.C_raw, desc="Finds peaks in each calcium trace") if use_tqdm else self.C_raw
+
+        for i, C_pick in enumerate(iterator):
             peak_height = np.average(C_pick) + 3 * np.std(C_pick)
 
             peak_calciums, _ = find_peaks(C_pick, height=peak_height, distance=100, prominence=0.2)
@@ -750,12 +762,11 @@ class CalciumTank:
         :param save_path: Path to save the visualization as an HTML file.
         """
 
-        from bokeh.plotting import figure, show
+        from bokeh.plotting import figure
         from bokeh.models import ColumnDataSource, Span, Slider, CustomJS, Div, TapTool
         from bokeh.layouts import column, row
-        from bokeh.io import output_notebook, output_file, save
 
-        def find_outliers(data, threshold=4):
+        def find_outliers(data, threshold=4.0):
             """Find the lower and upper bounds of outliers."""
             mean = np.mean(data)
             std_dev = np.std(data)
@@ -763,8 +774,6 @@ class CalciumTank:
             upper_bound = mean + threshold * std_dev
             return lower_bound, upper_bound
 
-        if notebook:
-            output_notebook()
 
         # Initialize the plot data source
         initial_histogram = precomputed_data['histograms'][0]
@@ -788,7 +797,7 @@ class CalciumTank:
             positions_arrays[2].append(mean_val)
 
         # Create the figure
-        p = figure(width=700, height=400, title="Click a bin to see shift amounts", active_scroll="wheel_zoom")
+        p = figure(width=700, height=400, title=title, active_scroll="wheel_zoom")
         p.quad(top='top', bottom='bottom', left='left', right='right', source=source,
                fill_color="skyblue", line_color="white", alpha=0.5)
 
@@ -1000,6 +1009,62 @@ class CalciumTank:
         self.output_bokeh_plot(layout, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite)
 
         return layout
+
+    def plot_calcium_trace_with_lick_and_velocity(self, title="Average Calcium Trace with Lick and Speed",
+                                                  save_path=None, notebook=False, overwrite=False):
+
+        from bokeh.plotting import figure
+        from bokeh.models import Span
+
+        p = figure(width=800, height=400, active_scroll="wheel_zoom", title=title)
+        p.line(self.t, self.normalize_signal(self.ca_all), line_width=2, legend_label='Ca', color='blue')
+        p.line(self.t, self.lick, line_width=2, legend_label='Lick', color='gold')
+        p.line(self.t, self.normalize_signal(self.velocity), line_width=2, legend_label='Velocity', color='red')
+        p.line(self.t, self.normalize_signal(self.smoothed_velocity), line_width=2, legend_label='Smoothed Velocity',
+               color='green')
+
+        for idx in self.velocity_peak_indices:
+            vline = Span(location=idx / self.ci_rate, dimension='height', line_color='green', line_width=2)
+            p.add_layout(vline, 'below')
+        for idx in self.movement_onset_indices:
+            vline = Span(location=idx / self.ci_rate, dimension='height', line_color='brown', line_width=2)
+            p.add_layout(vline, 'below')
+
+        p.legend.click_policy = 'hide'
+        self.output_bokeh_plot(p, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite)
+
+        return p
+
+    def plot_calcium_trace_around_indices(self, cut_interval=50, save_path=None, title="Average Calcium Trace around Indices",
+                                          notebook=False, overwrite=False):
+
+        from bokeh.plotting import figure
+        from bokeh.models import CustomJSTickFormatter
+
+        [_, _, _, C_avg_mean_velocity_peak, _] = self.average_across_indices(self.velocity_peak_indices,
+                                                                             cut_interval=cut_interval)
+        [_, _, _, C_avg_mean_lick_edge, _] = self.average_across_indices(self.lick_edge_indices,
+                                                                         cut_interval=cut_interval)
+        [_, _, _, C_avg_mean_movement_onset, _] = self.average_across_indices(self.movement_onset_indices,
+                                                                              cut_interval=cut_interval)
+
+        p = figure(width=800, height=400, active_scroll="wheel_zoom", title="Average Calcium Trace around Indices")
+        p.line((np.array(range(2 * cut_interval)) - cut_interval)/self.ci_rate, C_avg_mean_velocity_peak, line_width=2,
+               legend_label='Velocity Peak', color='red')
+        p.line((np.array(range(2 * cut_interval)) - cut_interval)/self.ci_rate, C_avg_mean_lick_edge, line_width=2,
+               legend_label='Lick', color='navy')
+        p.line((np.array(range(2 * cut_interval)) - cut_interval)/self.ci_rate, C_avg_mean_movement_onset, line_width=2,
+               legend_label='Movement Onset', color='purple')
+
+        p.legend.click_policy = 'hide'
+
+        p.xaxis.formatter = CustomJSTickFormatter(code="""
+            return (tick / 20).toFixed(2);
+        """)
+
+        self.output_bokeh_plot(p, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite)
+
+        return p
 
 
 if __name__ == "__main__":
