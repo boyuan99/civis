@@ -598,6 +598,39 @@ class CalciumTank:
         return real_cor_all
 
     @staticmethod
+    def find_neurons_with_peaks_near_indices(peak_indices, dependent_indices, window=10, choice='before'):
+        """
+        find neurons with peaks near indicated indices
+
+        :param peak_indices: indices of calcium traces peaks
+        :param dependent_indices: indices of (velocity peak, movement onset, lick edge, etc...)
+        :param window: window size
+        :param choice: 'before', 'after', or 'around'
+
+        :return: dictionary of found neurons
+        """
+
+        neurons_with_peaks_near_trial = {}
+
+        for neuron_index, peaks in enumerate(peak_indices):
+            for trial in dependent_indices:
+                if choice.lower() == 'before':
+                    near_peaks = peaks[(np.abs(peaks - trial) <= window) & (peaks < trial)]
+                elif choice.lower() == 'after':
+                    near_peaks = peaks[(np.abs(peaks - trial) <= window) & (peaks > trial)]
+                elif choice.lower() == 'around':
+                    near_peaks = peaks[(np.abs(peaks - trial) <= window)]
+                else:
+                    raise ValueError("Invalid choice")
+
+                if near_peaks.size > 0:
+                    if neuron_index not in neurons_with_peaks_near_trial:
+                        neurons_with_peaks_near_trial[neuron_index] = []
+                    neurons_with_peaks_near_trial[neuron_index].extend(near_peaks.tolist())
+
+        return neurons_with_peaks_near_trial
+
+    @staticmethod
     def output_bokeh_plot(plot, save_path, title, notebook, overwrite):
         import os
         from bokeh.io import output_notebook, output_file, reset_output, save, show, curdoc
@@ -773,7 +806,6 @@ class CalciumTank:
             lower_bound = mean - threshold * std_dev
             upper_bound = mean + threshold * std_dev
             return lower_bound, upper_bound
-
 
         # Initialize the plot data source
         initial_histogram = precomputed_data['histograms'][0]
@@ -1035,7 +1067,8 @@ class CalciumTank:
 
         return p
 
-    def plot_calcium_trace_around_indices(self, cut_interval=50, save_path=None, title="Average Calcium Trace around Indices",
+    def plot_calcium_trace_around_indices(self, cut_interval=50, save_path=None,
+                                          title="Average Calcium Trace around Indices",
                                           notebook=False, overwrite=False):
 
         from bokeh.plotting import figure
@@ -1049,11 +1082,13 @@ class CalciumTank:
                                                                               cut_interval=cut_interval)
 
         p = figure(width=800, height=400, active_scroll="wheel_zoom", title="Average Calcium Trace around Indices")
-        p.line((np.array(range(2 * cut_interval)) - cut_interval)/self.ci_rate, C_avg_mean_velocity_peak, line_width=2,
+        p.line((np.array(range(2 * cut_interval)) - cut_interval) / self.ci_rate, C_avg_mean_velocity_peak,
+               line_width=2,
                legend_label='Velocity Peak', color='red')
-        p.line((np.array(range(2 * cut_interval)) - cut_interval)/self.ci_rate, C_avg_mean_lick_edge, line_width=2,
+        p.line((np.array(range(2 * cut_interval)) - cut_interval) / self.ci_rate, C_avg_mean_lick_edge, line_width=2,
                legend_label='Lick', color='navy')
-        p.line((np.array(range(2 * cut_interval)) - cut_interval)/self.ci_rate, C_avg_mean_movement_onset, line_width=2,
+        p.line((np.array(range(2 * cut_interval)) - cut_interval) / self.ci_rate, C_avg_mean_movement_onset,
+               line_width=2,
                legend_label='Movement Onset', color='purple')
 
         p.legend.click_policy = 'hide'
@@ -1065,6 +1100,48 @@ class CalciumTank:
         self.output_bokeh_plot(p, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite)
 
         return p
+
+    def generate_raster_plot(self, peak_indices, save_path=None, title="Raster Plot", notebook=False, overwrite=False):
+
+        from bokeh.models import ColumnDataSource
+        from bokeh.plotting import figure
+        from bokeh.layouts import column
+
+        num_neurons = self.neuron_num
+        spike_times = peak_indices
+
+        # Prepare data for Bokeh
+        data = {'x_starts': [], 'y_starts': [], 'x_ends': [], 'y_ends': []}
+
+        for neuron_idx, spikes in enumerate(spike_times):
+            for spike_time in spikes:
+                data['x_starts'].append(spike_time / self.ci_rate)
+                data['y_starts'].append(neuron_idx + 1)
+                data['x_ends'].append(spike_time / self.ci_rate)
+                data['y_ends'].append(neuron_idx + 1 + 0.7)  # Adjust the height of spikes with 0.4
+
+        source = ColumnDataSource(data)
+
+        # Create a Bokeh plot
+        p = figure(width=800, height=1000, title="Raster Plot", x_axis_label='Time (s)', y_axis_label='Neuron',
+                   active_scroll='wheel_zoom')
+
+        # Use segment glyphs to represent spikes
+        p.segment(x0='x_starts', y0='y_starts', x1='x_ends', y1='y_ends', source=source, color="black", line_width=2)
+
+        # Set y-axis ticks and labels
+        p.yaxis.ticker = np.arange(1, num_neurons + 1)
+        p.yaxis.major_label_overrides = {i + 1: f"Neuron {i + 1}" for i in range(num_neurons)}
+
+        v = figure(width=800, height=200, x_range=p.x_range, active_scroll='wheel_zoom')
+        v.line(self.t, self.normalize_signal(self.velocity), color='SteelBlue', legend_label='velocity')
+        v.line(self.t, self.lick, color='SandyBrown', legend_label='lick')
+
+        layout = column(p, v)
+
+        self.output_bokeh_plot(layout, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite)
+
+        return layout
 
 
 if __name__ == "__main__":
