@@ -31,7 +31,6 @@ def connection_bkapp(doc):
 
             view.filter = GroupFilter(column_name='all', group='all')
         else:
-            # Update the filter to only show the selected category
             view.filter = GroupFilter(column_name='categories', group=selected_category)
 
     category_select.on_change('value', update_display_based_on_category)
