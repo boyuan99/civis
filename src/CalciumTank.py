@@ -630,6 +630,18 @@ class CalciumTank:
 
         return neurons_with_peaks_near_trial
 
+    def get_spike_statistics(self, peak_indices):
+        """
+        :param peak_indices: the indices when a neuron activated, use ci.find_peaks_in_traces()
+
+        :return spike_stats: time series of spike counts in each time point
+        """
+        spike_stats = np.zeros_like(self.t)
+        for i in peak_indices:
+            spike_stats[i] += 1
+
+        return spike_stats
+
     @staticmethod
     def output_bokeh_plot(plot, save_path, title, notebook, overwrite):
         import os
