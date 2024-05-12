@@ -6,7 +6,7 @@ import json
 from servers.utils import read_and_process_data_v2
 
 
-def trajectory_v2_bkapp(doc):
+def trajectory_bkapp_v2(doc):
     global source, trials
 
     trials = []

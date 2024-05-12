@@ -1,17 +1,16 @@
-from bokeh.plotting import figure
+from bokeh.plotting import figure, curdoc
 from bokeh.models import ColumnDataSource, Slider, Button, Arrow, VeeHead, BoxAnnotation, Span, TextInput, Spacer
 from bokeh.layouts import column, row
 import numpy as np
-import json
-from servers.utils import read_and_process_data_v2
+from servers.utils import read_and_process_data
 
 
-def trajectory_v3_bkapp(doc):
+def trajectory_bkapp_v0(doc):
     global source, trials
 
     trials = []
     source = ColumnDataSource({'x': [], 'y': [], 'face_angle': []})
-    plot = figure(width=550, height=800,
+    plot = figure(width=300, height=800, y_range=[-80, 80], x_range=[-10, 10],
                   title="Mouse Movement Trajectory")
     plot.line('x', 'y', source=source, line_width=2)
 
@@ -20,20 +19,15 @@ def trajectory_v3_bkapp(doc):
                   x_end=0, y_end=1, line_color="orange")
     plot.add_layout(arrow)
 
-    xpts = np.array([-67.5, -50, 0, 50, 67.5, 10, 10, 67.5, 50, 0, -50, -67.5, -10, -10, -67.5])
-    ypts = np.array([107.5, 125, 75, 125, 107.5, 50, -50, -107.5, -125, -75, -125, -107.5, -50, 50, 107.5])
-
-    source_maze = ColumnDataSource(dict(
-        xs=[xpts],
-        ys=[ypts],
-    ),
-    )
-
-    plot.multi_line(xs="xs", ys="ys", source=source_maze, line_color="#8073ac", line_width=2)
-    plot.patch([67.5, 50, 70, 87.5], [-107.5, -125, -145, -127.5], alpha=0.5)
-    plot.patch([-67.5, -50, -70, -87.5], [107.5, 125, 145, 127.5], alpha=0.5)
-    plot.patch([-67.5, -50, -70, -87.5], [-107.5, -125, -145, -127.5], alpha=0.5)
-    plot.patch([67.5, 50, 70, 87.5], [107.5, 125, 145, 127.5], alpha=0.5)
+    # Annotations
+    high_box = BoxAnnotation(bottom=70, fill_alpha=0.5, fill_color='blue')
+    plot.add_layout(high_box)
+    low_box = BoxAnnotation(top=-70, fill_alpha=0.5, fill_color='blue')
+    plot.add_layout(low_box)
+    vline0 = Span(location=-9, dimension='height', line_color='black', line_width=2)
+    plot.add_layout(vline0)
+    vline1 = Span(location=9, dimension='height', line_color='black', line_width=2)
+    plot.add_layout(vline1)
 
     # Widgets
     play_button = Button(label="► Play", width=60)
@@ -49,13 +43,8 @@ def trajectory_v3_bkapp(doc):
     def load_data():
         global source, trials
 
-        with open('config.json', 'r') as file:
-            config = json.load(file)
-
-        session_name = filename_input.value
-        file = config['VirmenFilePath'] + session_name
-
-        trials = read_and_process_data_v2(file, usecols=[0, 1, 2], threshold=[175.0, -175.0])
+        file = filename_input.value
+        trials = read_and_process_data(file)
 
         if trials:
             # Enable the widgets now that data is loaded
@@ -77,6 +66,7 @@ def trajectory_v3_bkapp(doc):
 
     load_button.on_click(load_data)
 
+
     def update_plot(attr, old, new):
         trial_index = trial_slider.value
         progress = progress_slider.value / 100
@@ -86,7 +76,7 @@ def trajectory_v3_bkapp(doc):
         if max_index > 0:
             last_x = trial_data['x'][max_index - 1]
             last_y = trial_data['y'][max_index - 1]
-            angle_rad = trial_data['face_angle'][max_index - 1] + np.pi / 2  # Adjust angle to make arrow face up
+            angle_rad = trial_data['face_angle'][max_index - 1] + np.pi/2  # Adjust angle to make arrow face up
             arrow_length = 1  # Adjust as necessary for your visualization
 
             arrow.x_start = last_x
@@ -99,18 +89,22 @@ def trajectory_v3_bkapp(doc):
             arrow.x_end = 0
             arrow.y_end = 1
 
+
         new_data = {'x': trial_data['x'][:max_index],
                     'y': trial_data['y'][:max_index],
                     'face_angle': trial_data['face_angle'][:max_index]}
         source.data = new_data
 
+
     trial_slider.on_change('value', update_plot)
     progress_slider.on_change('value', update_plot)
+
 
     # Initialize play state
     global is_playing, play_interval_id
     is_playing = False
     play_interval_id = None
+
 
     def update_progress():
         current_value = progress_slider.value
@@ -118,6 +112,7 @@ def trajectory_v3_bkapp(doc):
             progress_slider.value = current_value + 1
         else:
             toggle_play()
+
 
     def toggle_play():
         global is_playing, play_interval_id
@@ -129,13 +124,14 @@ def trajectory_v3_bkapp(doc):
             play_button.label = "❚❚ Pause"
             is_playing = True
             # Schedule the periodic callback with an interval of 100ms (0.1 seconds)
-            play_interval_id = doc.add_periodic_callback(update_progress, 50)
+            play_interval_id = doc.add_periodic_callback(update_progress, 100)
         else:
             play_button.label = "► Play"
             is_playing = False
             # Remove the periodic callback to stop updates
             if play_interval_id:
                 doc.remove_periodic_callback(play_interval_id)
+
 
     # Bind the toggle function to the play button
     play_button.on_click(toggle_play)
@@ -144,3 +140,4 @@ def trajectory_v3_bkapp(doc):
     tool_widgets = column(file_input_row, trial_slider, progress_slider, play_button)
     layout = row(plot, Spacer(width=30), tool_widgets)
     doc.add_root(layout)
+
