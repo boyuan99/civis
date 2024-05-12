@@ -7,7 +7,7 @@ import json
 import pickle
 
 
-def connection_bkapp(doc):
+def connection_bkapp_v1(doc):
     source = ColumnDataSource(data=dict(x=[], y=[], ids=[]))
     lines_source = ColumnDataSource(data=dict(xs=[], ys=[], colors=[]))
 
@@ -100,7 +100,7 @@ def connection_bkapp(doc):
             categories=[neuron_id_to_category.get(str(int(id)), "Unknown") for id in ids]  # Assign categories
         )
 
-        TOOLS = "pan,wheel_zoom,zoom_in,zoom_out,box_zoom,reset"
+        TOOLS = "pan, wheel_zoom, zoom_in, zoom_out, box_zoom, reset, save"
         p = figure(width=800, height=800, x_range=[0, width], y_range=[0, height], tools=TOOLS, active_scroll="wheel_zoom", title="Neuron Correlation Visualizer")
         # Add image
         p.image(image=[np.flipud(Cn)], x=0, y=0, dw=width, dh=height, palette="Greys256")
