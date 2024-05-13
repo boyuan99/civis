@@ -1,16 +1,14 @@
-from bokeh.models import ColumnDataSource, TextInput, Button, BoxSelectTool, Spacer, Arrow, VeeHead, Div
+from bokeh.models import ColumnDataSource, TextInput, Button, BoxSelectTool, Spacer, Div
 from bokeh.plotting import figure
 from bokeh.layouts import column, row
 from bokeh.events import SelectionGeometry, Reset
 import pickle
 import numpy as np
 import json
-from src import StraightMazeTank, TurnMazeTank
+from src import TurnMazeTank
 
-
-def raster_bkapp(doc):
+def raster_bkapp_v0(doc):
     def load_data(session_name):
-
         with open('config.json', 'r') as file:
             config = json.load(file)
 
@@ -18,7 +16,7 @@ def raster_bkapp(doc):
         peak_indices_path = config['ProcessedFilePath'] + session_name + "/" + session_name + "_peak_indices.pkl"
 
         ci = TurnMazeTank(neuron_path)
-        print("Successful loaded: " + neuron_path)
+        print("Successfully loaded: " + neuron_path)
 
         with open(peak_indices_path, 'rb') as f:
             peak_indices = pickle.load(f)
@@ -39,20 +37,23 @@ def raster_bkapp(doc):
     # Create initial empty plot
     raster_source = ColumnDataSource({'x_starts': [], 'y_starts': [], 'x_ends': [], 'y_ends': []})
     selected_raster_source = ColumnDataSource({'x_starts': [], 'y_starts': [], 'x_ends': [], 'y_ends': []})
-    line_source = ColumnDataSource({'x': [], 'velocity': [], 'lick': [], 'pstcr': [], 'spike_stats':[]})
-    selected_line_source = ColumnDataSource({'x': [], 'velocity': [], 'lick': [], 'pstcr': [], 'spike_stats':[]})
+    line_source = ColumnDataSource({'x': [], 'velocity': [], 'lick': [], 'pstcr': [], 'spike_stats': []})
+    selected_line_source = ColumnDataSource({'x': [], 'velocity': [], 'lick': [], 'pstcr': [], 'spike_stats': []})
+
+    # Create shared x-range for all plots
+    shared_x_range = figure().x_range
 
     # Raster plot
     p = figure(width=1000, height=1000, title="Raster Plot", x_axis_label='Time (s)', y_axis_label='Neuron',
-               active_scroll='wheel_zoom')
+               x_range=shared_x_range, active_scroll='wheel_zoom', min_border_left=100)
     p.segment(x0='x_starts', y0='y_starts', x1='x_ends', y1='y_ends', source=raster_source, color="black", alpha=1,
               line_width=2)
     p.segment(x0='x_starts', y0='y_starts', x1='x_ends', y1='y_ends', source=selected_raster_source, color="red",
               alpha=1, line_width=2)
 
     # Signal plot
-    v = figure(width=1000, height=200, x_range=p.x_range, active_scroll='wheel_zoom',
-               tools=['pan', 'wheel_zoom', 'reset'])
+    v = figure(width=1000, height=200, x_range=shared_x_range, active_scroll='wheel_zoom',
+               tools=['pan', 'wheel_zoom', 'reset'], min_border_left=100)
     v.line('x', 'velocity', source=line_source, color='SteelBlue', legend_label='velocity', alpha=1)
     v.line('x', 'lick', source=line_source, color='SandyBrown', legend_label='lick', alpha=1)
     v.line('x', 'pstcr', source=line_source, color='Crimson', legend_label='pstcr', alpha=1)
@@ -61,16 +62,17 @@ def raster_bkapp(doc):
     v.line('x', 'pstcr', source=selected_line_source, color='DarkRed', legend_label='pstcr', alpha=1)
     v.legend.click_policy = 'hide'
 
-    s = figure(width=1000, height=200, x_range=p.x_range, active_scroll='wheel_zoom')
+    # Spike stats plot
+    s = figure(width=1000, height=200, x_range=shared_x_range, active_scroll='wheel_zoom', min_border_left=100)
     s.line('x', 'spike_stats', source=line_source, color='Chocolate', alpha=1, legend_label='spikes count')
     s.line('x', 'spike_stats', source=selected_line_source, color='Sienna', alpha=1, legend_label='spikes count')
     s.legend.click_policy = 'hide'
 
     box_select_p = BoxSelectTool(dimensions="width")
     p.add_tools(box_select_p)
-    p.toolbar.active_drag = box_select_p
+    # p.toolbar.active_drag = box_select_p
     v.add_tools(box_select_p)
-    v.toolbar.active_drag = box_select_p
+    # v.toolbar.active_drag = box_select_p
 
     # Text input widget for session name
     session_input = TextInput(value="", title="Session Name:")
@@ -154,17 +156,16 @@ def raster_bkapp(doc):
 
     p.on_event(SelectionGeometry, selection_handler)
     v.on_event(SelectionGeometry, selection_handler)
-
-    p.on_event(SelectionGeometry, selection_handler)
-    v.on_event(SelectionGeometry, selection_handler)
+    s.on_event(SelectionGeometry, selection_handler)
 
     def clear_selected_sources(event):
         selected_raster_source.data = {'x_starts': [], 'y_starts': [], 'x_ends': [], 'y_ends': []}
-        selected_line_source.data = {'x': [], 'velocity': [], 'lick': [], 'pstcr': [], 'spike_stats':[]}
+        selected_line_source.data = {'x': [], 'velocity': [], 'lick': [], 'pstcr': [], 'spike_stats': []}
         neurons_div.text = "Neurons will be shown after you choose an interval."
 
     p.on_event(Reset, clear_selected_sources)
     v.on_event(Reset, clear_selected_sources)
+    s.on_event(Reset, clear_selected_sources)
 
     # Layout
     blank_left = Spacer(width=30)
