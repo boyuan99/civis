@@ -49,3 +49,5 @@ class TurnMazeTank(CalciumTank):
 
 if __name__ == '__main__':
     print("Starting CivisServer")
+    # session_name = "366_04292024"
+    # ci = TurnMazeTank("D:/Calcium Image Processing/ProcessedData/" + session_name + "/" + session_name + "_v7.mat")
