@@ -1,5 +1,5 @@
 from bokeh.plotting import figure, curdoc
-from bokeh.models import ColumnDataSource, Slider, Button, Arrow, VeeHead, BoxAnnotation, Span, TextInput, Spacer
+from bokeh.models import ColumnDataSource, Slider, Button, Arrow, VeeHead, TextInput, Spacer
 from bokeh.layouts import column, row
 import numpy as np
 import json
