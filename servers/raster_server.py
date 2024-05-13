@@ -1,4 +1,4 @@
-from bokeh.models import ColumnDataSource, TextInput, Button, BoxSelectTool, Spacer, Div
+from bokeh.models import ColumnDataSource, TextInput, Button, BoxSelectTool, Spacer, Arrow, VeeHead, Div
 from bokeh.plotting import figure
 from bokeh.layouts import column, row
 from bokeh.events import SelectionGeometry, Reset
@@ -30,9 +30,9 @@ def raster_bkapp(doc):
         for neuron_idx, spikes in enumerate(spike_times):
             for spike_time in spikes:
                 data['x_starts'].append(spike_time / ci.ci_rate)
-                data['y_starts'].append(neuron_idx + 1)
+                data['y_starts'].append(neuron_idx)
                 data['x_ends'].append(spike_time / ci.ci_rate)
-                data['y_ends'].append(neuron_idx + 1 + 0.7)
+                data['y_ends'].append(neuron_idx + 0.7)
 
         return data, ci, spike_stats
 
@@ -78,13 +78,16 @@ def raster_bkapp(doc):
     # Button to load data
     load_button = Button(label="Load Data", button_type="success")
 
+    # Div to show the picked neurons
+    neurons_div = Div(width=1000, height=400, text="Neurons will be shown after you choose an interval.")
+
     def update_data():
         print("Loading Data...")
         session_name = session_input.value
         data, ci, spike_stats = load_data(session_name)
         raster_source.data = data
-        p.yaxis.ticker = np.arange(1, ci.neuron_num + 1)
-        p.yaxis.major_label_overrides = {i + 1: f"Neuron {i + 1}" for i in range(ci.neuron_num)}
+        p.yaxis.ticker = np.arange(0, ci.neuron_num)
+        p.yaxis.major_label_overrides = {i: f"Neuron {i}" for i in range(ci.neuron_num)}
         line_source.data = dict(x=ci.t,
                                 velocity=ci.normalize_signal(ci.velocity),
                                 lick=ci.lick,
@@ -134,17 +137,36 @@ def raster_bkapp(doc):
             'spike_stats': filtered_data_spikes,
         }
 
+        # Additional code to display selected neurons and spike counts
+        selected_neurons = set(selected_raster_source.data['y_starts'])
+        neuron_spike_counts = {neuron: 0 for neuron in selected_neurons}
+        for neuron in selected_raster_source.data['y_starts']:
+            neuron_spike_counts[neuron] += 1
+
+        total_spikes = sum(neuron_spike_counts.values())
+
+        # Update the neurons_div to display total spike count and neurons in rows of three
+        neurons_info = "<br>".join(
+            [f"Neuron {int(neuron)}: {neuron_spike_counts[neuron]} spikes" for neuron in sorted(neuron_spike_counts)])
+        formatted_neurons_info = "<br>".join(
+            [", ".join(neurons_info.split("<br>")[i:i + 3]) for i in range(0, len(neurons_info.split("<br>")), 3)])
+        neurons_div.text = f"Total Spike Count: {total_spikes}<br>{formatted_neurons_info}"
+
+    p.on_event(SelectionGeometry, selection_handler)
+    v.on_event(SelectionGeometry, selection_handler)
+
     p.on_event(SelectionGeometry, selection_handler)
     v.on_event(SelectionGeometry, selection_handler)
 
     def clear_selected_sources(event):
         selected_raster_source.data = {'x_starts': [], 'y_starts': [], 'x_ends': [], 'y_ends': []}
         selected_line_source.data = {'x': [], 'velocity': [], 'lick': [], 'pstcr': [], 'spike_stats':[]}
+        neurons_div.text = "Neurons will be shown after you choose an interval."
 
     p.on_event(Reset, clear_selected_sources)
     v.on_event(Reset, clear_selected_sources)
 
     # Layout
     blank_left = Spacer(width=30)
-    layout = row(blank_left, column(row(session_input, load_button), p, v, s))
+    layout = row(blank_left, column(row(session_input, load_button), row(p, neurons_div), v, s))
     doc.add_root(layout)
