@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 from bokeh.plotting import figure
-from bokeh.models import HoverTool, ColumnDataSource, Slider, Button, TextInput, Spacer, Div, Select, ResetTool
+from bokeh.models import HoverTool, ColumnDataSource, Slider, Button, TextInput, Spacer, Div, Select, TapTool
 from bokeh.layouts import column, row
 from servers.utils import load_data
 from flask import render_template, Blueprint
@@ -59,7 +59,7 @@ def labeler_bkapp(doc):
 
     image_source = ColumnDataSource(data={'image': []})
 
-    TOOLS = "crosshair,pan,wheel_zoom,zoom_in,zoom_out,box_zoom,undo,redo,reset,tap,save,box_select,poly_select,lasso_select,examine,help"
+    TOOLS = "crosshair,pan,wheel_zoom,zoom_in,zoom_out,box_zoom,undo,redo,reset,save,box_select,poly_select,lasso_select,examine,help"
 
     # spatial image
     spatial = figure(title="Neuronal Segmentation", width=800, height=800,
@@ -71,6 +71,8 @@ def labeler_bkapp(doc):
 
     hover = HoverTool(tooltips=[("ID", "@id")], renderers=[contour_renderer])
     spatial.add_tools(hover)
+    taptool = TapTool(mode='replace')
+    spatial.add_tools(taptool)
 
     # temporal transient
     temporal = figure(title="Temporal Activity", width=800, height=400, active_scroll="wheel_zoom")
