@@ -3,13 +3,22 @@ from bokeh.models import ColumnDataSource, Slider, Button, Arrow, VeeHead, TextI
 from bokeh.layouts import column, row
 import numpy as np
 import json
-import os
-import sys
+import pandas as pd
 
-current_dir = os.path.dirname(__file__)
-parent_dir = os.path.abspath(os.path.join(current_dir, '..'))
-sys.path.insert(0, parent_dir)
-from servers.utils import read_and_process_data_v2
+
+def read_and_process_data_v2(file_path, usecols=[0, 1, 2], threshold=[175.0, -175.0]):
+    data = pd.read_csv(file_path, sep=r'\s+|,', engine='python', header=None,
+                       usecols=usecols, names=['x', 'y', 'face_angle'])
+
+    # Identifying trials
+    trials = []
+    start = 0
+    for i in range(len(data)):
+        if abs(data.iloc[i]['y']) + abs(data.iloc[i]['x']) >= threshold[0]:
+            trials.append(data[start:i + 1].to_dict(orient='list'))
+            start = i + 1
+
+    return [trials, data]
 
 global source, trials, progress_slider
 
@@ -58,7 +67,7 @@ def load_data():
     session_name = filename_input.value
     file = config['VirmenFilePath'] + session_name
 
-    trials = read_and_process_data_v2(file, usecols=[0, 1, 2], threshold=[175.0, -175.0])
+    [trials, virmen_data] = read_and_process_data_v2(file, usecols=[0, 1, 2], threshold=[175.0, -175.0])
 
     if trials:
         # Enable the widgets now that data is loaded
