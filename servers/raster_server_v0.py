@@ -5,9 +5,10 @@ from bokeh.events import SelectionGeometry, Reset
 import pickle
 import numpy as np
 import json
-from src import TurnMazeTank
+
 
 def raster_bkapp_v0(doc):
+    from src import TurnMazeTank
     def load_data(session_name):
         with open('config.json', 'r') as file:
             config = json.load(file)

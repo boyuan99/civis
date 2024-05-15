@@ -1,7 +1,6 @@
 import pandas as pd
 import numpy as np
 import h5py
-import torch
 from scipy.signal import find_peaks, savgol_filter
 
 
@@ -343,6 +342,8 @@ class CalciumTank:
         :param device: device to move the data to
         :return: tensor on the specified device
         """
+        import torch
+
         if isinstance(data, np.ndarray):
             return torch.from_numpy(data).to(device)
         elif isinstance(data, torch.Tensor):
@@ -363,6 +364,8 @@ class CalciumTank:
         :param notebook: flag to use tqdm.notebook for Jupyter notebook
         :return: correlation coefficients, shifts, precomputed data
         """
+        import torch
+
         if notebook:
             from tqdm.notebook import tqdm
         else:
@@ -425,6 +428,8 @@ class CalciumTank:
         :param notebook: flag to use tqdm.notebook for Jupyter notebook
         :return: correlation coefficients, shifts
         """
+        import torch
+
         if notebook:
             from tqdm.notebook import tqdm
         else:
@@ -455,6 +460,8 @@ class CalciumTank:
 
     @staticmethod
     def pearson_correlation_batched(x, y):
+        import torch
+
         vx = x - torch.mean(x, dim=1, keepdim=True)
         vy = y - torch.mean(y, dim=1, keepdim=True)
         cost = torch.sum(vx * vy, dim=1) / (
@@ -495,6 +502,8 @@ class CalciumTank:
 
     def compute_correlation_statistics_pairwise_batched_optimized(self, num_trials=2000, max_shift=6000, device=None,
                                                                   use_tqdm=True, notebook=False):
+        import torch
+
         if device is None:
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -512,6 +521,8 @@ class CalciumTank:
 
     def randomly_shift_crop_and_correlate_batched_optimized(self, C_raw_tensor, max_shift, num_trials, device, use_tqdm,
                                                             notebook):
+        import torch
+
         if notebook:
             from tqdm.notebook import tqdm
         else:
