@@ -5,7 +5,7 @@ from tornado.ioloop import IOLoop
 from bokeh.server.server import Server
 from bokeh.embed import server_document
 from servers import (labeler_bkapp, trajectory_bkapp_v1, connection_bkapp_v1, trajectory_bkapp_v0, raster_bkapp_v0,
-                     trajectory_bkapp_v2, trajectory_bkapp_v3)
+                     trajectory_bkapp_v2, trajectory_bkapp_v3, raster_bkapp_v1)
 
 app = Flask(__name__)
 
@@ -49,6 +49,11 @@ def trajectory_v3_app():
     script = server_document(f'http://localhost:{args.bokeh_port}/trajectory_bkapp_v3')
     return render_template("trajectory_v3.html", script=script, template='Flask', port=args.flask_port)
 
+@app.route('/raster/v1/')
+def raster_v1_app():
+    script = server_document(f'http://localhost:{args.bokeh_port}/raster_bkapp_v1')
+    return render_template("raster_v1.html", script=script, templates='Flask', port=args.flask_port)
+
 
 def bk_worker(bokeh_port, flask_port):
     # Configure the Bokeh server with applications
@@ -58,7 +63,8 @@ def bk_worker(bokeh_port, flask_port):
                   '/trajectory_bkapp_v0': trajectory_bkapp_v0,
                   '/raster_bkapp_v0': raster_bkapp_v0,
                   '/trajectory_bkapp_v2': trajectory_bkapp_v2,
-                  '/trajectory_bkapp_v3': trajectory_bkapp_v3}
+                  '/trajectory_bkapp_v3': trajectory_bkapp_v3,
+                  '/raster_bkapp_v1': raster_bkapp_v1}
 
     server = Server(bokeh_apps,
                     io_loop=IOLoop(),
