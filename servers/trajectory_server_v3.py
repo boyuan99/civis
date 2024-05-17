@@ -1,9 +1,26 @@
 from bokeh.plotting import figure
-from bokeh.models import ColumnDataSource, Slider, Button, Arrow, VeeHead, BoxAnnotation, Span, TextInput, Spacer
+from bokeh.models import ColumnDataSource, Slider, Button, Arrow, VeeHead, Div, TextInput, Spacer
 from bokeh.layouts import column, row
 import numpy as np
 import json
-from servers.utils import read_and_process_data_v2
+import pandas as pd
+
+
+def read_and_process_data_v2(file_path, usecols=[0, 1, 2], threshold=[175.0, -175.0]):
+    data = pd.read_csv(file_path, sep=r'\s+|,', engine='python', header=None,
+                       usecols=usecols, names=['x', 'y', 'face_angle'])
+
+    # Identifying trials
+    trials = []
+    starts = []
+    start = 0
+    for i in range(len(data)):
+        if abs(data.iloc[i]['y']) + abs(data.iloc[i]['x']) >= threshold[0]:
+            trials.append(data[start:i + 1].to_dict(orient='list'))
+            starts.append(start)
+            start = i + 1
+
+    return trials, starts
 
 
 def trajectory_bkapp_v3(doc):
@@ -41,13 +58,18 @@ def trajectory_bkapp_v3(doc):
     progress_slider = Slider(start=0, end=100, value=0, step=1, width=600, title="Progress")
     filename_input = TextInput(value='', title="File Path:", width=400)
     load_button = Button(label="Load Data", button_type="success")
+    previous_button = Button(label="Previous", width=100)
+    next_button = Button(label="Next", width=100)
+    starts_div = Div(text="Start Time: ", width=400)
 
     trial_slider.disabled = True
     progress_slider.disabled = True
     play_button.disabled = True
+    previous_button.disabled = True
+    next_button.disabled = True
 
     def load_data():
-        global source, trials
+        global source, trials, starts
 
         with open('config.json', 'r') as file:
             config = json.load(file)
@@ -55,13 +77,16 @@ def trajectory_bkapp_v3(doc):
         session_name = filename_input.value
         file = config['VirmenFilePath'] + session_name
 
-        trials = read_and_process_data_v2(file, usecols=[0, 1, 2], threshold=[175.0, -175.0])
+        [trials, starts] = read_and_process_data_v2(file, usecols=[0, 1, 2], threshold=[175.0, -175.0])
+        starts = [x/20 for x in starts]
 
         if trials:
             # Enable the widgets now that data is loaded
             trial_slider.disabled = False
             progress_slider.disabled = False
             play_button.disabled = False
+            previous_button.disabled = False
+            next_button.disabled = False
 
             initial_trial = trials[0]
             new_data = {'x': [initial_trial['x'][0]],
@@ -74,6 +99,8 @@ def trajectory_bkapp_v3(doc):
 
             progress_slider.end = 100
             progress_slider.value = 0
+
+            starts_div.text = f"Start Time: {starts[0]}"
 
     load_button.on_click(load_data)
 
@@ -103,6 +130,7 @@ def trajectory_bkapp_v3(doc):
                     'y': trial_data['y'][:max_index],
                     'face_angle': trial_data['face_angle'][:max_index]}
         source.data = new_data
+        starts_div.text = f"Start Time: {starts[trial_index]}"
 
     trial_slider.on_change('value', update_plot)
     progress_slider.on_change('value', update_plot)
@@ -140,7 +168,19 @@ def trajectory_bkapp_v3(doc):
     # Bind the toggle function to the play button
     play_button.on_click(toggle_play)
 
+    def previous_trial():
+        if trial_slider.value > trial_slider.start:
+            trial_slider.value -= 1
+
+    def next_trial():
+        if trial_slider.value < trial_slider.end:
+            trial_slider.value += 1
+
+    previous_button.on_click(previous_trial)
+    next_button.on_click(next_trial)
+
     file_input_row = row(filename_input, load_button)
-    tool_widgets = column(file_input_row, trial_slider, progress_slider, play_button)
+    trial_navigation_row = row(previous_button, next_button)
+    tool_widgets = column(file_input_row, trial_slider, progress_slider, play_button, trial_navigation_row, starts_div)
     layout = row(plot, Spacer(width=30), tool_widgets)
     doc.add_root(layout)
