@@ -1,4 +1,5 @@
 {
   "ProcessedFilePath": "D:/Calcium Image Processing/ProcessedData/",
-  "VirmenFilePath": "D:/VirmenData/"
+  "VirmenFilePath": "D:/VirmenData/",
+  "PickedVirmenDataFilePath": "D:/Calcium Image Processing/PickedVirmenData/"
 }

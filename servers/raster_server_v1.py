@@ -236,8 +236,7 @@ def raster_bkapp_v1(doc):
     s.on_event(Reset, clear_selected_sources)
 
     # Layout
-    blank_left = Spacer(width=30)
-    layout = row(blank_left, column(row(session_input, load_button), p, v, s, ), blank_left, column(Spacer(height=70), plot, range_slider))
+    layout = row(Spacer(width=30), column(row(session_input, load_button), p, v, s, ), Spacer(width=30), column(Spacer(height=70), plot, range_slider))
     doc.add_root(layout)
 
 

@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import h5py
+import json
 from scipy.signal import find_peaks, savgol_filter
 
 
@@ -91,6 +92,9 @@ class CalciumTank:
         :param filename: .mat file containing config, spatial, Cn, Coor, ids, etc...
         :return: essential variables for plotting
         """
+        with open('config.json', 'r') as file:
+            config = json.load(file)
+
         with h5py.File(filename, 'r') as file:
             data = file['data']
             Cn = np.transpose(data['Cn'][()])
@@ -100,7 +104,8 @@ class CalciumTank:
             C_raw = np.transpose(data['C_raw'][()])
             C = np.transpose(data['C'][()])
             centroids = np.transpose(data['centroids'][()])
-            virmenPath = data['virmenPath'][()].tobytes().decode('utf-16le')
+            # virmenPath = data['virmenPath'][()].tobytes().decode('utf-16le')
+            virmenPath = config['PickedVirmenDataFilePath'] + data['virmenFileName'][()].tobytes().decode('utf-16le')
 
             for i in range(Coor_cell_array.shape[1]):
                 ref = Coor_cell_array[0, i]  # Get the reference
