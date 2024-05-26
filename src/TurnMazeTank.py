@@ -11,10 +11,11 @@ class TurnMazeTank(CalciumTank):
                  velocity_distance=100,
                  threshold=[175.0, -175.0],
                  window_length=51,
-                 polyorder=3):
+                 polyorder=3,
+                 height=8):
         # Pass all the necessary parameters to the parent class
         super().__init__(neuron_path, ci_rate, session_duration, velocity_height, velocity_distance, threshold,
-                         window_length, polyorder)
+                         window_length, polyorder, height)
         self.neuron_path = neuron_path
 
     @staticmethod

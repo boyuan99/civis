@@ -14,7 +14,9 @@ class CalciumTank:
                  velocity_distance=100,
                  threshold=[100.0, -100.0],
                  window_length=51,
-                 polyorder=3, ):
+                 polyorder=3,
+                 height=8):
+
         self.neuron_path = neuron_path
         self.ci_rate = ci_rate
         self.session_duration = session_duration
@@ -43,7 +45,7 @@ class CalciumTank:
         self.dr, self.dr_raw = self.find_rotation()
 
         # for analysis usage:
-        self.velocity_peak_indices = find_peaks(self.smoothed_velocity, height=8, distance=self.velocity_distance)[0]
+        self.velocity_peak_indices = find_peaks(self.smoothed_velocity, height=height, distance=self.velocity_distance)[0]
         self.lick_edge_indices = np.where(np.diff(self.lick) > 0)[0]
         self.movement_onset_indices = self.find_movement_onset(self.smoothed_velocity, self.velocity_peak_indices)
 
