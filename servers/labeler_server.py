@@ -4,13 +4,11 @@ from bokeh.plotting import figure
 from bokeh.models import HoverTool, ColumnDataSource, Slider, Button, TextInput, Spacer, Div, Select, TapTool
 from bokeh.layouts import column, row
 from servers.utils import load_data
-from flask import render_template, Blueprint
-from bokeh.embed import server_document
 import json
 
 
 def labeler_bkapp(doc):
-    global C, C_raw, ids, labels, image_source
+    global C, C_raw, ids, labels, image_source, session_name
     filename = ''
     labels = np.zeros((3, 3), dtype=bool)
     labels[:, 2] = True
@@ -201,9 +199,14 @@ def labeler_bkapp(doc):
         update_dropdowns()
 
     def save_labels():
+
+        with open('config.json', 'r') as file:
+            config = json.load(file)
+
         df = pd.DataFrame(labels, columns=["Keep", "Discard", "Unlabeled"])
-        df.to_csv(file_path_input.value, index=False)
-        print("Labels saved to", file_path_input.value)
+        label_file_name = config['LabelsPath'] + session_name + '/' + session_name + '_' + file_path_input.value
+        df.to_csv(label_file_name, index=False)
+        print("Labels saved to", label_file_name)
 
     # Callbacks for buttons
     keep_button.on_click(lambda: update_labels("Keep"))
@@ -362,6 +365,8 @@ def labeler_bkapp(doc):
 
     # Callback function for the "Load Data" button to reload and update the visualization
     def update_data():
+        global session_name
+
         with open('config.json', 'r') as file:
             config = json.load(file)
         session_name = sessionname_input.value
