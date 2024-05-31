@@ -22,9 +22,10 @@ class StraightMazeTank(CalciumTank):
     def read_and_process_data(file_path, threshold=None):
         if threshold is None:
             threshold = [70.0, -70.0]
-        data = pd.read_csv(file_path, sep=r'\s+|,', engine='python', header=None,
-                           usecols=[0, 1, 2, 3, 4, 5, 6],
-                           names=['x', 'y', 'face_angle', 'dx', 'dy', 'lick', 'timeStamp'])
+
+        data = pd.read_csv(file_path, sep=r'\s+|,', engine='python', header=None)
+        potential_names = ['x', 'y', 'face_angle', 'dx', 'dy', 'lick', 'time_stamp', 'maze_type']
+        data.columns = potential_names[:data.shape[1]]
 
         # Identifying trials
         trials = []
