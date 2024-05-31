@@ -30,21 +30,21 @@ class CalciumTank:
         if self.threshold[0] < self.threshold[1]:
             raise ValueError("threshold[0] should be greater than threshold[1]")
 
-        self.virmen_trials, self.virmen_data = self.read_and_process_data(self.virmenPath, threshold=self.threshold)
-        self.trials_end_indices = self.calculate_virmen_trials_end_indices()
-        self.lick_raw, self.lick_raw_mask, self.lick = self.find_lick_data()
-        self.pstcr_raw, self.pstcr = self.find_position_movement_rate()  # position change rate
-        self.velocity = self.find_velocity()
-        self.window_length = window_length  # Window length: number of coefficients (odd number)
-        self.polyorder = polyorder  # Polynomial order
-        self.smoothed_pstcr = savgol_filter(self.pstcr, self.window_length, self.polyorder)
-        self.smoothed_velocity = savgol_filter(self.velocity, self.window_length, self.polyorder)
-        self.dr, self.dr_raw = self.find_rotation()
+        # self.virmen_trials, self.virmen_data = self.read_and_process_data(self.virmenPath, threshold=self.threshold)
+        # self.trials_end_indices = self.calculate_virmen_trials_end_indices()
+        # self.lick_raw, self.lick_raw_mask, self.lick = self.find_lick_data()
+        # self.pstcr_raw, self.pstcr = self.find_position_movement_rate()  # position change rate
+        # self.velocity = self.find_velocity()
+        # self.window_length = window_length  # Window length: number of coefficients (odd number)
+        # self.polyorder = polyorder  # Polynomial order
+        # self.smoothed_pstcr = savgol_filter(self.pstcr, self.window_length, self.polyorder)
+        # self.smoothed_velocity = savgol_filter(self.velocity, self.window_length, self.polyorder)
+        # self.dr, self.dr_raw = self.find_rotation()
 
-        # for analysis usage:
-        self.velocity_peak_indices = find_peaks(self.smoothed_velocity, height=8, distance=self.velocity_distance)[0]
-        self.lick_edge_indices = np.where(np.diff(self.lick) > 0)[0]
-        self.movement_onset_indices = self.find_movement_onset(self.smoothed_velocity, self.velocity_peak_indices)
+        # # for analysis usage:
+        # self.velocity_peak_indices = find_peaks(self.smoothed_velocity, height=8, distance=self.velocity_distance)[0]
+        # self.lick_edge_indices = np.where(np.diff(self.lick) > 0)[0]
+        # self.movement_onset_indices = self.find_movement_onset(self.smoothed_velocity, self.velocity_peak_indices)
 
     @staticmethod
     def compute_deltaF_over_F(fluorescence, baseline_indices=None):
@@ -244,7 +244,7 @@ class CalciumTank:
         for i, C_pick in enumerate(iterator):
             peak_height = np.average(C_pick) + 3 * np.std(C_pick)
 
-            peak_calciums, _ = find_peaks(C_pick, height=peak_height, distance=100, prominence=0.2)
+            peak_calciums, _ = _local_maxima_1d(C_pick)
 
             C_base = savgol_filter(C_pick, window_length=2000, polyorder=2, mode='interp')
             peak_calciums_filtered, _ = find_peaks(C_base, height=np.average(C_base) + 3 * np.std(C_base), distance=200)
