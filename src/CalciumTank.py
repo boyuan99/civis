@@ -254,7 +254,7 @@ class CalciumTank:
             peak_calciums, _ = find_peaks(C_pick, height=peak_height, distance=100, prominence=0.2)
 
             C_base = savgol_filter(C_pick, window_length=2000, polyorder=2, mode='interp')
-            peak_calciums_filtered, _ = find_peaks(C_base, height=np.average(C_base) + 3 * np.std(C_base), distance=200)
+            # peak_calciums_filtered, _ = find_peaks(C_base, height=np.average(C_base) + 3 * np.std(C_base), distance=200)
 
             C_filtered = C_pick - C_base
             peak_calciums_filtered, _ = find_peaks(C_filtered, height=np.average(C_filtered) + 3 * np.std(C_filtered),
@@ -626,6 +626,7 @@ class CalciumTank:
         :param choice: 'before', 'after', or 'around'
 
         :return: dictionary of found neurons
+        :example: neurons_with_peaks_before_lick = ci.find_neurons_with_peaks_near_indices(peak_indices, ci.lick_edge_indices, window=10, choice='before')
         """
 
         neurons_with_peaks_near_trial = {}
