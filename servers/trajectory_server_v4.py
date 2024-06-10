@@ -1,29 +1,41 @@
 from bokeh.plotting import figure, curdoc
-from bokeh.models import ColumnDataSource, Slider, Button, Arrow, VeeHead, BoxAnnotation, Span, TextInput, Spacer
+from bokeh.models import ColumnDataSource, Slider, Button, Arrow, VeeHead, Div, BoxAnnotation, Span, TextInput, Spacer
 from bokeh.layouts import column, row
 import numpy as np
 import pandas as pd
 
-def read_and_process_data(file_path, usecols=[0, 1, 2], threshold=[70.0, -70.0]):
-    data = pd.read_csv(file_path, sep=r'\s+|,', engine='python', header=None,
-                       usecols=usecols, names=['x', 'y', 'face_angle'])
+
+"""
+Maze type: Straight short 25
+
+Maze limits: +/-25
+"""
+def read_and_process_data(file_path, threshold=None):
+    if threshold is None:
+        threshold = [25.0, -25.0]
+
+    data = pd.read_csv(file_path, sep=r'\s+|,', engine='python', header=None)
+    potential_names = ['x', 'y', 'face_angle', 'dx', 'dy', 'lick', 'time_stamp', 'maze_type']
+    data.columns = potential_names[:data.shape[1]]
 
     # Identifying trials
+    starts = []
     trials = []
     start = 0
     for i in range(len(data)):
-        if data.iloc[i]['y'] >= threshold[0] or data.iloc[i]['y'] <= threshold[1]:
+        if abs(data.iloc[i]['y']) >= threshold[0]:
             trials.append(data[start:i + 1].to_dict(orient='list'))
+            starts.append(start)
             start = i + 1
 
-    return trials
+    return [trials, starts, data]
 
-def trajectory_bkapp_v0(doc):
+def trajectory_bkapp_v4(doc):
     global source, trials
 
     trials = []
     source = ColumnDataSource({'x': [], 'y': [], 'face_angle': []})
-    plot = figure(width=300, height=800, y_range=[-80, 80], x_range=[-10, 10],
+    plot = figure(width=300, height=800, y_range=[-30, 30], x_range=[-10, 10],
                   title="Mouse Movement Trajectory")
     plot.line('x', 'y', source=source, line_width=2)
 
@@ -33,9 +45,9 @@ def trajectory_bkapp_v0(doc):
     plot.add_layout(arrow)
 
     # Annotations
-    high_box = BoxAnnotation(bottom=70, fill_alpha=0.5, fill_color='blue')
+    high_box = BoxAnnotation(bottom=25, fill_alpha=0.5, fill_color='blue')
     plot.add_layout(high_box)
-    low_box = BoxAnnotation(top=-70, fill_alpha=0.5, fill_color='blue')
+    low_box = BoxAnnotation(top=-25, fill_alpha=0.5, fill_color='blue')
     plot.add_layout(low_box)
     vline0 = Span(location=-9, dimension='height', line_color='black', line_width=2)
     plot.add_layout(vline0)
@@ -48,22 +60,37 @@ def trajectory_bkapp_v0(doc):
     progress_slider = Slider(start=0, end=100, value=0, step=1, width=600, title="Progress")
     filename_input = TextInput(value='', title="File Path:", width=400)
     load_button = Button(label="Load Data", button_type="success")
+    previous_button = Button(label="Previous", width=100)
+    next_button = Button(label="Next", width=100)
+    starts_div = Div(text="Start Time: ", width=400)
 
     trial_slider.disabled = True
     progress_slider.disabled = True
     play_button.disabled = True
+    previous_button.disabled = True
+    next_button.disabled = True
 
     def load_data():
-        global source, trials
+        global source, trials, starts
 
-        file = filename_input.value
-        trials = read_and_process_data(file)
+        # file = filename_input.value
+        # trials = read_and_process_data(file)
+
+        session_name = filename_input.value
+        file = "D:/VirmenData/" + session_name
+
+        trials, starts, _ = read_and_process_data(file)
+        print("Successfully loaded: " + file)
+
 
         if trials:
             # Enable the widgets now that data is loaded
             trial_slider.disabled = False
             progress_slider.disabled = False
             play_button.disabled = False
+            previous_button.disabled = False
+            next_button.disabled = False
+
 
             initial_trial = trials[0]
             new_data = {'x': [initial_trial['x'][0]],
@@ -76,6 +103,8 @@ def trajectory_bkapp_v0(doc):
 
             progress_slider.end = 100
             progress_slider.value = 0
+
+            starts_div.text = f"Start Time: {starts[0]}"
 
     load_button.on_click(load_data)
 
@@ -107,6 +136,8 @@ def trajectory_bkapp_v0(doc):
                     'y': trial_data['y'][:max_index],
                     'face_angle': trial_data['face_angle'][:max_index]}
         source.data = new_data
+        starts_div.text = f"Start Time: {starts[trial_index]}"
+
 
 
     trial_slider.on_change('value', update_plot)
@@ -149,10 +180,23 @@ def trajectory_bkapp_v0(doc):
     # Bind the toggle function to the play button
     play_button.on_click(toggle_play)
 
+    def previous_trial():
+        if trial_slider.value > trial_slider.start:
+            trial_slider.value -= 1
+
+    def next_trial():
+        if trial_slider.value < trial_slider.end:
+            trial_slider.value += 1
+
+    previous_button.on_click(previous_trial)
+    next_button.on_click(next_trial)
+
     file_input_row = row(filename_input, load_button)
-    tool_widgets = column(file_input_row, trial_slider, progress_slider, play_button)
+    trial_navigation_row = row(previous_button, next_button)
+
+    tool_widgets = column(file_input_row, trial_slider, progress_slider, play_button, trial_navigation_row, starts_div)
     layout = row(plot, Spacer(width=30), tool_widgets)
     doc.add_root(layout)
 
 
-trajectory_bkapp_v0(curdoc())
+# trajectory_bkapp_v4(curdoc())
