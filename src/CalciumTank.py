@@ -33,7 +33,6 @@ class CalciumTank:
         if self.threshold[0] < self.threshold[1]:
             raise ValueError("threshold[0] should be greater than threshold[1]")
 
-
         self.virmen_trials, self.virmen_data = self.read_and_process_data(self.virmenPath, threshold=self.threshold)
         self.trials_end_indices = self.calculate_virmen_trials_end_indices()
         self.lick_raw, self.lick_raw_mask, self.lick = self.find_lick_data()
@@ -265,7 +264,7 @@ class CalciumTank:
         for i, C_pick in enumerate(iterator):
             peak_height = np.average(C_pick) + 3 * np.std(C_pick)
 
-            peak_calciums, _ = _local_maxima_1d(C_pick)
+            peak_calciums, _ = find_peaks(C_pick, height=peak_height, distance=100, prominence=0.2)
 
             C_base = savgol_filter(C_pick, window_length=2000, polyorder=2, mode='interp')
             # peak_calciums_filtered, _ = find_peaks(C_base, height=np.average(C_base) + 3 * np.std(C_base), distance=200)

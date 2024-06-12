@@ -1,9 +1,6 @@
 {
-
+  "ProcessedFilePath": "D:/Calcium Image Processing/ProcessedData/",
+  "VirmenFilePath": "D:/VirmenData/",
   "PickedVirmenDataFilePath": "D:/Calcium Image Processing/PickedVirmenData/",
   "LabelsPath": "D:/Calcium Image Processing/ProcessedData/"
-
-  "ProcessedFilePath": "/Users/edward41803/Documents/CIS_Processed_Data/ProcessedData/",
-  "VirmenFilePath": "/Users/edward41803/Documents/CIS_Processed_Data/"
-
 }
