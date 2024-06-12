@@ -40,9 +40,11 @@ class CalciumTank:
         self.velocity = self.find_velocity()
         self.window_length = window_length  # Window length: number of coefficients (odd number)
         self.polyorder = polyorder  # Polynomial order
-        self.smoothed_pstcr = savgol_filter(self.pstcr, self.window_length, self.polyorder)
+        # self.smoothed_pstcr = savgol_filter(self.pstcr, self.window_length, self.polyorder)
+        self.smoothed_pstcr = self.butter_lowpass_filter(self.pstcr, 0.5, self.ci_rate)
         self.smoothed_pstcr[self.smoothed_pstcr <= 0] = 0
-        self.smoothed_velocity = savgol_filter(self.velocity, self.window_length, self.polyorder)
+        # self.smoothed_velocity = savgol_filter(self.velocity, self.window_length, self.polyorder)
+        self.smoothed_velocity = self.butter_lowpass_filter(self.velocity, 0.5, self.ci_rate)
         self.smoothed_velocity[self.smoothed_velocity <= 0] = 0
         self.dr, self.dr_raw = self.find_rotation()
         self.acceleration = self.find_acceleration()
@@ -85,12 +87,29 @@ class CalciumTank:
         return normalized_signal
 
     @staticmethod
+    def normalize_signal_with_sign(signal):
+
+        max_val = np.max(np.abs(signal))
+        normalized_signal = signal / max_val
+        return normalized_signal
+
+    @staticmethod
     def shift_signal(fluorescence):
         shifted = np.zeros_like(fluorescence)
         for i, signal in enumerate(fluorescence):
             shifted[i] = signal - np.mean(signal)
 
         return shifted
+
+    @staticmethod
+    def butter_lowpass_filter(data, cutoff, fs, order=4):
+        from scipy.signal import butter, filtfilt
+
+        nyquist = 0.5 * fs
+        normal_cutoff = cutoff / nyquist
+        b, a = butter(order, normal_cutoff, btype='low', analog=False)
+        y = filtfilt(b, a, data)
+        return y
 
     def load_data(self, filename):
         """
@@ -1180,7 +1199,9 @@ class CalciumTank:
         v = figure(width=800, height=200, x_range=p.x_range, active_scroll='wheel_zoom')
         v.line(self.t, self.normalize_signal(self.velocity), color='SteelBlue', legend_label='velocity')
         v.line(self.t, self.lick, color='SandyBrown', legend_label='lick')
-        v.line(self.t, self.normalize_signal(self.acceleration), color='Green', legend_label='acceleration')
+        v.line(self.t, self.normalize_signal_with_sign(self.acceleration), color='Green', legend_label='acceleration')
+
+        v.legend.click_policy = 'hide'
 
         layout = column(p, v)
 
