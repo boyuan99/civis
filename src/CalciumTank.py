@@ -13,7 +13,7 @@ class CalciumTank:
                  velocity_height=0.7,
                  velocity_distance=100,
                  threshold=[100.0, -100.0],
-                 window_length=51,
+                 window_length=31,
                  polyorder=3,
                  height=8):
 
@@ -41,8 +41,12 @@ class CalciumTank:
         self.window_length = window_length  # Window length: number of coefficients (odd number)
         self.polyorder = polyorder  # Polynomial order
         self.smoothed_pstcr = savgol_filter(self.pstcr, self.window_length, self.polyorder)
+        self.smoothed_pstcr[self.smoothed_pstcr <= 0] = 0
         self.smoothed_velocity = savgol_filter(self.velocity, self.window_length, self.polyorder)
+        self.smoothed_velocity[self.smoothed_velocity <= 0] = 0
         self.dr, self.dr_raw = self.find_rotation()
+        self.acceleration = self.find_acceleration()
+
 
         # for analysis usage:
         self.velocity_peak_indices = find_peaks(self.smoothed_velocity, height=height, distance=self.velocity_distance)[0]
@@ -221,6 +225,15 @@ class CalciumTank:
         dr = dr[: self.session_duration * self.ci_rate]
 
         return dr, dr_raw
+
+    def find_acceleration(self):
+        dt = 1/self.ci_rate
+        dv = np.diff(self.smoothed_velocity)
+
+        acceleration = dv / dt
+        acceleration = np.pad(acceleration, (0, len(self.t) - len(dv)), 'constant', constant_values=(0, ))
+
+        return acceleration
 
     @staticmethod
     def find_outliers_indices(data, threshold=3.0):
@@ -1167,6 +1180,7 @@ class CalciumTank:
         v = figure(width=800, height=200, x_range=p.x_range, active_scroll='wheel_zoom')
         v.line(self.t, self.normalize_signal(self.velocity), color='SteelBlue', legend_label='velocity')
         v.line(self.t, self.lick, color='SandyBrown', legend_label='lick')
+        v.line(self.t, self.normalize_signal(self.acceleration), color='Green', legend_label='acceleration')
 
         layout = column(p, v)
 
