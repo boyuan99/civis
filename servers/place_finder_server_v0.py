@@ -36,14 +36,15 @@ def place_cell_vis(doc):
     plot.add_layout(vline1)
 
     # Widgets
-    neuron_slider = Slider(start=0, end=100, value=0, step=1, width=600, title="Neuron ID", disabled=True)
+    neuron_id_slider = Slider(start=0, end=100, value=0, step=1, width=600, title="Neuron ID", disabled=True)
     session_input = TextInput(value='', title="Session Name:", width=400)
     load_button = Button(label="Load Data", button_type="success")
     previous_button = Button(label="Previous", width=100, disabled=True)
     next_button = Button(label="Next", width=100, disabled=True)
+    neuron_index_input = TextInput(value=str(neuron_id_slider.value), title="Neuron Index:", disabled=True)
 
     def load_data():
-        global session_name, x_pos_all, y_pos_all, peak_indices, source
+        global session_name, x_pos_all, y_pos_all, peak_indices, source, ci
 
         session_name = session_input.value
         with open('config.json', 'r') as file:
@@ -54,9 +55,10 @@ def place_cell_vis(doc):
         ci = StraightMazeTank(neuron_path, threshold=[25, -25], height=4)
         print("Successfully loaded: " + neuron_path)
 
-        neuron_slider.disabled = False
+        neuron_id_slider.disabled = False
         previous_button.disabled = False
         next_button.disabled = False
+        neuron_index_input.disabled = False
 
         # load in the peak indices
         peak_indices_path = config['ProcessedFilePath'] + session_name + "/" + session_name + "_peak_indices.pkl"
@@ -72,8 +74,9 @@ def place_cell_vis(doc):
                 pickle.dump(peak_indices, f)
             print("Saved peak indices!")
 
-        neuron_slider.end = ci.neuron_num - 1
-        neuron_slider.value = 0
+        neuron_id_slider.end = ci.neuron_num - 1
+        neuron_id_slider.value = 0
+        neuron_index_input.value = "0"
 
         [x_pos_all, y_pos_all] = find_places(ci, peak_indices)
 
@@ -100,7 +103,8 @@ def place_cell_vis(doc):
 
     def update_plot(attr, old, new):
         global peak_indices, source, x_pos_all, y_pos_all
-        selected_neuron = neuron_slider.value
+        selected_neuron = neuron_id_slider.value
+        neuron_index_input.value = str(selected_neuron)
 
         new_data = {"x": x_pos_all[selected_neuron],
                     "y": y_pos_all[selected_neuron]}
@@ -108,25 +112,41 @@ def place_cell_vis(doc):
         source.data = new_data
 
 
-
-    neuron_slider.on_change('value', update_plot)
+    neuron_id_slider.on_change('value', update_plot)
 
     def previous_trial():
-        if neuron_slider.value > neuron_slider.start:
-            neuron_slider.value -= 1
+        if neuron_id_slider.value > neuron_id_slider.start:
+            neuron_id_slider.value -= 1
+            neuron_index_input.value = str(neuron_id_slider.value)
 
     def next_trial():
-        if neuron_slider.value < neuron_slider.end:
-            neuron_slider.value += 1
+        if neuron_id_slider.value < neuron_id_slider.end:
+            neuron_id_slider.value += 1
+            neuron_index_input.value = str(neuron_id_slider.value)
 
     previous_button.on_click(previous_trial)
     next_button.on_click(next_trial)
 
+    def update_index(attr, old, new):
+        global ci
+        try:
+            new_index = int(new)
+            # Ensure the new index is within the valid range
+            if np.min(ci.ids) <= new_index <= np.max(ci.ids):
+                neuron_id_slider.value = new_index
+            else:
+                print("Input index out of range")
+        except ValueError:
+            print("Invalid input. Please enter a valid integer.")
+
+    # Attach the callback function to the TextInput widget
+    neuron_index_input.on_change('value', update_index)
+
     file_input_row = row(session_input, column(Spacer(height=20), load_button))
     trial_navigation_row = row(previous_button, next_button)
-    tool_widgets = column(file_input_row, neuron_slider, trial_navigation_row)
+    tool_widgets = column(file_input_row, Spacer(height=30), neuron_index_input, neuron_id_slider, trial_navigation_row)
     layout = row(plot, Spacer(width=30), tool_widgets)
     doc.add_root(layout)
 
 
-place_cell_vis(curdoc())
+# place_cell_vis(curdoc())
