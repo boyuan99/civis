@@ -55,20 +55,14 @@ def trajectory_bkapp_v4(doc):
     plot.add_layout(vline1)
 
     # Widgets
-    play_button = Button(label="► Play", width=60)
-    trial_slider = Slider(start=0, end=10, value=0, step=1, width=600, title="Trial")
-    progress_slider = Slider(start=0, end=100, value=0, step=1, width=600, title="Progress")
+    play_button = Button(label="► Play", width=60, disabled=True)
+    trial_slider = Slider(start=0, end=10, value=0, step=1, width=600, title="Trial", disabled=True)
+    progress_slider = Slider(start=0, end=100, value=0, step=1, width=600, title="Progress", disabled=True)
     filename_input = TextInput(value='', title="File Path:", width=400)
     load_button = Button(label="Load Data", button_type="success")
-    previous_button = Button(label="Previous", width=100)
-    next_button = Button(label="Next", width=100)
+    previous_button = Button(label="Previous", width=100, disabled=True)
+    next_button = Button(label="Next", width=100, disabled=True)
     starts_div = Div(text="Start Time: ", width=400)
-
-    trial_slider.disabled = True
-    progress_slider.disabled = True
-    play_button.disabled = True
-    previous_button.disabled = True
-    next_button.disabled = True
 
     def load_data():
         global source, trials, starts
