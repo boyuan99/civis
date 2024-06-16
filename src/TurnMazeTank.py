@@ -19,11 +19,14 @@ class TurnMazeTank(CalciumTank):
         self.neuron_path = neuron_path
 
     @staticmethod
-    def read_and_process_data(file_path, threshold=None):
+    def read_and_process_data(file_path, threshold=None, length=None):
         if threshold is None:
             threshold = [175.0, -175.0]
 
         data = pd.read_csv(file_path, sep=r'\s+|,', engine='python', header=None)
+
+        if length is not None:
+            data = data.iloc[:length, :]
         potential_names = ['x', 'y', 'face_angle', 'dx', 'dy', 'lick', 'time_stamp', 'maze_type']
         data.columns = potential_names[:data.shape[1]]
 

@@ -19,11 +19,14 @@ class StraightMazeTank(CalciumTank):
         self.neuron_path = neuron_path
 
     @staticmethod
-    def read_and_process_data(file_path, threshold=None):
+    def read_and_process_data(file_path, threshold=None, length=None):
         if threshold is None:
             threshold = [70.0, -70.0]
 
         data = pd.read_csv(file_path, sep=r'\s+|,', engine='python', header=None)
+
+        if length is not None:
+            data = data.iloc[:length, :]
         potential_names = ['x', 'y', 'face_angle', 'dx', 'dy', 'lick', 'time_stamp', 'maze_type']
         data.columns = potential_names[:data.shape[1]]
 
@@ -49,5 +52,5 @@ class StraightMazeTank(CalciumTank):
 
 
 if __name__ == '__main__':
-    session_name = "366_04062024"
+    session_name = "369_06152024"
     ci = StraightMazeTank("D:/Calcium Image Processing/ProcessedData/" + session_name + "/" + session_name + "_v7.mat")
