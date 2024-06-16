@@ -52,6 +52,7 @@ def place_cell_vis(doc):
 
         # load in the DataTank
         neuron_path = config['ProcessedFilePath'] + session_name + '/' + session_name + '_v7.mat'
+        print("Loading neuron data " + session_name + "...")
         ci = StraightMazeTank(neuron_path, threshold=[25, -25], height=4)
         print("Successfully loaded: " + neuron_path)
 
