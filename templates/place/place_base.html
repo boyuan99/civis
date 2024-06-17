@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block title %}Place Firing - Flask-Bokeh App {% endblock %}
+
+{% block content %}
+    <h1>Place Firing Visualization {{ version }}</h1>
+    <a href="/place/v0/" style="margin-right: 20px;">Version-v0</a>
+    <a href="/place/v1/" style="margin-right: 20px;">Version-v1</a>
+
+    <div id="additional-content">
+        {% block additional_content %}
+        {% endblock %}
+
+    </div>
+
+    {{ script|safe }}
+
+{% endblock %}
