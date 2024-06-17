@@ -13,13 +13,13 @@ parent_dir = os.path.abspath(os.path.join(current_dir, '..'))
 sys.path.insert(0, parent_dir)
 
 
-def place_cell_vis(doc):
+def place_cell_vis_bkapp_v0(doc):
     from src import StraightMazeTank
 
     global source, ci, session_name, peak_indices
 
     plot = figure(width=300, height=800, y_range=[-30, 30], x_range=[-10, 10],
-                  title="Mouse Movement Trajectory")
+                  title="Firing Places")
 
 
     source = ColumnDataSource(data=dict(x=[], y=[]))
@@ -75,6 +75,7 @@ def place_cell_vis(doc):
                 pickle.dump(peak_indices, f)
             print("Saved peak indices!")
 
+        print("Waiting for finalizing visualization...")
         neuron_id_slider.end = ci.neuron_num - 1
         neuron_id_slider.value = 0
         neuron_index_input.value = "0"
@@ -85,6 +86,7 @@ def place_cell_vis(doc):
                     "y": y_pos_all[0]}
 
         source.data = new_data
+        print("Visualization loaded!")
 
 
     load_button.on_click(load_data)
@@ -150,4 +152,4 @@ def place_cell_vis(doc):
     doc.add_root(layout)
 
 
-# place_cell_vis(curdoc())
+# place_cell_vis_bkapp_v0(curdoc())
