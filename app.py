@@ -22,7 +22,7 @@ def labeler_app():
 @app.route('/trajectory/v1/')
 def trajectory_v1_app():
     script = server_document(f'http://localhost:{args.bokeh_port}/trajectory_bkapp_v1')
-    return render_template("trajectory_v1.html", script=script, template="Flask", port=args.flask_port)
+    return render_template("trajectory/trajectory_v1.html", script=script, template="Flask", port=args.flask_port)
 
 @app.route('/connection/v1/')
 def connection_app_v1():
@@ -32,7 +32,7 @@ def connection_app_v1():
 @app.route('/trajectory/v0/')
 def trajectory_v0_app():
     script = server_document(f'http://localhost:{args.bokeh_port}/trajectory_bkapp_v0')
-    return render_template("trajectory_v0.html", script=script, template="Flask", port=args.flask_port)
+    return render_template("trajectory/trajectory_v0.html", script=script, template="Flask", port=args.flask_port)
 
 @app.route('/raster/v0/')
 def raster_app():
@@ -42,12 +42,12 @@ def raster_app():
 @app.route('/trajectory/v2/')
 def trajectory_v2_app():
     script = server_document(f'http://localhost:{args.bokeh_port}/trajectory_bkapp_v2')
-    return render_template("trajectory_v2.html", script=script, template="Flask", port=args.flask_port)
+    return render_template("trajectory/trajectory_v2.html", script=script, template="Flask", port=args.flask_port)
 
 @app.route('/trajectory/v3/')
 def trajectory_v3_app():
     script = server_document(f'http://localhost:{args.bokeh_port}/trajectory_bkapp_v3')
-    return render_template("trajectory_v3.html", script=script, template='Flask', port=args.flask_port)
+    return render_template("trajectory/trajectory_v3.html", script=script, template='Flask', port=args.flask_port)
 
 @app.route('/raster/v1/')
 def raster_v1_app():
@@ -57,7 +57,7 @@ def raster_v1_app():
 @app.route('/trajectory/v4/')
 def trajectory_v4_app():
     script = server_document(f'http://localhost:{args.bokeh_port}/trajectory_bkapp_v4')
-    return render_template("trajectory_v4.html", script=script, template='Flask', port=args.flask_port)
+    return render_template("trajectory/trajectory_v4.html", script=script, template='Flask', port=args.flask_port)
 
 
 def bk_worker(bokeh_port, flask_port):
