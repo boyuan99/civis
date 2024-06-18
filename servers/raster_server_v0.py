@@ -170,5 +170,5 @@ def raster_bkapp_v0(doc):
 
     # Layout
     blank_left = Spacer(width=30)
-    layout = row(blank_left, column(row(session_input, load_button), row(p, neurons_div), v, s))
+    layout = row(blank_left, column(row(session_input, column(Spacer(height=20), load_button)), row(p, neurons_div), v, s))
     doc.add_root(layout)

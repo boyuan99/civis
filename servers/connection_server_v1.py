@@ -1,5 +1,5 @@
 from bokeh.plotting import figure
-from bokeh.models import ColumnDataSource, TapTool, HoverTool, Div, TextInput, Button, Select, CDSView, GroupFilter
+from bokeh.models import ColumnDataSource, TapTool, HoverTool, Div, TextInput, Button, Select, CDSView, GroupFilter, Spacer
 from bokeh.layouts import row, column
 import numpy as np
 from servers.utils import load_data
@@ -162,5 +162,5 @@ def connection_bkapp_v1(doc):
 
     load_button.on_click(load_and_display)
 
-    layout = column(row(neuron_path_input, load_button), details_div)
+    layout = column(row(neuron_path_input, column(Spacer(height=20), load_button)), details_div)
     doc.add_root(layout)
