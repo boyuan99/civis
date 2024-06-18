@@ -1,17 +1,17 @@
-from bokeh.plotting import figure
+from bokeh.plotting import figure, curdoc
 from bokeh.models import ColumnDataSource, Slider, Button, Arrow, VeeHead, BoxAnnotation, Span, TextInput, Spacer
 from bokeh.layouts import column, row
 import numpy as np
+from servers.utils import read_and_process_data
 import json
-from servers.utils import read_and_process_data_v2
 
 
-def trajectory_bkapp_v2(doc):
+def trajectory_bkapp_v1(doc):
     global source, trials
 
     trials = []
     source = ColumnDataSource({'x': [], 'y': [], 'face_angle': []})
-    plot = figure(width=550, height=800,
+    plot = figure(width=300, height=800, y_range=[-120, 120], x_range=[-10, 10],
                   title="Mouse Movement Trajectory")
     plot.line('x', 'y', source=source, line_width=2)
 
@@ -20,18 +20,19 @@ def trajectory_bkapp_v2(doc):
                   x_end=0, y_end=1, line_color="orange")
     plot.add_layout(arrow)
 
-    xpts = np.array([-67.5, -50, 10, 10, 67.5, 50, -10, -10, -67.5])
-    ypts = np.array([107.5, 125, 65, -50, -107.5, -125, -65, 50, 107.5])
-
-    source_maze = ColumnDataSource(dict(
-            xs=[xpts],
-            ys=[ypts],
-        ),
-    )
-
-    plot.multi_line(xs="xs", ys="ys", source=source_maze, line_color="#8073ac", line_width=2)
-    plot.patch([67.5, 50, 70, 87.5], [-107.5, -125, -145, -127.5], alpha=0.5)
-    plot.patch([-67.5, -50, -70, -87.5], [107.5, 125, 145, 127.5], alpha=0.5)
+    # Annotations
+    high_box = BoxAnnotation(bottom=100, fill_alpha=0.5, fill_color='blue')
+    plot.add_layout(high_box)
+    low_box = BoxAnnotation(top=-100, fill_alpha=0.5, fill_color='blue')
+    plot.add_layout(low_box)
+    vline0 = Span(location=-9, dimension='height', line_color='black', line_width=2)
+    plot.add_layout(vline0)
+    vline1 = Span(location=9, dimension='height', line_color='black', line_width=2)
+    plot.add_layout(vline1)
+    vline2 = Span(location=-7, dimension='height', line_color='black', line_dash='dotted', line_width=2)
+    plot.add_layout(vline2)
+    vline3 = Span(location=7, dimension='height', line_color='black', line_dash='dotted', line_width=2)
+    plot.add_layout(vline3)
 
     # Widgets
     play_button = Button(label="► Play", width=60)
@@ -53,7 +54,7 @@ def trajectory_bkapp_v2(doc):
         session_name = filename_input.value
         file = config['VirmenFilePath'] + session_name
 
-        trials = read_and_process_data_v2(file, usecols=[0, 1, 2], threshold=[175.0, -175.0])
+        trials = read_and_process_data(file, usecols=[0, 1, 2], threshold=[100.0, -100.0])
 
         if trials:
             # Enable the widgets now that data is loaded
@@ -138,7 +139,7 @@ def trajectory_bkapp_v2(doc):
     # Bind the toggle function to the play button
     play_button.on_click(toggle_play)
 
-    file_input_row = row(filename_input, load_button)
+    file_input_row = row(filename_input, column(Spacer(height=20), load_button))
     tool_widgets = column(file_input_row, trial_slider, progress_slider, play_button)
     layout = row(plot, Spacer(width=30), tool_widgets)
     doc.add_root(layout)

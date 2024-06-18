@@ -4,9 +4,7 @@ from threading import Thread
 from tornado.ioloop import IOLoop
 from bokeh.server.server import Server
 from bokeh.embed import server_document
-from servers import (labeler_bkapp, trajectory_bkapp_v1, connection_bkapp_v1, trajectory_bkapp_v0, raster_bkapp_v0,
-                     trajectory_bkapp_v2, trajectory_bkapp_v3, raster_bkapp_v1, trajectory_bkapp_v4,
-                     place_cell_vis_bkapp_v0, place_cell_vis_bkapp_v1)
+from servers import *
 
 app = Flask(__name__)
 
@@ -60,6 +58,11 @@ def trajectory_v4_app():
     script = server_document(f'http://localhost:{args.bokeh_port}/trajectory_bkapp_v4')
     return render_template("trajectory/trajectory_v4.html", script=script, template='Flask', port=args.flask_port)
 
+@app.route('/trajectory/v5/')
+def trajectory_v5_app():
+    script = server_document(f'http://localhost:{args.bokeh_port}/trajectory_bkapp_v5')
+    return render_template("trajectory/trajectory_v5.html", script=script, template='Flask', port=args.flask_port)
+
 @app.route('/place/v0/')
 def place_v0_app():
     script = server_document(f'http://localhost:{args.bokeh_port}/place_bkapp_v0')
@@ -82,7 +85,8 @@ def bk_worker(bokeh_port, flask_port):
                   '/raster_bkapp_v1': raster_bkapp_v1,
                   '/trajectory_bkapp_v4': trajectory_bkapp_v4,
                   '/place_bkapp_v0': place_cell_vis_bkapp_v0,
-                  '/place_bkapp_v1': place_cell_vis_bkapp_v1
+                  '/place_bkapp_v1': place_cell_vis_bkapp_v1,
+                  '/trajectory_bkapp_v5': trajectory_bkapp_v5
                   }
 
     server = Server(bokeh_apps,
