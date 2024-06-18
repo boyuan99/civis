@@ -9,5 +9,12 @@
     <a href="/trajectory/v2/" style="margin-right: 20px;">Version-v2</a>
     <a href="/trajectory/v3/" style="margin-right: 20px;">Version-v3</a>
     <a href="/trajectory/v4/" style="margin-right: 20px;">Version-v4</a>
+
+    <div id="additional-content">
+        {% block additional_content %}
+        {% endblock %}
+    </div>
+
     {{ script|safe }}
+
 {% endblock %}
