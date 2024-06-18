@@ -3,6 +3,7 @@ from bokeh.models import ColumnDataSource, Slider, Button, Arrow, VeeHead, Div, 
 from bokeh.layouts import column, row
 import numpy as np
 import pandas as pd
+import json
 
 
 """
@@ -67,11 +68,15 @@ def trajectory_bkapp_v4(doc):
     def load_data():
         global source, trials, starts
 
-        # file = filename_input.value
-        # trials = read_and_process_data(file)
+        with open('config.json', 'r') as file:
+            config = json.load(file)
 
         session_name = filename_input.value
-        file = "D:/VirmenData/" + session_name
+        if ".txt" in session_name:
+            file = config['VirmenFilePath'] + session_name
+        else:
+            file = config['VirmenFilePath'] + session_name + ".txt"
+
 
         trials, starts, _ = read_and_process_data(file)
         print("Successfully loaded: " + file)
