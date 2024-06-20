@@ -107,7 +107,7 @@ class CalciumTank:
 
         nyquist = 0.5 * fs
         normal_cutoff = cutoff / nyquist
-        b, a = butter(order, normal_cutoff, btype='low', analog=False)
+        [b, a] = butter(order, normal_cutoff, btype='low', analog=False)
         y = filtfilt(b, a, data)
         return y
 
