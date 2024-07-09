@@ -2,35 +2,49 @@ import pandas as pd
 import numpy as np
 import h5py
 import json
+from .VirmenTank import VirmenTank
 from scipy.signal import find_peaks, savgol_filter
 
 
-class CalciumTank:
+class CITank(VirmenTank):
     def __init__(self,
                  neuron_path,
-                 ci_rate=20,  # calcium imaging rate
-                 session_duration=30 * 60,  # in seconds
+                 virmen_path,
+                 maze_type,
+                 threshold=None,
+                 virmen_data_length=None,
+                 ci_rate=20,
+                 vm_rate=20,
+                 session_duration=30 * 60,
                  velocity_height=0.7,
                  velocity_distance=100,
-                 threshold=[100.0, -100.0],
-                 window_length=31,
+                 window_length=51,
                  polyorder=3,
                  height=8):
+
+        # Pass all the necessary parameters to the parent class
+        super().__init__(virmen_path=virmen_path,
+                         threshold=threshold,
+                         maze_type=maze_type,
+                         virmen_data_length=virmen_data_length,
+                         vm_rate=vm_rate,
+                         velocity_height=velocity_height,
+                         velocity_distance=velocity_distance,
+                         session_duration=session_duration,
+                         window_length=window_length,
+                         polyorder=polyorder,
+                         height=height)
 
         self.neuron_path = neuron_path
         self.ci_rate = ci_rate
         self.session_duration = session_duration
-        self.t = np.arange(0, self.session_duration, 1 / self.ci_rate)
-        self.t_raw = np.arange(0, len(self.t), 1)
         self.C, self.C_raw, self.Cn, self.ids, self.Coor, self.centroids, self.virmenPath = self.load_data(neuron_path)
         self.C_raw = self.shift_signal(self.compute_deltaF_over_F(self.C_raw))
         self.ca_all = np.mean(self.C_raw, axis=0)
         self.neuron_num = self.C_raw.shape[0]
-        self.velocity_height = velocity_height  # typically 1 for 364, 0.7 for 366
-        self.velocity_distance = velocity_distance
 
-
-    def load_data(self, filename):
+    @staticmethod
+    def load_data(filename):
         """
         Load all data
         :param filename: .mat file containing config, spatial, Cn, Coor, ids, etc...
@@ -60,155 +74,29 @@ class CalciumTank:
 
         return C, C_raw, Cn, ids, Coor, centroids, virmenPath
 
+    @staticmethod
+    def compute_deltaF_over_F(fluorescence, baseline_indices=None):
+        if baseline_indices is None:
+            F0 = np.mean(fluorescence)
+        else:
+            F0 = np.mean(fluorescence[baseline_indices[0]:baseline_indices[1]])
+
+        deltaF_F = (fluorescence - F0) / F0
+        return deltaF_F
 
     @staticmethod
-    def compute_trial_bounds(data, threshold):
-        """
-        Compute trial boundaries once for the dataset
+    def normalize_signal_per_neuron(signal):
+        # Initialize an empty array for the normalized signal
+        normalized_signal = np.zeros(signal.shape)
 
-        Example: trial_bounds = compute_trial_bounds(virmen_data, threshold=[25, -25])
-        """
-        trial_bounds = []
-        start = 0
-        for i in range(len(data)):
-            if data.iloc[i]['y'] >= threshold[0] or data.iloc[i]['y'] <= threshold[1]:
-                trial_bounds.append([start, i])
-                start = i + 1
-        return trial_bounds
+        # Iterate over each neuron
+        for neuron_idx in range(signal.shape[0]):
+            neuron_signal = signal[neuron_idx, :]
+            min_val = np.min(neuron_signal)
+            max_val = np.max(neuron_signal)
+            normalized_signal[neuron_idx, :] = (neuron_signal - min_val) / (max_val - min_val)
 
-    @staticmethod
-    def find_trial_for_indices(trial_bounds, indices):
-        """
-        Find trials for indices
-
-        Example:
-        1.
-            trial_index = find_trial_for_indices(trial_bounds, indices)
-        2.
-            trial_indices = []
-            for indices in peak_indices:
-                trial_index = find_trial_for_indices(trial_bounds, indices)
-                trial_indices.append(trial_index)
-        """
-
-        # Convert trial_bounds into a suitable format for np.searchsorted
-        starts = np.array([bound[0] for bound in trial_bounds])
-        ends = np.array([bound[1] for bound in trial_bounds])
-
-        index_trial_map = {}
-        for index in indices:
-            pos = np.searchsorted(ends, index)
-            if pos < len(starts) and starts[pos] <= index <= ends[pos]:
-                index_trial_map[index] = pos
-
-        return index_trial_map
-
-
-    def find_lick_data(self):
-        lick_all = np.array(self.virmen_data['lick'])
-        # Convert lick data into binary
-        lick_all[lick_all != 0] = 1
-        lick_all_mask = []
-        flag = False
-        for i in range(len(lick_all) - 10):
-            lick_all_mask_data = 0
-
-            if (lick_all[i] != 0):
-                flag = True
-            if (flag):
-                lick_all_mask_data = max(lick_all[i:i + 10])
-                if (lick_all_mask_data == 0):
-                    flag = False
-            lick_all_mask.append(lick_all_mask_data)
-
-        lick_all_mask.extend([0 for i in range(10)])
-        lick_all_mask = np.array(lick_all_mask)
-
-        # Initialize an empty mask for valid lick periods
-        valid_lick_mask = np.zeros(len(lick_all_mask), dtype=bool)
-
-        # Loop through each trial end to mark valid lick periods
-        for end_idx in self.trials_end_indices:
-            # Find the next occurrence of a lick after the trial end
-            try:
-                start_idx = np.where(lick_all_mask[end_idx:] == 1)[0][0] + end_idx
-                # From start_idx, find when the licking stops
-                stop_idxs = np.where(lick_all_mask[start_idx:] == 0)[0]
-                if len(stop_idxs) > 0:
-                    valid_end_idx = stop_idxs[0] + start_idx
-                    valid_lick_mask[start_idx:valid_end_idx] = True
-                else:
-                    # In case there's no stop, mark until the end
-                    valid_lick_mask[start_idx:] = True
-            except IndexError:
-                # No licking after this trial end, move to the next
-                continue
-
-        lick_all = lick_all[:self.session_duration * self.ci_rate]
-        lick_all_mask = lick_all_mask[:self.session_duration * self.ci_rate]
-        valid_lick_mask = valid_lick_mask[:self.session_duration * self.ci_rate]
-
-        return lick_all, lick_all_mask, valid_lick_mask
-
-    def find_position_movement_rate(self, reset_threshold=1.5, method='outlier'):
-        """
-        Finds the position movement rate, in centimeterers per 50ms.
-        Notice that this is not the really running velocity on the ball,
-         just the position movement rate calculated from the positions in the maze
-        :param method: 'fixed' or 'outlier'
-        :param reset_threshold: set the movement rate to 0 if exceeded the threshold
-        :return: velocity movement rate in centimeters per 50 ms
-        """
-        data_array = np.array(self.virmen_data)
-        dx = np.diff(data_array[:, 0])
-        dy = np.diff(data_array[:, 1])
-        velocity_raw = np.sqrt(dx ** 2 + dy ** 2)
-        velocity = None
-        if method == 'fixed':
-            velocity = np.where(velocity_raw > reset_threshold, 0, velocity_raw)
-        elif method == 'outlier':
-            data = self.normalize_signal(velocity_raw)
-            mean = np.mean(data)
-            std_dev = np.std(data)
-            z_scores = [(point - mean) / std_dev for point in data]
-            outliers = np.where(np.abs(z_scores) > reset_threshold)
-            velocity = velocity_raw.copy()
-            velocity[outliers] = 0
-
-        velocity_raw = velocity_raw[: self.session_duration * self.ci_rate]
-        velocity = velocity[: self.session_duration * self.ci_rate]
-
-        return velocity_raw, velocity
-
-    def find_velocity(self, threshold=3):
-        dx = np.array(self.virmen_data['dx'])
-        dy = np.array(self.virmen_data['dy'])
-        velocity = np.sqrt(dx ** 2 + dy ** 2)
-        outliers = self.find_outliers_indices(self.normalize_signal(velocity), threshold=threshold)
-        velocity[outliers] = 0
-        velocity = velocity[: self.session_duration * self.ci_rate]
-
-        return velocity
-
-    def find_rotation(self, threshold=0.4):
-        face_angle = np.array(self.virmen_data['face_angle'])
-        dr_raw = np.diff(face_angle)
-        dr_raw = np.insert(dr_raw, 0, 0)
-        outliers = self.find_outliers_indices(self.normalize_signal(dr_raw), threshold=threshold)
-        dr = dr_raw.copy()
-        dr[outliers] = 0
-        dr = dr[: self.session_duration * self.ci_rate]
-
-        return dr, dr_raw
-
-    def find_acceleration(self):
-        dt = 1/self.ci_rate
-        dv = np.diff(self.smoothed_velocity)
-
-        acceleration = dv / dt
-        acceleration = np.pad(acceleration, (0, len(self.t) - len(dv)), 'constant', constant_values=(0, ))
-
-        return acceleration
+        return normalized_signal
 
     @staticmethod
     def find_outliers_indices(data, threshold=3.0):
@@ -295,39 +183,6 @@ class CalciumTank:
         C_avg_mean = np.mean(C_avg_normalized_sorted, axis=0)
 
         return C_avg, C_avg_normalized, C_avg_normalized_sorted, C_avg_mean, sorted_indices
-
-    def find_movement_onset(self, velocity, velocity_peak_indices, threshold_ratio=0.1):
-        """
-        Find the onset of movement based on the velocity peaks and a threshold ratio.
-        :param velocity: velocity data, can be position change rate or real velocity
-        :param velocity_peak_indices: indices of the velocity peaks
-        :param threshold_ratio: ratio of the peak value to be used as the threshold
-        :return: list of onset indices
-        """
-        onsets = []
-        for i, peak_index in enumerate(velocity_peak_indices):
-            peak_value = velocity[peak_index]
-            threshold = peak_value * threshold_ratio
-
-            # Search backwards from the peak to find when the velocity first rises above the threshold
-            pre_peak_values = velocity[:peak_index]
-            below_threshold_indices = np.where(pre_peak_values < threshold)[0]
-
-            if below_threshold_indices.size > 0:
-                onset_index = below_threshold_indices[-1] + 1  # Corrected to point to the first index above threshold
-
-                # If the onset index is before the last peak (misidentification), find local minimum between peaks
-                if i > 0 and onset_index <= velocity_peak_indices[i - 1]:
-                    segment = velocity[velocity_peak_indices[i - 1]:peak_index]
-                    local_min_index = np.argmin(segment) + velocity_peak_indices[i - 1]
-                    onset_index = local_min_index
-            else:
-                # If no below-threshold value is found, default to start of the data
-                onset_index = 0
-
-            onsets.append(onset_index)
-
-        return onsets
 
     @staticmethod
     def ensure_tensor(data, device):
@@ -649,28 +504,6 @@ class CalciumTank:
 
         return spike_stats
 
-    @staticmethod
-    def output_bokeh_plot(plot, save_path, title, notebook, overwrite):
-        import os
-        from bokeh.io import output_notebook, output_file, reset_output, save, show, curdoc
-
-        if save_path is not None:
-            reset_output()
-            if os.path.exists(save_path) and not overwrite:
-                print("File already exists and overwrite is set to False.")
-            else:
-                output_file(save_path, title=title)
-                curdoc().clear()
-                curdoc().add_root(plot)
-                save(curdoc())
-                print("File saved or overwritten.")
-                curdoc().clear()
-
-        if notebook:
-            reset_output()
-            output_notebook()
-            show(plot)
-
     def plot_t_ca_all(self, notebook=False, save_path=None, overwrite=False):
         """
         Plot the average calcium trace for all neurons.
@@ -686,64 +519,6 @@ class CalciumTank:
         self.output_bokeh_plot(p, save_path=save_path, title=str(p.title.text), notebook=notebook, overwrite=overwrite)
 
         return p
-
-    def plot_lick_and_velocity(self, title="Lick And Velocity", notebook=False, save_path=None, overwrite=False):
-        """
-        Plot the lick data and velocity data.
-        :param notebook: Flag to indicate if the plot is for a Jupyter notebook.
-        :param save_path:  Path to save the plot as an HTML file.
-        :param overwrite: Flag to indicate whether to overwrite the existing plot
-        :return: None
-        """
-        from bokeh.plotting import figure
-        from bokeh.models import Span, HoverTool
-        from bokeh.layouts import column
-
-        p = figure(width=800, height=400, y_range=[0, 1.2], active_drag='pan', active_scroll='wheel_zoom', title='Lick')
-        p.line(self.t, self.lick_raw, line_color='navy', legend_label='raw', line_width=1)
-        p.line(self.t, self.lick_raw_mask, line_color='palevioletred', legend_label='mask', line_width=2)
-        p.line(self.t, self.lick, line_color='gold', legend_label='filtered', line_width=2)
-
-        for idx in self.trials_end_indices:
-            vline = Span(location=idx / self.ci_rate, dimension='height', line_color='green', line_width=2)
-            p.add_layout(vline)
-
-        p.legend.click_policy = "hide"
-
-        hover = HoverTool()
-        hover.tooltips = [
-            ("Index", "$index"),
-            ("(x, y)", "($x, $y)"),
-        ]
-
-        p.add_tools(hover)
-
-        ################################################################
-
-        p_v = figure(width=800, height=400, x_range=p.x_range,
-                     active_drag='pan', active_scroll='wheel_zoom', title="Velocity")
-        p_v.line(self.t, self.pstcr_raw, line_color='navy', legend_label='dp_raw', line_width=2)
-        p_v.line(self.t, self.pstcr, line_color='red', legend_label='dp_filtered', line_width=2)
-        p_v.line(self.t, self.velocity, line_color='purple', legend_label='velocity', line_width=2)
-
-        hover_v = HoverTool()
-        hover_v.tooltips = [
-            ("Index", "$index"),
-            ("(x, y)", "($x, $y)"),
-        ]
-
-        p_v.add_tools(hover_v)
-        p_v.legend.click_policy = "hide"
-
-        for idx in self.trials_end_indices:
-            vline = Span(location=idx / self.ci_rate, dimension='height', line_color='green', line_width=2)
-            p_v.add_layout(vline)
-
-        layout = column(p, p_v)
-
-        self.output_bokeh_plot(layout, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite)
-
-        return layout
 
     def plot_ca_around_indices(self, map_data, indices, cut_interval=50, title="None", notebook=False, save_path=None,
                                overwrite=False):
@@ -904,19 +679,6 @@ class CalciumTank:
         self.output_bokeh_plot(layout, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite)
 
         return layout
-
-    def generate_colors(self, num_categories):
-        """
-        Generates a list of colors for the pie chart. Uses a predefined palette and extends it if necessary.
-        """
-        from bokeh.palettes import Category20c
-        import itertools
-        palette = Category20c[20]  # Using a larger palette from Bokeh
-        if num_categories <= len(palette):
-            return palette[:num_categories]
-        else:
-            # Extend the palette by repeating it
-            return list(itertools.islice(itertools.cycle(palette), num_categories))
 
     def categorize_neurons(self, picked_neurons_velocity, picked_neurons_lick, picked_neurons_movement):
         """

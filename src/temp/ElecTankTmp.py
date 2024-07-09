@@ -3,18 +3,14 @@ import numpy as np
 import h5py
 import json
 import tdt
+from .VirmenTank import VirmenTank
 
 
-class ElecTankTmp(object):
-    def __init__(self,
-                 elec_path,
-                 vm_rate=20,
-                 resample_fs=200,
-                 session_duration=30 * 60,  # in seconds
-                 notch_fs=[60],
-                 notch_Q=30,
-                 threshold=[25, -25]):
+class ElecTankTmp(VirmenTank):
+    def __init__(self, elec_path, virmen_path, vm_rate=20, resample_fs=200, session_duration=30 * 60, notch_fs=[60],
+                 notch_Q=30, threshold=[25, -25]):
 
+        super().__init__(virmen_path, vm_rate, threshold, session_duration)
         self.elec_path = elec_path
         self.session_duration = session_duration
         self.fs = resample_fs
@@ -27,8 +23,6 @@ class ElecTankTmp(object):
         self.t = np.arange(0, session_duration, 1 / self.fs)
         self.signal_raw = self.resample_data()
         self.signal = self.notch_filter(notch_freqs=notch_fs, notch_Q=notch_Q)
-
-
 
 
         # Virmen variables remove in the formal version
