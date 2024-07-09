@@ -75,10 +75,15 @@ def trajectory_bkapp_v3(doc):
             config = json.load(file)
 
         session_name = filename_input.value
-        file = config['VirmenFilePath'] + session_name
+        if ".txt" in session_name:
+            file = config['VirmenFilePath'] + session_name
+        else:
+            file = config['VirmenFilePath'] + session_name + ".txt"
 
         [trials, starts] = read_and_process_data_v2(file, usecols=[0, 1, 2], threshold=[175.0, -175.0])
         starts = [x/20 for x in starts]
+
+        print("Successfully loaded: " + file)
 
         if trials:
             # Enable the widgets now that data is loaded
