@@ -729,6 +729,37 @@ class CITank(VirmenTank):
 
         return categories
 
+    def categorize_neurons_four_classes(self, picked_neurons_velocity, picked_neurons_lick):
+        all_neurons = set(range(self.neuron_num))
+
+        # Ensure that the inputs are sets
+
+        if not isinstance(picked_neurons_velocity, set):
+            picked_neurons_velocity = set(picked_neurons_velocity)
+
+        if not isinstance(picked_neurons_lick, set):
+            picked_neurons_lick = set(picked_neurons_lick)
+
+        velocity_only = picked_neurons_velocity - picked_neurons_lick
+        lick_only = picked_neurons_lick - picked_neurons_velocity
+
+        # Intersection categories
+        velocity_and_lick = picked_neurons_velocity & picked_neurons_lick
+
+        # Neurons not in any category
+        none = all_neurons - (
+                velocity_only | lick_only | velocity_and_lick)
+
+        # Prepare the categories with labels and neuron indices
+        categories = {
+            'Velocity Only': velocity_only,
+            'Lick Only': lick_only,
+            'Velocity & Lick': velocity_and_lick,
+            'None': none
+        }
+
+        return categories
+
     def create_neuron_categories_pie_chart(self, neuron_categories, title="Neuron Categories", notebook=False,
                                            save_path=None, overwrite=False):
         """
