@@ -62,6 +62,7 @@ class VirmenTank:
 
         if length is not None:
             data = data.iloc[:length, :]
+
         potential_names = ['x', 'y', 'face_angle', 'dx', 'dy', 'lick', 'time_stamp', 'maze_type']
         data.columns = potential_names[:data.shape[1]]
 
@@ -295,7 +296,7 @@ class VirmenTank:
 
 
     @staticmethod
-    def output_bokeh_plot(plot, save_path, title, notebook, overwrite):
+    def output_bokeh_plot(plot, save_path=None, title=None, notebook=False, overwrite=False):
         import os
         from bokeh.io import output_notebook, output_file, reset_output, save, show, curdoc
 
