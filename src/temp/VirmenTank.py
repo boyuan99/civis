@@ -129,6 +129,20 @@ class VirmenTank:
         return normalized_signal
 
     @staticmethod
+    def normalize_signal_per_row(signal):
+        # Initialize an empty array for the normalized signal
+        normalized_signal = np.zeros(signal.shape)
+
+        # Iterate over each neuron
+        for neuron_idx in range(signal.shape[0]):
+            neuron_signal = signal[neuron_idx, :]
+            min_val = np.min(neuron_signal)
+            max_val = np.max(neuron_signal)
+            normalized_signal[neuron_idx, :] = (neuron_signal - min_val) / (max_val - min_val)
+
+        return normalized_signal
+
+    @staticmethod
     def shift_signal(fluorescence):
         shifted = np.zeros_like(fluorescence)
         for i, signal in enumerate(fluorescence):
