@@ -6,4 +6,5 @@ pandas==1.5.3
 scipy==1.11.4
 tornado==6.3.3
 tqdm==4.66.2
-
+tdt==0.6.6
+mne==1.7.1
