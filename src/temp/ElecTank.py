@@ -1,12 +1,9 @@
-import pandas as pd
 import numpy as np
-import h5py
-import json
 import tdt
 from .VirmenTank import VirmenTank
 
 
-class ElecTankTmp(VirmenTank):
+class ElecTank(VirmenTank):
     def __init__(self,
                  elec_path,
                  virmen_path,
@@ -269,4 +266,4 @@ class ElecTankTmp(VirmenTank):
 
 
 if __name__ == "__main__":
-    ep = ElecTankTmp('Z:/BoData/Bo_electrophy-240615-124754/372-240619-123139')
+    ep = ElecTank('Z:/BoData/Bo_electrophy-240615-124754/372-240619-123139')

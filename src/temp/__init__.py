@@ -1,3 +1,3 @@
 from .CITank import CITank
-from .ElecTankTmp import ElecTankTmp
+from .ElecTank import ElecTank
 from .VirmenTank import VirmenTank
