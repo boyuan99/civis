@@ -1,3 +1,3 @@
-from src.CalciumTank import CalciumTank
-from src.StraightMazeTank import StraightMazeTank
-from src.TurnMazeTank import TurnMazeTank
+from src.CITank import CITank
+from src.VirmenTank import VirmenTank
+from src.ElecTank import ElecTank
