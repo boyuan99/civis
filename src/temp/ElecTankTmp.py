@@ -7,10 +7,35 @@ from .VirmenTank import VirmenTank
 
 
 class ElecTankTmp(VirmenTank):
-    def __init__(self, elec_path, virmen_path, vm_rate=20, resample_fs=200, session_duration=30 * 60, notch_fs=[60],
-                 notch_Q=30, threshold=[25, -25]):
+    def __init__(self,
+                 elec_path,
+                 virmen_path,
+                 maze_type,
+                 vm_rate=20,
+                 resample_fs=200,
+                 session_duration=30 * 60,
+                 virmen_data_length=None,
+                 velocity_height=0.7,
+                 velocity_distance=100,
+                 window_length=51,
+                 polyorder=3,
+                 height=6,
+                 notch_fs=[60],
+                 notch_Q=30,
+                 threshold=None):
+        # Pass all the necessary parameters to the parent class
+        super().__init__(virmen_path=virmen_path,
+                         threshold=threshold,
+                         maze_type=maze_type,
+                         virmen_data_length=virmen_data_length,
+                         vm_rate=vm_rate,
+                         velocity_height=velocity_height,
+                         velocity_distance=velocity_distance,
+                         session_duration=session_duration,
+                         window_length=window_length,
+                         polyorder=polyorder,
+                         height=height)
 
-        super().__init__(virmen_path, vm_rate, threshold, session_duration)
         self.elec_path = elec_path
         self.session_duration = session_duration
         self.fs = resample_fs
@@ -18,33 +43,14 @@ class ElecTankTmp(VirmenTank):
         self.tdt_fs = self.tdt_data.streams.Wav1.fs
         self.tdt_signal = self.tdt_data.streams.Wav1.data
         self.tdt_signal_filtered = self.butter_lowpass_filter(self.tdt_signal, 100, self.tdt_fs)
-        self.time_tdt = np.linspace(0, len(self.tdt_signal) - 1, len(self.tdt_signal)) / self.tdt_fs - \
-                        self.tdt_data.epocs.PC0_.onset[0] - 0.02
-        self.t = np.arange(0, session_duration, 1 / self.fs)
+        self.tdt_t = (np.linspace(0, len(self.tdt_signal) - 1, len(self.tdt_signal)) / self.tdt_fs -
+                      self.tdt_data.epocs.PC0_.onset[0] - 0.02)
+        self.elc_t = np.arange(0, session_duration, 1 / self.fs)
         self.signal_raw = self.resample_data()
         self.signal = self.notch_filter(notch_freqs=notch_fs, notch_Q=notch_Q)
 
-
-        # Virmen variables remove in the formal version
-        self.threshold = threshold
-        self.vm_rate = vm_rate
-        self.vm_t = np.arange(0, session_duration, 1 / self.vm_rate)
-        self.virmenPath = self.find_virmenpath()
-        self.virmen_trials, self.virmen_data = self.read_and_process_data(self.virmenPath, threshold=self.threshold)
-        self.trials_end_indices = self.calculate_virmen_trials_end_indices()
-        self.lick_raw, self.lick_raw_mask, self.lick = self.find_lick_data()
-        self.pstcr_raw, self.pstcr = self.find_position_movement_rate()  # position change rate
-        self.velocity = self.find_velocity()
-
-        self.smoothed_pstcr = self.butter_lowpass_filter(self.pstcr, 0.5, self.vm_rate)
-        self.smoothed_pstcr[self.smoothed_pstcr <= 0] = 0
-        self.smoothed_velocity = self.butter_lowpass_filter(self.velocity, 0.5, self.vm_rate)
-        self.smoothed_velocity[self.smoothed_velocity <= 0] = 0
-        self.dr, self.dr_raw = self.find_rotation()
-        self.acceleration = self.find_acceleration()
-
     def resample_data(self):
-        indices = np.searchsorted(self.time_tdt, self.t, side='left')
+        indices = np.searchsorted(self.tdt_t, self.elc_t, side='left')
         LFP_data_raw = self.tdt_signal_filtered[indices]
 
         return LFP_data_raw
@@ -59,17 +65,6 @@ class ElecTankTmp(VirmenTank):
             LFP_data = lfilter(b, a, LFP_data)
 
         return LFP_data
-
-    def find_virmenpath(self):
-        with open("config.json", "r") as f:
-            config = json.load(f)
-
-        [animal_id, date, _] = self.elec_path.split("/")[-1].split("-")
-        file_name = animal_id + "_" + date[2:]+"2024.txt"
-
-        virmenpath = config['VirmenFilePath'] + file_name
-
-        return virmenpath
 
     @staticmethod
     def convert_t_freq_domain(signal, fs, decimation_factor=1):
@@ -93,169 +88,184 @@ class ElecTankTmp(VirmenTank):
 
         return freq[:len(freq) // 2], power[:len(freq) // 2]
 
-    @staticmethod
-    def normalize_signal(signal):
-        min_val = np.min(signal)
-        max_val = np.max(signal)
-        normalized_signal = (signal - min_val) / (max_val - min_val)
-        return normalized_signal
-
-
-    @staticmethod
-    def butter_lowpass_filter(data, cutoff, fs, order=4):
-        from scipy.signal import butter, filtfilt
-
-        nyquist = 0.5 * fs
-        normal_cutoff = cutoff / nyquist
-        [b, a] = butter(order, normal_cutoff, btype='low', analog=False)
-        y = filtfilt(b, a, data)
-        return y
-
-    @staticmethod
-    def read_and_process_data(file_path, threshold=None, length=None):
-        if threshold is None:
-            threshold = [70.0, -70.0]
-
-        data = pd.read_csv(file_path, sep=r'\s+|,', engine='python', header=None)
-
-        if length is not None:
-            data = data.iloc[:length, :]
-        potential_names = ['x', 'y', 'face_angle', 'dx', 'dy', 'lick', 'time_stamp', 'maze_type']
-        data.columns = potential_names[:data.shape[1]]
-
-        # Identifying trials
-        trials = []
-        start = 0
-        for i in range(len(data)):
-            if data.iloc[i]['y'] >= threshold[0] or data.iloc[i]['y'] <= threshold[1]:
-                trials.append(data[start:i + 1].to_dict(orient='list'))
-                start = i + 1
-
-        return [trials, data]
-
-    def calculate_virmen_trials_end_indices(self):
+    def convert_t_freq_domain_welch(self, window=5):
         """
-        Calculate the end indices for virmen trials based on the specified threshold.
+        Use mne to convert signal from time domain to frequency domain
+        Args:
+            window: how many seconds to use in multitaper
 
-        :return: List of indices where 'y' value exceeds the threshold.
+        Returns: [psd_welch, freq_welch]
+
         """
-        indices = np.array(self.virmen_data.index[self.virmen_data['y'].abs() > self.threshold[0]].tolist())
-        indices = indices[np.where(indices < self.vm_rate * self.session_duration)]
-        return indices
+        import mne
+        [psd_welch, freq_welch] = mne.time_frequency.psd_array_welch(self.signal, self.fs, fmin=1, fmax=100,
+                                                                     n_fft=self.fs * window)
 
-    def find_lick_data(self):
-        lick_all = np.array(self.virmen_data['lick'])
-        # Convert lick data into binary
-        lick_all[lick_all != 0] = 1
-        lick_all_mask = []
-        flag = False
-        for i in range(len(lick_all) - 10):
-            lick_all_mask_data = 0
+        return psd_welch, freq_welch
 
-            if (lick_all[i] != 0):
-                flag = True
-            if (flag):
-                lick_all_mask_data = max(lick_all[i:i + 10])
-                if (lick_all_mask_data == 0):
-                    flag = False
-            lick_all_mask.append(lick_all_mask_data)
-
-        lick_all_mask.extend([0 for i in range(10)])
-        lick_all_mask = np.array(lick_all_mask)
-
-        # Initialize an empty mask for valid lick periods
-        valid_lick_mask = np.zeros(len(lick_all_mask), dtype=bool)
-
-        # Loop through each trial end to mark valid lick periods
-        for end_idx in self.trials_end_indices:
-            # Find the next occurrence of a lick after the trial end
-            try:
-                start_idx = np.where(lick_all_mask[end_idx:] == 1)[0][0] + end_idx
-                # From start_idx, find when the licking stops
-                stop_idxs = np.where(lick_all_mask[start_idx:] == 0)[0]
-                if len(stop_idxs) > 0:
-                    valid_end_idx = stop_idxs[0] + start_idx
-                    valid_lick_mask[start_idx:valid_end_idx] = True
-                else:
-                    # In case there's no stop, mark until the end
-                    valid_lick_mask[start_idx:] = True
-            except IndexError:
-                # No licking after this trial end, move to the next
-                continue
-
-        lick_all = lick_all[:self.session_duration * self.vm_rate]
-        lick_all_mask = lick_all_mask[:self.session_duration * self.vm_rate]
-        valid_lick_mask = valid_lick_mask[:self.session_duration * self.vm_rate]
-
-        return lick_all, lick_all_mask, valid_lick_mask
-
-    def find_position_movement_rate(self, reset_threshold=1.5, method='outlier'):
+    def plot_resample_demo(self, start=70, stop=72,
+                           notebook=False, save_path=None, overwrite=False):
         """
-        Finds the position movement rate, in centimeterers per 50ms.
-        Notice that this is not the really running velocity on the ball,
-         just the position movement rate calculated from the positions in the maze
-        :param method: 'fixed' or 'outlier'
-        :param reset_threshold: set the movement rate to 0 if exceeded the threshold
-        :return: velocity movement rate in centimeters per 50 ms
+        Plot a short demo showing the resampling result
+
+        :param start: Start index
+        :param stop: Stop index
+        :param notebook: Flag to indicate if the plot is for a Jupyter notebook.
+        :param save_path: Path to save the plot as an HTML file.
+        :param overwrite: Flag to overwrite the file or not
+        :return: plotting element
+
         """
-        data_array = np.array(self.virmen_data)
-        dx = np.diff(data_array[:, 0])
-        dy = np.diff(data_array[:, 1])
-        velocity_raw = np.sqrt(dx ** 2 + dy ** 2)
-        velocity = None
-        if method == 'fixed':
-            velocity = np.where(velocity_raw > reset_threshold, 0, velocity_raw)
-        elif method == 'outlier':
-            data = self.normalize_signal(velocity_raw)
-            mean = np.mean(data)
-            std_dev = np.std(data)
-            z_scores = [(point - mean) / std_dev for point in data]
-            outliers = np.where(np.abs(z_scores) > reset_threshold)
-            velocity = velocity_raw.copy()
-            velocity[outliers] = 0
+        from bokeh.plotting import figure
 
-        velocity_raw = velocity_raw[: self.session_duration * self.vm_rate]
-        velocity = velocity[: self.session_duration * self.vm_rate]
+        sample_indices = np.where((self.tdt_t >= start) & (self.tdt_t <= stop))
 
-        return velocity_raw, velocity
+        p = figure(width=800, height=300, active_scroll='wheel_zoom', title="Resampling Demo")
+        p.line(self.tdt_t[sample_indices], self.tdt_signal[sample_indices], color='blue', alpha=0.7, legend_label="raw")
+        p.line(self.tdt_t[sample_indices], self.tdt_signal_filtered[sample_indices], color='green', alpha=0.7,
+               legend_label="band tdt")
+        p.line(self.elc_t[start * self.fs:stop * self.fs], self.signal_raw[start * self.fs:stop * self.fs], color='red',
+               alpha=0.7,
+               legend_label="resample")
+        p.line(self.elc_t[start * self.fs:stop * self.fs], self.signal[start * self.fs:stop * self.fs], color='orange',
+               alpha=0.7,
+               legend_label="resample filtered")
 
-    def find_velocity(self, threshold=3):
-        dx = np.array(self.virmen_data['dx'])
-        dy = np.array(self.virmen_data['dy'])
-        velocity = np.sqrt(dx ** 2 + dy ** 2)
-        outliers = self.find_outliers_indices(self.normalize_signal(velocity), threshold=threshold)
-        velocity[outliers] = 0
-        velocity = velocity[: self.session_duration * self.vm_rate]
+        p.legend.click_policy = 'hide'
 
-        return velocity
+        self.output_bokeh_plot(p, save_path=save_path, title=str(p.title.text), notebook=notebook, overwrite=overwrite)
 
-    def find_rotation(self, threshold=0.4):
-        face_angle = np.array(self.virmen_data['face_angle'])
-        dr_raw = np.diff(face_angle)
-        dr_raw = np.insert(dr_raw, 0, 0)
-        outliers = self.find_outliers_indices(self.normalize_signal(dr_raw), threshold=threshold)
-        dr = dr_raw.copy()
-        dr[outliers] = 0
-        dr = dr[: self.session_duration * self.vm_rate]
+        return p
 
-        return dr, dr_raw
+    def plot_raw_vs_notch(self, start=10, stop=14, save_path=None, notebook=False, overwrite=False):
+        """
+        Plot raw resampled signal with notch filtered resampled signal
 
-    def find_acceleration(self):
-        dt = 1/self.vm_rate
-        dv = np.diff(self.smoothed_velocity)
+        :param start: Start index
+        :param stop: Stop index
+        :param notebook: Flag to indicate if the plot is for a Jupyter notebook.
+        :param save_path: Path to save the plot as an HTML file.
+        :param overwrite: Flag to overwrite the file or not
+        :return: bokeh.plotting element
 
-        acceleration = dv / dt
-        acceleration = np.pad(acceleration, (0, len(self.t) - len(dv)), 'constant', constant_values=(0, ))
+        """
 
-        return acceleration
+        from bokeh.plotting import figure
 
-    @staticmethod
-    def find_outliers_indices(data, threshold=3.0):
-        mean = np.mean(data)
-        std_dev = np.std(data)
-        z_scores = (data - mean) / std_dev
-        outliers = np.where(np.abs(z_scores) > threshold)[0]
-        return outliers
+        p = figure(width=800, height=300, x_range=(start, stop),
+                   active_scroll='wheel_zoom', title="Raw vs Notch")
+        p.line(self.elc_t, self.signal_raw, color='blue', alpha=0.7, line_width=2, legend_label="raw")
+        p.line(self.elc_t, self.signal, color='red', alpha=0.7, line_width=2, legend_label="filtered")
+
+        p.legend.click_policy = 'hide'
+
+        self.output_bokeh_plot(p, save_path=save_path, title=str(p.title.text), notebook=notebook, overwrite=overwrite)
+
+        return p
+
+    def plot_velocity_with_signal(self, save_path=None, notebook=False, overwrite=False):
+        """
+        Plot velocity from virmen with resampled, filtered signal
+        Args:
+            save_path: (str) path to save
+            notebook: (bool) whether to show in notebook or not
+            overwrite: (bool) whether to overwrite existing file
+
+        Returns:
+            bokeh.plotting element
+
+        """
+
+        from bokeh.plotting import figure
+
+        p = figure(width=800, height=300, active_scroll='wheel_zoom', title="velocity with signal (normalized)")
+        p.line(self.elc_t, self.normalize_signal(self.signal) - 0.7, color='blue', alpha=0.7, legend_label="signal")
+        p.line(self.t, self.lick, color='red', alpha=0.7, legend_label="lick")
+        p.line(self.t, self.normalize_signal(self.smoothed_velocity), color='green', alpha=0.7,
+               legend_label="sm_velocity")
+        p.line(self.t, self.normalize_signal(self.velocity), color='purple', alpha=0.7, legend_label="velocity")
+
+        p.legend.click_policy = 'hide'
+
+        self.output_bokeh_plot(p, save_path=save_path, title=str(p.title.text), notebook=notebook, overwrite=overwrite)
+
+        return p
+
+    def generate_time_frequency_spectrogram(self, freq_start=1, freq_stop=100, freq_step=0.1):
+
+        import mne
+
+        freqs = np.arange(start=freq_start, stop=freq_stop, step=freq_step)
+        tfr = mne.time_frequency.tfr_array_morlet(self.signal.reshape(1, 1, -1), self.fs, freqs, n_cycles=7,
+                                                  zero_mean=True,
+                                                  output='power')
+
+        return freqs, tfr
+
+    def plot_time_frequency_spectrogram(self, freqs=None, tfr=None,
+                                        freq_start=1, freq_stop=100, freq_step=0.1,
+                                        time_start=0, time_end=None,
+                                        time_dec_factor=100, freq_dec_factor=10,
+                                        palette="Turbo256",
+                                        save_path=None, notebook=False, overwrite=False):
+        import mne
+        from bokeh.plotting import figure
+        from bokeh.models import LinearColorMapper, ColorBar
+        from bokeh.layouts import column
+
+        if time_end is None:
+            time_end = self.session_duration
+
+        time_elc = self.elc_t[time_start*self.fs: time_end*self.fs]
+        time_vm = self.t[time_start*self.vm_rate: time_end*self.vm_rate]
+        signal = self.signal[time_start*self.fs: time_end*self.fs]
+        velocity = self.smoothed_velocity[time_start*self.vm_rate: time_end*self.vm_rate]
+
+        if (freqs is None) & (tfr is None):
+            freqs = np.arange(start=freq_start, stop=freq_stop, step=freq_step)
+            tfr = mne.time_frequency.tfr_array_morlet(signal.reshape(1, 1, -1), self.fs, freqs, n_cycles=7,
+                                                      zero_mean=True,
+                                                      output='power')
+
+        # Decimate data for plotting
+        time_dec = time_elc[::time_dec_factor]
+        freqs_dec = freqs[::freq_dec_factor]
+        tfr_dec = tfr[:, :, ::freq_dec_factor, ::time_dec_factor]
+
+        power = 10 * np.log10(tfr_dec.squeeze())
+
+        # Calculate dimensions for the image
+        dw = time_dec[-1] - time_dec[0]  # Width of the image
+        dh = freqs_dec[-1] - freqs_dec[0]
+
+        # Create the first plot (Time-Frequency Representation)
+        p1 = figure(width=1200, height=350, title="Time-Frequency Spectrogram",
+                    x_axis_label="Time (s)", y_axis_label="Frequency (Hz)",
+                    x_range=(time_dec[0], time_dec[-1]), y_range=(freqs_dec[0], 40),
+                    active_scroll="wheel_zoom")
+        color_mapper = LinearColorMapper(palette=palette, low=power.min(), high=power.max())
+        p1.image(image=[power], x=time_dec[0], y=freqs_dec[0], dw=dw, dh=dh,
+                 color_mapper=color_mapper)
+
+        # Add a color bar
+        color_bar = ColorBar(color_mapper=color_mapper, label_standoff=12, border_line_color=None, location=(0, 0))
+        p1.add_layout(color_bar, 'right')
+
+        # Create the second plot (Normalized Velocity)
+        p2 = figure(width=p1.width, height=350, title="Normalized Velocity and signal Over Time",
+                    x_axis_label="Time (s)", y_axis_label="Velocity (normalized)", x_range=p1.x_range,
+                    tools=p1.tools, toolbar_location=None)
+        p2.line(time_vm, self.normalize_signal(velocity), legend_label="Normalized Velocity", color='blue',
+                line_width=2)
+        p2.line(time_elc, self.normalize_signal(signal), color='red', alpha=0.7, legend_label="signal")
+        p2.legend.click_policy = 'hide'
+
+        layout = column([p1, p2])
+
+        self.output_bokeh_plot(layout, save_path=save_path, title=str(p1.title.text), notebook=notebook,
+                               overwrite=overwrite)
+
+        return layout
 
 
 if __name__ == "__main__":
