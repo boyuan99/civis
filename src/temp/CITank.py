@@ -760,6 +760,28 @@ class CITank(VirmenTank):
 
         return categories
 
+    @staticmethod
+    def find_category_by_index(dictionary, target_value):
+        """
+        Find neuron category based on its index
+
+        Args:
+            dictionary: neuron categories dictionary
+            target_value: neuron index
+
+        Returns:
+            neuron category, or "Not Found"
+
+        Example:
+             key = find_category_by_index(neuron_categories, 0)
+        """
+        for key, value in dictionary.items():
+            value = list(value)
+            for val in value:
+                if np.abs(val - target_value) < 0.01:
+                    return key
+        return "Not Found"
+
     def create_neuron_categories_pie_chart(self, neuron_categories, title="Neuron Categories", notebook=False,
                                            save_path=None, overwrite=False):
         """
