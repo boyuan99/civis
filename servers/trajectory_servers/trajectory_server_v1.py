@@ -2,8 +2,23 @@ from bokeh.plotting import figure, curdoc
 from bokeh.models import ColumnDataSource, Slider, Button, Arrow, VeeHead, BoxAnnotation, Span, TextInput, Spacer
 from bokeh.layouts import column, row
 import numpy as np
-from servers.utils import read_and_process_data
 import json
+import pandas as pd
+
+
+def read_and_process_data(file_path, usecols=[0, 1, 2], threshold=[70.0, -70.0]):
+    data = pd.read_csv(file_path, sep=r'\s+|,', engine='python', header=None,
+                       usecols=usecols, names=['x', 'y', 'face_angle'])
+
+    # Identifying trials
+    trials = []
+    start = 0
+    for i in range(len(data)):
+        if data.iloc[i]['y'] >= threshold[0] or data.iloc[i]['y'] <= threshold[1]:
+            trials.append(data[start:i + 1].to_dict(orient='list'))
+            start = i + 1
+
+    return trials
 
 
 def trajectory_bkapp_v1(doc):

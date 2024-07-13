@@ -3,7 +3,22 @@ from bokeh.models import ColumnDataSource, Slider, Button, Arrow, VeeHead, BoxAn
 from bokeh.layouts import column, row
 import numpy as np
 import json
-from servers.utils import read_and_process_data_v2
+import pandas as pd
+
+
+def read_and_process_data(file_path, usecols=[0, 1, 2], threshold=[175.0, -175.0]):
+    data = pd.read_csv(file_path, sep=r'\s+|,', engine='python', header=None,
+                       usecols=usecols, names=['x', 'y', 'face_angle'])
+
+    # Identifying trials
+    trials = []
+    start = 0
+    for i in range(len(data)):
+        if abs(data.iloc[i]['y']) + abs(data.iloc[i]['x']) >= threshold[0]:
+            trials.append(data[start:i + 1].to_dict(orient='list'))
+            start = i + 1
+
+    return trials
 
 
 def trajectory_bkapp_v2(doc):
@@ -23,11 +38,7 @@ def trajectory_bkapp_v2(doc):
     xpts = np.array([-67.5, -50, 10, 10, 67.5, 50, -10, -10, -67.5])
     ypts = np.array([107.5, 125, 65, -50, -107.5, -125, -65, 50, 107.5])
 
-    source_maze = ColumnDataSource(dict(
-            xs=[xpts],
-            ys=[ypts],
-        ),
-    )
+    source_maze = ColumnDataSource({'xs': [xpts], 'ys': [ypts]})
 
     plot.multi_line(xs="xs", ys="ys", source=source_maze, line_color="#8073ac", line_width=2)
     plot.patch([67.5, 50, 70, 87.5], [-107.5, -125, -145, -127.5], alpha=0.5)
@@ -53,7 +64,7 @@ def trajectory_bkapp_v2(doc):
         session_name = filename_input.value
         file = config['VirmenFilePath'] + session_name
 
-        trials = read_and_process_data_v2(file, usecols=[0, 1, 2], threshold=[175.0, -175.0])
+        trials = read_and_process_data(file, usecols=[0, 1, 2], threshold=[175.0, -175.0])
 
         if trials:
             # Enable the widgets now that data is loaded
