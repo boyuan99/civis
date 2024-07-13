@@ -38,7 +38,7 @@ class CITank(VirmenTank):
         self.neuron_path = neuron_path
         self.ci_rate = ci_rate
         self.session_duration = session_duration
-        self.C, self.C_raw, self.Cn, self.ids, self.Coor, self.centroids, self.virmenPath = self.load_data(neuron_path)
+        self.C, self.C_raw, self.Cn, self.ids, self.Coor, self.centroids, _ = self.load_data(neuron_path)
         self.C_raw = self.shift_signal(self.compute_deltaF_over_F(self.C_raw))
         self.ca_all = np.mean(self.C_raw, axis=0)
         self.neuron_num = self.C_raw.shape[0]
