@@ -40,7 +40,7 @@ class CITank(VirmenTank):
         self.session_duration = session_duration
         self.C, self.C_raw, self.Cn, self.ids, self.Coor, self.centroids, _ = self.load_data(neuron_path)
         self.C_raw = self.shift_signal(self.compute_deltaF_over_F(self.C_raw))
-        self.ca_all = np.mean(self.C_raw, axis=0)
+        self.ca_all = self.normalize_signal(self.shift_signal_single(np.mean(self.C_raw, axis=0)))
         self.neuron_num = self.C_raw.shape[0]
 
     @staticmethod
@@ -83,20 +83,6 @@ class CITank(VirmenTank):
 
         deltaF_F = (fluorescence - F0) / F0
         return deltaF_F
-
-    @staticmethod
-    def normalize_signal_per_neuron(signal):
-        # Initialize an empty array for the normalized signal
-        normalized_signal = np.zeros(signal.shape)
-
-        # Iterate over each neuron
-        for neuron_idx in range(signal.shape[0]):
-            neuron_signal = signal[neuron_idx, :]
-            min_val = np.min(neuron_signal)
-            max_val = np.max(neuron_signal)
-            normalized_signal[neuron_idx, :] = (neuron_signal - min_val) / (max_val - min_val)
-
-        return normalized_signal
 
     @staticmethod
     def find_outliers_indices(data, threshold=3.0):
@@ -176,7 +162,7 @@ class CITank(VirmenTank):
             C_avg[neu] = np.mean(self.shift_signal(C_tmp), axis=0)
 
         peak_values = np.max(C_avg, axis=1)
-        C_avg_normalized = self.normalize_signal_per_neuron(C_avg)
+        C_avg_normalized = self.normalize_signal_per_row(C_avg)
         peak_times = np.argmax(C_avg_normalized, axis=1)
         sorted_indices = np.argsort(peak_times)
         C_avg_normalized_sorted = C_avg_normalized[sorted_indices]
