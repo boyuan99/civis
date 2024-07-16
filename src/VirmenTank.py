@@ -31,7 +31,8 @@ class VirmenTank:
         self.t = np.arange(0, self.session_duration, 1 / self.vm_rate)
 
         self.virmen_trials, self.virmen_data = self.read_and_process_data(self.virmen_path, threshold=self.threshold,
-                                                                          length=virmen_data_length, maze_type=maze_type)
+                                                                          length=virmen_data_length,
+                                                                          maze_type=maze_type)
         self.trials_end_indices = self.calculate_virmen_trials_end_indices(maze_type)
         self.lick_raw, self.lick_raw_mask, self.lick = self.find_lick_data()
         self.pstcr_raw, self.pstcr = self.find_position_movement_rate()  # position change rate
@@ -44,10 +45,10 @@ class VirmenTank:
         self.acceleration = self.find_acceleration()
 
         # for analysis usage:
-        self.velocity_peak_indices = find_peaks(self.smoothed_velocity, height=height, distance=self.velocity_distance)[0]
+        self.velocity_peak_indices = find_peaks(self.smoothed_velocity, height=height,
+                                                distance=self.velocity_distance)[0]
         self.lick_edge_indices = np.where(np.diff(self.lick) > 0)[0]
         self.movement_onset_indices = self.find_movement_onset(self.smoothed_velocity, self.velocity_peak_indices)
-
 
     @staticmethod
     def read_and_process_data(file_path, threshold=None, length=None, maze_type=None):
@@ -150,6 +151,12 @@ class VirmenTank:
 
         return shifted
 
+    @staticmethod
+    def shift_signal_single(signal):
+        signal = signal - np.mean(signal)
+
+        return signal
+
     def find_lick_data(self):
         lick_all = np.array(self.virmen_data['lick'])
         # Convert lick data into binary
@@ -248,11 +255,11 @@ class VirmenTank:
         return dr, dr_raw
 
     def find_acceleration(self):
-        dt = 1/self.vm_rate
+        dt = 1 / self.vm_rate
         dv = np.diff(self.smoothed_velocity)
 
         acceleration = dv / dt
-        acceleration = np.pad(acceleration, (0, len(self.t) - len(dv)), 'constant', constant_values=(0, ))
+        acceleration = np.pad(acceleration, (0, len(self.t) - len(dv)), 'constant', constant_values=(0,))
 
         return acceleration
 
@@ -308,23 +315,42 @@ class VirmenTank:
 
         return onsets
 
-
     @staticmethod
     def output_bokeh_plot(plot, save_path=None, title=None, notebook=False, overwrite=False):
         import os
-        from bokeh.io import output_notebook, output_file, reset_output, save, show, curdoc
+        from bokeh.plotting import figure
+        from bokeh.layouts import LayoutDOM
+        from bokeh.io import output_notebook, output_file, reset_output, export_svg, save, show, curdoc
 
         if save_path is not None:
             reset_output()
             if os.path.exists(save_path) and not overwrite:
                 print("File already exists and overwrite is set to False.")
             else:
-                output_file(save_path, title=title)
-                curdoc().clear()
-                curdoc().add_root(plot)
-                save(curdoc())
-                print("File saved or overwritten.")
-                curdoc().clear()
+                if save_path.split(".")[-1] == 'html':
+                    output_file(save_path, title=title)
+                    curdoc().clear()
+                    curdoc().add_root(plot)
+                    save(curdoc())
+                    print("File saved as html.")
+                    curdoc().clear()
+                elif save_path.split(".")[-1] == 'svg':
+                    if isinstance(plot, figure):
+                        plot.output_backend = "svg"
+                        export_svg(plot, filename=save_path)
+                        print("Plot successfully saved as svg.")
+                        plot.output_backend = "canvas"
+                    elif isinstance(plot, LayoutDOM):
+                        for i in range(len(plot.children)):
+                            plot.children[i].output_backend = 'svg'
+                        export_svg(plot, filename=save_path)
+                        print("Plot successfully saved as svg.")
+                        for i in range(len(plot.children)):
+                            plot.children[i].output_backend = 'canvas'
+                    else:
+                        raise ValueError("Invalid plot element.")
+                else:
+                    raise ValueError("Invalid file type.")
 
         if notebook:
             reset_output()
@@ -344,7 +370,6 @@ class VirmenTank:
         else:
             # Extend the palette by repeating it
             return list(itertools.islice(itertools.cycle(palette), num_categories))
-
 
     def plot_lick_and_velocity(self, title="Lick And Velocity", notebook=False, save_path=None, overwrite=False):
         """
