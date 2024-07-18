@@ -4,13 +4,17 @@ Calcium Imaging data visualization server implemented with [Bokeh](https://bokeh
 
 
 
-## Installation
+## Setup
 
 The following command will install the packages according to the configuration file `requirements.txt`.
 
 ```bash
 pip install -r requirements.txt
 ```
+
+Use `config.example.json` as a reference to create `config.json` locally, including all of the paths in the example.
+
+## Run
 
 To use the server, run:
 
