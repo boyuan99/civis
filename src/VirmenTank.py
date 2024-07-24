@@ -42,6 +42,7 @@ class VirmenTank:
         self.smoothed_velocity = self.butter_lowpass_filter(self.velocity, 0.5, self.vm_rate)
         self.smoothed_velocity[self.smoothed_velocity <= 0] = 0
         self.dr, self.dr_raw = self.find_rotation()
+        self.smoothed_dr = self.butter_lowpass_filter(self.dr, 1, self.vm_rate)
         self.acceleration = self.find_acceleration()
 
         # for analysis usage:
