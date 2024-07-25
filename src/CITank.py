@@ -3,7 +3,7 @@ import numpy as np
 import h5py
 import json
 from .VirmenTank import VirmenTank
-from scipy.signal import find_peaks, savgol_filter
+from scipy.signal import savgol_filter
 
 
 class CITank(VirmenTank):
@@ -100,6 +100,8 @@ class CITank(VirmenTank):
         Returns:
         - peak_indices_filtered_all: List of arrays, each containing peak indices for the filtered signal of corresponding trace.
         """
+        from scipy.signal import find_peaks
+
         if notebook:
             from tqdm.notebook import tqdm
         else:
@@ -128,11 +130,46 @@ class CITank(VirmenTank):
         return peak_indices_filtered_all
 
     def compute_correlation_ca_instance(self, instance):
+        """
+        Calculate the Pearson correlation coefficient between a given instance and each calcium trace in the dataset.
+
+        :param instance: A numpy array representing a single instance (e.g., velocity, lick).
+        :type instance: np.ndarray
+        :returns: A numpy array of Pearson correlation coefficients between the given instance and each neuron's calcium trace.
+        :rtype: np.ndarray
+
+        The returned array has one correlation coefficient per neuron.
+        """
         ca_instance_correlation_array = np.zeros(self.neuron_num)
         for neuron_pick in range(self.neuron_num):
             ca_instance_correlation_array[neuron_pick] = np.corrcoef(instance, self.C_raw[neuron_pick])[0, 1]
 
         return ca_instance_correlation_array
+
+    def compute_cross_correlation_ca_instance(self, instance, mode='same'):
+        """
+        Compute the cross-correlation between a given instance and each calcium trace across all neurons.
+
+        :param instance: A numpy array representing a single instance (e.g., velociity, lick).
+        :type instance: np.ndarray
+        :param mode: Specifies the size of the output: 'full', 'valid', or 'same'. Default is 'same'.
+        :type mode: str
+        :returns: A tuple containing:
+            - correlations: An array where each row represents the cross-correlation of the instance with a neuron's calcium trace.
+            - lags: A numpy array of lags used in the cross-correlation, adjusted by the acquisition rate.
+        :rtype: tuple
+        """
+
+        import scipy
+        lags = scipy.signal.correlation_lags(len(self.C_raw[0]), len(instance), mode=mode) / self.vm_rate
+
+        correlations = np.array([scipy.signal.correlate(d, instance, mode=mode) for d in self.C_raw])
+
+        for i in range(self.neuron_num):
+            multiplier = np.corrcoef(self.C_raw[i], self.smoothed_velocity)[0, 1] / correlations[i][np.where(lags == 0)]
+            correlations[i] = correlations[i] * multiplier
+
+        return correlations, lags
 
     def average_across_indices(self, indices, cut_interval=50):
         """
@@ -961,6 +998,57 @@ class CITank(VirmenTank):
         v.legend.click_policy = 'hide'
 
         layout = column(p, v)
+
+        self.output_bokeh_plot(layout, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite)
+
+        return layout
+
+    def create_cross_correlation_slider_plot(self, instance, lags, correlations,
+                                             save_path=None, title="Raster Plot", notebook=False, overwrite=False):
+
+        from bokeh.models import ColumnDataSource, Slider, CustomJS
+        from bokeh.plotting import figure
+        from bokeh.layouts import gridplot, column
+
+        source = ColumnDataSource(data={
+            't': self.t,
+            'calcium': self.C_raw[0],
+            'instance': instance,
+            'lags': lags,
+            'correlation': correlations[0]
+        })
+
+        # Prepare the initial plot
+        p1 = figure(width=800, height=300, title=title, x_axis_label='Time',
+                    y_axis_label='Amplitude')
+        p1.line('t', 'instance', source=source, legend_label='Instance', color='blue')
+        p1.line('t', 'calcium', source=source, legend_label='Calcium', color='red')
+
+        p2 = figure(width=800, height=300, x_axis_label='Lag',
+                    y_axis_label='Correlation')
+        p2.line('lags', 'correlation', source=source, legend_label='Cross-correlation', line_color='green')
+
+        # Create a slider
+        slider = Slider(start=0, end=len(self.C_raw) - 1, value=0, step=1, width=800,
+                        title="Select Calcium Signal Index")
+
+        # Define a callback to update the data based on the selected index
+        callback = CustomJS(args=dict(source=source,
+                                      correlations=[list(row) for row in correlations],
+                                      C_raw=[list(row) for row in self.C_raw]),
+                            code=
+                            """
+                                const index = cb_obj.value;
+                                source.data.calcium = C_raw[index];
+                                source.data.correlation = correlations[index];
+                                source.change.emit();
+                            """
+                            )
+
+        slider.js_on_change('value', callback)
+
+        grid = gridplot([[p1], [p2]])
+        layout = column(slider, grid)
 
         self.output_bokeh_plot(layout, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite)
 
