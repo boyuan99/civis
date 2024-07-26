@@ -407,8 +407,8 @@ class VirmenTank:
 
         p_v = figure(width=800, height=400, x_range=p.x_range,
                      active_drag='pan', active_scroll='wheel_zoom', title="Velocity")
-        p_v.line(self.t, self.pstcr_raw, line_color='navy', legend_label='dp_raw', line_width=2)
-        p_v.line(self.t, self.pstcr, line_color='red', legend_label='dp_filtered', line_width=2)
+        p_v.line(self.t, self.smoothed_velocity, line_color='navy', legend_label='smoothed_velocity', line_width=2)
+        p_v.line(self.t, self.pstcr, line_color='red', legend_label='position change rate', line_width=2)
         p_v.line(self.t, self.velocity, line_color='purple', legend_label='velocity', line_width=2)
 
         hover_v = HoverTool()
