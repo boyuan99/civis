@@ -72,19 +72,19 @@ class VirmenTank:
         trials = []
         start = 0
 
-        if maze_type == 'straight25':
+        if maze_type.lower() == 'straight25':
             for i in range(len(data)):
                 if data.iloc[i]['y'] >= 25 or data.iloc[i]['y'] <= -25:
                     trials.append(data[start:i + 1].to_dict(orient='list'))
                     start = i + 1
 
-        elif maze_type == 'straight50':
+        elif maze_type.lower() == 'straight50':
             for i in range(len(data)):
                 if data.iloc[i]['y'] >= 50 or data.iloc[i]['y'] <= -50:
                     trials.append(data[start:i + 1].to_dict(orient='list'))
                     start = i + 1
 
-        elif maze_type == 'TurnV0':
+        elif maze_type.lower() == 'turnv0':
             for i in range(len(data)):
                 if abs(data.iloc[i]['y']) + abs(data.iloc[i]['x']) >= 175:
                     trials.append(data[start:i + 1].to_dict(orient='list'))
@@ -98,15 +98,15 @@ class VirmenTank:
 
         :return: List of indices where 'y' value exceeds the threshold.
         """
-        if maze_type == 'straight25':
+        if maze_type.lower() == 'straight25':
             indices = np.array(self.virmen_data.index[self.virmen_data['y'].abs() > 25].tolist())
             indices = indices[np.where(indices < self.vm_rate * self.session_duration)]
 
-        elif maze_type == 'straight50':
+        elif maze_type.lower() == 'straight50':
             indices = np.array(self.virmen_data.index[self.virmen_data['y'].abs() > 50].tolist())
             indices = indices[np.where(indices < self.vm_rate * self.session_duration)]
 
-        elif maze_type == 'TurnV0':
+        elif maze_type.lower() == 'turnv0':
             indices = np.array(self.virmen_data.index[abs(self.virmen_data['y']) +
                                                       abs(self.virmen_data['x']) >= 175].tolist())
             indices = indices[np.where(indices < self.vm_rate * self.session_duration)]
