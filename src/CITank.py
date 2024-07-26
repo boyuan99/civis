@@ -166,7 +166,7 @@ class CITank(VirmenTank):
         correlations = np.array([scipy.signal.correlate(d, instance, mode=mode) for d in self.C_raw])
 
         for i in range(self.neuron_num):
-            multiplier = np.corrcoef(self.C_raw[i], self.smoothed_velocity)[0, 1] / correlations[i][np.where(lags == 0)]
+            multiplier = np.corrcoef(self.C_raw[i], instance)[0, 1] / correlations[i][np.where(lags == 0)]
             correlations[i] = correlations[i] * multiplier
 
         return correlations, lags
