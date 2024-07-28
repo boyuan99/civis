@@ -8,8 +8,8 @@ from scipy.signal import find_peaks, savgol_filter
 class VirmenTank:
     def __init__(self,
                  virmen_path,
-                 threshold,
                  maze_type,
+                 threshold=None,
                  virmen_data_length=None,
                  vm_rate=20,
                  velocity_height=0.7,
@@ -115,6 +115,48 @@ class VirmenTank:
             indices = []
 
         return indices
+
+    @staticmethod
+    def compute_trial_bounds(data, threshold):
+        """
+        Compute trial boundaries once for the dataset
+
+        Example: trial_bounds = compute_trial_bounds(virmen_data, threshold=[25, -25])
+        """
+        trial_bounds = []
+        start = 0
+        for i in range(len(data)):
+            if data.iloc[i]['y'] >= threshold[0] or data.iloc[i]['y'] <= threshold[1]:
+                trial_bounds.append([start, i])
+                start = i + 1
+        return trial_bounds
+
+    @staticmethod
+    def find_trial_for_indices(trial_bounds, indices):
+        """
+        Find trials for indices
+
+        Example:
+        1.
+            trial_index = find_trial_for_indices(trial_bounds, indices)
+        2.
+            trial_indices = []
+            for indices in peak_indices:
+                trial_index = find_trial_for_indices(trial_bounds, indices)
+                trial_indices.append(trial_index)
+        """
+
+        # Convert trial_bounds into a suitable format for np.searchsorted
+        starts = np.array([bound[0] for bound in trial_bounds])
+        ends = np.array([bound[1] for bound in trial_bounds])
+
+        index_trial_map = {}
+        for index in indices:
+            pos = np.searchsorted(ends, index)
+            if pos < len(starts) and starts[pos] <= index <= ends[pos]:
+                index_trial_map[index] = pos
+
+        return index_trial_map
 
     @staticmethod
     def normalize_signal(signal):
