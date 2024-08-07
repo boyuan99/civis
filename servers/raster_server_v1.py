@@ -15,7 +15,7 @@ sys.path.insert(0, parent_dir)
 
 
 def raster_bkapp_v1(doc):
-    from src import TurnMazeTank
+    from src import CITank
 
     # Create initial empty plot
     raster_source = ColumnDataSource({'x_starts': [], 'y_starts': [], 'x_ends': [], 'y_ends': []})
@@ -100,8 +100,9 @@ def raster_bkapp_v1(doc):
 
         neuron_path = config['ProcessedFilePath'] + session_name + '/' + session_name + '_v7.mat'
         peak_indices_path = config['ProcessedFilePath'] + session_name + "/" + session_name + "_peak_indices.pkl"
+        virmen_path = config['VirmenFilePath'] + session_name + ".txt"
 
-        ci = TurnMazeTank(neuron_path)
+        ci = CITank(neuron_path, virmen_path, maze_type="turnv0")
         print("Successfully loaded: " + neuron_path)
 
         with open(peak_indices_path, 'rb') as f:

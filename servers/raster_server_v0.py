@@ -8,19 +8,22 @@ import json
 
 
 def raster_bkapp_v0(doc):
-    from src import TurnMazeTank
+    from src import CITank
     def load_data(session_name):
         with open('config.json', 'r') as file:
             config = json.load(file)
 
         neuron_path = config['ProcessedFilePath'] + session_name + '/' + session_name + '_v7.mat'
         peak_indices_path = config['ProcessedFilePath'] + session_name + "/" + session_name + "_peak_indices.pkl"
+        virmen_path = config['VirmenFilePath'] + session_name + ".txt"
 
-        ci = TurnMazeTank(neuron_path)
+        ci = CITank(neuron_path, virmen_path, maze_type="turnv0")
         print("Successfully loaded: " + neuron_path)
 
+        print("Loading peak indices...")
         with open(peak_indices_path, 'rb') as f:
             peak_indices = pickle.load(f)
+        print("Successfully loaded: " + peak_indices_path)
 
         spike_times = peak_indices
         spike_stats = ci.get_spike_statistics(peak_indices)
