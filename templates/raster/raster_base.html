@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block title %}Raster Plot - Flask-Bokeh App{% endblock %}
+
+{% block content %}
+    <h1>Raster Plot Application - {{ version }}</h1>
+    <a href="/raster/v0/" style="margin-right: 20px;">Base</a>
+    <a href="/raster/v1/" style="margin-right: 20px;">TurnV0</a>
+
+    <div id="additional-content">
+        {% block additional_content %}
+        {% endblock %}
+
+    </div>
+
+    {{ script|safe }}
+
+{% endblock %}

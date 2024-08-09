@@ -36,7 +36,7 @@ def trajectory_v0_app():
 @app.route('/raster/v0/')
 def raster_app():
     script = server_document(f'http://localhost:{args.bokeh_port}/raster_bkapp_v0')
-    return render_template("raster_v0.html", script=script, template="Flask", port=args.flask_port)
+    return render_template("raster/raster_v0.html", script=script, template="Flask", port=args.flask_port)
 
 @app.route('/trajectory/v2/')
 def trajectory_v2_app():
@@ -51,7 +51,7 @@ def trajectory_v3_app():
 @app.route('/raster/v1/')
 def raster_v1_app():
     script = server_document(f'http://localhost:{args.bokeh_port}/raster_bkapp_v1')
-    return render_template("raster_v1.html", script=script, templates='Flask', port=args.flask_port)
+    return render_template("raster/raster_v1.html", script=script, templates='Flask', port=args.flask_port)
 
 @app.route('/trajectory/v4/')
 def trajectory_v4_app():
