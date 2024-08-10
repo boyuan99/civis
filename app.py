@@ -73,6 +73,11 @@ def place_v1_app():
     script = server_document(f'http://localhost:{args.bokeh_port}/place_bkapp_v1')
     return render_template("place/place_v1.html", script=script, templates='Flask', port=args.flask_port)
 
+@app.route('/place/v2/')
+def place_v2_app():
+    script = server_document(f'http://localhost:{args.bokeh_port}/place_bkapp_v2')
+    return render_template("place/place_v2.html", script=script, templates='Flask', port=args.flask_port)
+
 def bk_worker(bokeh_port, flask_port):
     # Configure the Bokeh server with applications
     bokeh_apps = {'/labeler_bkapp': labeler_bkapp,
@@ -86,7 +91,8 @@ def bk_worker(bokeh_port, flask_port):
                   '/trajectory_bkapp_v4': trajectory_bkapp_v4,
                   '/place_bkapp_v0': place_cell_vis_bkapp_v0,
                   '/place_bkapp_v1': place_cell_vis_bkapp_v1,
-                  '/trajectory_bkapp_v5': trajectory_bkapp_v5
+                  '/trajectory_bkapp_v5': trajectory_bkapp_v5,
+                  '/place_bkapp_v2': place_cell_vis_bkapp_v2
                   }
 
     server = Server(bokeh_apps,
