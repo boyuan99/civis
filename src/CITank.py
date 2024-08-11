@@ -38,7 +38,10 @@ class CITank(VirmenTank):
         self.neuron_path = neuron_path
         self.ci_rate = ci_rate
         self.session_duration = session_duration
-        self.C, self.C_raw, self.Cn, self.ids, self.Coor, self.centroids, _ = self.load_data(neuron_path)
+
+        (self.C, self.C_raw, self.Cn, self.ids, self.Coor, self.centroids, _,
+         self.C_denoised, self.C_deconvolved, self.C_baseline) = self.load_data(neuron_path)
+
         self.C_raw = self.shift_signal(self.compute_deltaF_over_F(self.C_raw))
         self.ca_all = self.normalize_signal(self.shift_signal_single(np.mean(self.C_raw, axis=0)))
         self.neuron_num = self.C_raw.shape[0]
@@ -59,8 +62,11 @@ class CITank(VirmenTank):
             ids = data['ids'][()] - 1
             Coor_cell_array = data['Coor']
             Coor = []
-            C_raw = np.transpose(data['C_raw'][()])
             C = np.transpose(data['C'][()])
+            C_raw = np.transpose(data['C_raw'][()])
+            C_denoised = np.transpose(data['C_denoised'][()])
+            C_deconvolved = np.transpose(data['C_deconvolved'][()])
+            C_baseline = np.transpose(data['C_baseline'][()])
             centroids = np.transpose(data['centroids'][()])
             # virmenPath = data['virmenPath'][()].tobytes().decode('utf-16le')
             virmenPath = config['PickedVirmenDataFilePath'] + data['virmenFileName'][()].tobytes().decode('utf-16le')
@@ -72,15 +78,16 @@ class CITank(VirmenTank):
 
                 Coor.append(np.transpose(coor_matrix))
 
-        return C, C_raw, Cn, ids, Coor, centroids, virmenPath
+        return C, C_raw, Cn, ids, Coor, centroids, virmenPath, C_denoised, C_deconvolved, C_baseline
 
     @staticmethod
     def compute_deltaF_over_F(fluorescence, baseline_indices=None):
         if baseline_indices is None:
-            F0 = np.mean(fluorescence)
+            F0 = np.mean(fluorescence, axis=1)
         else:
-            F0 = np.mean(fluorescence[baseline_indices[0]:baseline_indices[1]])
+            F0 = np.mean(fluorescence[baseline_indices[0]:baseline_indices[1]], axis=1)
 
+        F0 = F0[:, np.newaxis]
         deltaF_F = (fluorescence - F0) / F0
         return deltaF_F
 
