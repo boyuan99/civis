@@ -1,18 +1,48 @@
 import numpy as np
 import pandas as pd
 from bokeh.plotting import figure
-from bokeh.models import HoverTool, ColumnDataSource, Slider, Button, TextInput, Spacer, Div, Select, TapTool
+from bokeh.models import HoverTool, ColumnDataSource, Slider, Button, TextInput, Spacer, Div, Select, TapTool, Tabs, \
+    TabPanel
 from bokeh.layouts import column, row
-from servers.utils import load_data
 import json
+import h5py
+
+
+def load_data(filename):
+    """
+    Load all data
+    :param filename: .mat file containing config, spatial, Cn, Coor, ids, etc...
+    :return: essential variables for plotting
+    """
+    with h5py.File(filename, 'r') as file:
+        data = file['data']
+        Cn = np.transpose(data['Cn'][()])
+        ids = data['ids'][()] - 1
+        Coor_cell_array = data['Coor']
+        Coor = []
+        C_raw = np.transpose(data['C_raw'][()])
+        C = np.transpose(data['C'][()])
+        C_denoised = np.transpose(data['C_denoised'][()])
+        C_deconvolved = np.transpose(data['C_deconvolved'][()])
+        C_reraw = np.transpose(data['C_reraw'][()])
+        centroids = np.transpose(data['centroids'][()])
+        virmenPath = data['virmenPath'][()].tobytes().decode('utf-16le')
+
+        for i in range(Coor_cell_array.shape[1]):
+            ref = Coor_cell_array[0, i]  # Get the reference
+            coor_data = file[ref]  # Use the reference to access the data
+            coor_matrix = np.array(coor_data)  # Convert to a NumPy array
+
+            Coor.append(np.transpose(coor_matrix))
+
+    return C, C_raw, Cn, ids, Coor, centroids, virmenPath, C_denoised, C_deconvolved, C_reraw
 
 
 def labeler_bkapp(doc):
-    global C, C_raw, ids, labels, image_source, session_name
+    global C, C_raw, ids, labels, image_source, session_name, C_denoised, C_deconvolved, C_reraw
     filename = ''
     labels = np.zeros((3, 3), dtype=bool)
     labels[:, 2] = True
-
 
     """
     ========================================================================================================================
@@ -42,7 +72,6 @@ def labeler_bkapp(doc):
         '#000075',  # Navy
     ]
 
-
     spatial_source = ColumnDataSource(data={
         'xs': [],
         'ys': [],
@@ -52,7 +81,10 @@ def labeler_bkapp(doc):
 
     temporal_source = ColumnDataSource(data={'x': [],
                                              'y_lowpass': [],
-                                             'y_raw': []
+                                             'y_raw': [],
+                                             'y_denoised': [],
+                                             'y_deconvolved': [],
+                                             'y_reraw': []
                                              })
 
     image_source = ColumnDataSource(data={'image': []})
@@ -72,11 +104,23 @@ def labeler_bkapp(doc):
     taptool = TapTool(mode='replace')
     spatial.add_tools(taptool)
 
-    # temporal transient
-    temporal = figure(title="Temporal Activity", width=800, height=400, active_scroll="wheel_zoom")
-    temporal.line('x', 'y_lowpass', source=temporal_source, line_width=2, color="red", legend_label="Lowpass")
-    temporal.line('x', 'y_raw', source=temporal_source, line_width=2, color="blue", legend_label="Raw")
-    temporal.legend.click_policy = "hide"
+    # temporal1 transient
+    temporal1 = figure(title="Temporal Activity", width=800, height=400, active_scroll="wheel_zoom")
+    temporal1.line('x', 'y_lowpass', source=temporal_source, line_width=2, color="red", legend_label="Lowpass")
+    temporal1.line('x', 'y_raw', source=temporal_source, line_width=2, color="blue", legend_label="Raw")
+    temporal1.legend.click_policy = "hide"
+    temporal_tab1 = TabPanel(child=temporal1, title="Raw")
+
+    # temporal2 transient
+    temporal2 = figure(title="Temporal Activity", width=800, height=400, x_range=temporal1.x_range,
+                       active_scroll="wheel_zoom")
+    temporal2.line('x', 'y_deconvolved', source=temporal_source, line_width=2, color="green", alpha=0.7,
+                   legend_label="Deconvolved")
+    temporal2.line('x', 'y_denoised', source=temporal_source, line_width=2, color="red", alpha=0.7,
+                   legend_label="Denoised")
+    temporal2.line('x', 'y_reraw', source=temporal_source, line_width=2, color='blue', alpha=0.7, legend_label="Reraw")
+    temporal2.legend.click_policy = "hide"
+    temporal_tab2 = TabPanel(child=temporal2, title="Rebased")
 
     # Callback function to print the ID of the selected neuron
     def update_temporal(attr, old, new):
@@ -86,15 +130,22 @@ def labeler_bkapp(doc):
             neuron_id = int(spatial_source.data['id'][selected_index][0])
             new_y_lowpass = C[neuron_id]
             new_y_raw = C_raw[neuron_id]
+            new_y_denoised = C_denoised[neuron_id]
+            new_y_deconvolved = C_deconvolved[neuron_id]
+            new_y_reraw = C_reraw[neuron_id]
             new_x = np.arange(0, len(C[neuron_id]) / 20, 0.05)
 
             temporal_source.data = {
                 'x': new_x,
                 'y_lowpass': new_y_lowpass,
-                'y_raw': new_y_raw
+                'y_raw': new_y_raw,
+                'y_denoised': new_y_denoised,
+                'y_deconvolved': new_y_deconvolved,
+                'y_reraw': new_y_reraw
             }
 
-            temporal.title.text = f"Temporal Activity: Neuron {neuron_id}"
+            temporal1.title.text = f"Temporal Activity: Neuron {neuron_id}"
+            temporal2.title.text = f"Temporal Activity: Neuron {neuron_id}"
             neuron_id_slider.value = selected_index
 
     spatial_source.selected.on_change('indices', update_temporal)
@@ -109,16 +160,24 @@ def labeler_bkapp(doc):
     def update_from_slider(attr, old, new):
         neuron_id = new  # Adjust for zero indexing; slider value starts from 1
 
-        # Update the temporal plot
+        # Update the temporal1 plot
         new_y_lowpass = C[neuron_id]
         new_y_raw = C_raw[neuron_id]
+        new_y_denoised = C_denoised[neuron_id]
+        new_y_deconvolved = C_deconvolved[neuron_id]
+        new_y_reraw = C_reraw[neuron_id]
+
         new_x = np.arange(0, len(C[neuron_id]) / 20, 0.05)
         temporal_source.data = {
             'x': new_x,
             'y_lowpass': new_y_lowpass,
-            'y_raw': new_y_raw
+            'y_raw': new_y_raw,
+            'y_denoised': new_y_denoised,
+            'y_deconvolved': new_y_deconvolved,
+            'y_reraw': new_y_reraw
         }
-        temporal.title.text = f"Temporal Activity: Neuron {neuron_id}"  # Adjust text to match ID
+        temporal1.title.text = f"Temporal Activity: Neuron {neuron_id}"  # Adjust text to match ID
+        temporal2.title.text = f"Temporal Activity: Neuron {neuron_id}"  # Adjust text to match ID
 
         # Highlight the selected neuron in the spatial plot
         spatial_source.selected.indices = [neuron_id]
@@ -286,7 +345,7 @@ def labeler_bkapp(doc):
     load_data_button = Button(label="Load Data", button_type="success")
 
     def load_and_update_data(filename):
-        global C, C_raw, ids, labels, image_source
+        global C, C_raw, ids, labels, image_source, C_denoised, C_deconvolved, C_reraw
         neuron_id_slider.disabled = False
         neuron_index_input.disabled = False
         next_button.disabled = False
@@ -301,7 +360,7 @@ def labeler_bkapp(doc):
         file_path_input.disabled = False
 
         # Load the data
-        [C, C_raw, Cn, ids, Coor, centroids, virmenPath] = load_data(filename)
+        [C, C_raw, Cn, ids, Coor, centroids, virmenPath, C_denoised, C_deconvolved, C_reraw] = load_data(filename)
         num_shapes = len(Coor)
         height, width = Cn.shape[:2]
         labels = np.zeros((len(C), 3), dtype=bool)
@@ -335,7 +394,10 @@ def labeler_bkapp(doc):
         temporal_source.data = {
             'x': np.arange(0, len(C[0]) / 20, 0.05),
             'y_lowpass': C[0],
-            'y_raw': C_raw[0]
+            'y_raw': C_raw[0],
+            'y_denoised': C_denoised[0],
+            'y_deconvolved': C_deconvolved[0],
+            'y_reraw': C_reraw[0]
         }
 
         # Reset or update additional widgets and plot properties
@@ -358,7 +420,8 @@ def labeler_bkapp(doc):
                                            fill_alpha=0.4, fill_color='colors', line_color='colors')
 
         spatial.title.text = "Neuronal Segmentation"
-        temporal.title.text = "Temporal Activity: Neuron 0"
+        temporal1.title.text = "Temporal Activity: Neuron 0"
+        temporal2.title.text = "Temporal Activity: Neuron 0"
 
         # Ensure the plots and UI components are updated correctly
         doc.title = f"Data Loaded: {filename}"  # Update document title with new filename
@@ -396,10 +459,11 @@ def labeler_bkapp(doc):
 
     menus = row(spacer3, row(kept_neurons_select, discarded_neurons_select, unlabeled_neurons_select))
 
+    temporal = Tabs(tabs=[temporal_tab1, temporal_tab2])
+
     layout = row(spatial, column(choose_file, controls, temporal, labelling, menus))
 
     doc.add_root(layout)
-
 
 # bp = Blueprint("labeler", __name__, url_prefix='/labeler')
 #
