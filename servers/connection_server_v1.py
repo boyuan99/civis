@@ -2,9 +2,40 @@ from bokeh.plotting import figure
 from bokeh.models import ColumnDataSource, TapTool, HoverTool, Div, TextInput, Button, Select, CDSView, GroupFilter, Spacer
 from bokeh.layouts import row, column
 import numpy as np
-from servers.utils import load_data
 import json
 import pickle
+import h5py
+
+def load_data(filename):
+    """
+    Load all data
+    :param filename: .mat file containing config, spatial, Cn, Coor, ids, etc...
+    :return: essential variables for plotting
+    """
+    with h5py.File(filename, 'r') as file:
+        data = file['data']
+        Cn = np.transpose(data['Cn'][()])
+        ids = data['ids'][()] - 1
+        Coor_cell_array = data['Coor']
+        Coor = []
+        C_raw = np.transpose(data['C_raw'][()])
+        C = np.transpose(data['C'][()])
+        centroids = np.transpose(data['centroids'][()])
+        virmenPath = data['virmenPath'][()].tobytes().decode('utf-16le')
+
+        for i in range(Coor_cell_array.shape[1]):
+            ref = Coor_cell_array[0, i]  # Get the reference
+            coor_data = file[ref]  # Use the reference to access the data
+            coor_matrix = np.array(coor_data)  # Convert to a NumPy array
+
+            Coor.append(np.transpose(coor_matrix))
+
+        # C = np.zeros_like(C_raw)
+        # for i, C_pick in enumerate(C_raw):
+        #     C_base = savgol_filter(C_pick, window_length=2000, polyorder=2, mode='interp')
+        #     C[i] = C_pick - C_base
+
+    return C, C_raw, Cn, ids, Coor, centroids, virmenPath
 
 
 def connection_bkapp_v1(doc):
