@@ -116,26 +116,17 @@ class CITank(VirmenTank):
             from tqdm import tqdm
 
         peak_indices_all = []
-        peak_indices_filtered_all = []
 
-        iterator = tqdm(self.C_raw, desc="Finds peaks in each calcium trace") if use_tqdm else self.C_raw
+        iterator = tqdm(self.C_denoised, desc="Finds peaks in each calcium trace") if use_tqdm else self.C_denoised
 
         for i, C_pick in enumerate(iterator):
-            peak_height = np.average(C_pick) + 3 * np.std(C_pick)
 
-            peak_calciums, _ = find_peaks(C_pick, height=peak_height, distance=100, prominence=0.2)
 
-            C_base = savgol_filter(C_pick, window_length=2000, polyorder=2, mode='interp')
-            # peak_calciums_filtered, _ = find_peaks(C_base, height=np.average(C_base) + 3 * np.std(C_base), distance=200)
-
-            C_filtered = C_pick - C_base
-            peak_calciums_filtered, _ = find_peaks(C_filtered, height=np.average(C_filtered) + 3 * np.std(C_filtered),
-                                                   distance=200)
+            peak_calciums, _ = find_peaks(C_pick)
 
             peak_indices_all.append(peak_calciums)
-            peak_indices_filtered_all.append(peak_calciums_filtered)
 
-        return peak_indices_filtered_all
+        return peak_indices_all
 
     def compute_correlation_ca_instance(self, instance):
         """
