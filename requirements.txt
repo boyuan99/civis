@@ -8,3 +8,4 @@ tornado==6.3.3
 tqdm==4.66.2
 tdt==0.6.6
 mne==1.7.1
+seaborn==0.13.2
