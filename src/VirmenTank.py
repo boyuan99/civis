@@ -8,7 +8,7 @@ from scipy.signal import find_peaks, savgol_filter
 class VirmenTank:
     def __init__(self,
                  virmen_path,
-                 maze_type,
+                 maze_type=None,
                  threshold=None,
                  virmen_data_length=None,
                  vm_rate=20,
@@ -19,6 +19,7 @@ class VirmenTank:
                  polyorder=3,
                  height=8):
 
+        self.extend_data = None
         self.virmen_path = virmen_path
         self.vm_rate = vm_rate
         self.session_duration = session_duration
@@ -27,13 +28,13 @@ class VirmenTank:
         self.polyorder = polyorder  # Polynomial order
         self.velocity_height = velocity_height
         self.velocity_distance = velocity_distance
-        self.maze_type = maze_type
+        self.maze_type = self.determine_maze_type() if maze_type is None else maze_type
         self.t = np.arange(0, self.session_duration, 1 / self.vm_rate)
 
         self.virmen_trials, self.virmen_data = self.read_and_process_data(self.virmen_path, threshold=self.threshold,
                                                                           length=virmen_data_length,
                                                                           maze_type=maze_type)
-        self.trials_end_indices = self.calculate_virmen_trials_end_indices(maze_type)
+        self.trials_end_indices = self.calculate_virmen_trials_end_indices(self.maze_type)
         self.lick_raw, self.lick_raw_mask, self.lick = self.find_lick_data()
         self.pstcr_raw, self.pstcr = self.find_position_movement_rate()  # position change rate
         self.velocity = self.find_velocity()
@@ -51,14 +52,18 @@ class VirmenTank:
         self.lick_edge_indices = np.where(np.diff(self.lick) > 0)[0]
         self.movement_onset_indices = self.find_movement_onset(self.smoothed_velocity, self.velocity_peak_indices)
 
-    @staticmethod
-    def read_and_process_data(file_path, threshold=None, length=None, maze_type=None):
-
+    def read_and_process_data(self, file_path, threshold=None, length=None, maze_type=None):
         if threshold is None:
             threshold = [70.0, -70.0]
 
         if maze_type is None:
-            maze_type = 'straight25'
+            maze_type = self.determine_maze_type()
+
+        determined_maze_type = self.determine_maze_type()
+        if maze_type != determined_maze_type:
+            raise ValueError(
+                f"Provided maze_type '{maze_type}' does not match the determined maze type '{determined_maze_type}'. "
+                f"Please check your input or the maze configuration.")
 
         data = pd.read_csv(file_path, sep=r'\s+|,', engine='python', header=None)
 
@@ -84,13 +89,30 @@ class VirmenTank:
                     trials.append(data[start:i + 1].to_dict(orient='list'))
                     start = i + 1
 
-        elif maze_type.lower() == 'turnv0':
+        elif maze_type.lower() in ['turnv0', 'turnv1']:
             for i in range(len(data)):
                 if abs(data.iloc[i]['y']) + abs(data.iloc[i]['x']) >= 175:
                     trials.append(data[start:i + 1].to_dict(orient='list'))
                     start = i + 1
 
+            if maze_type.lower() == 'turnv1':
+                self.extend_data = MazeV1Tank(trials, data)
+
         return [trials, data]
+
+    def determine_maze_type(self):
+        data = pd.read_csv(self.virmen_path, sep=r'\s+|,', engine='python', header=None)
+        potential_names = ['x', 'y', 'face_angle', 'dx', 'dy', 'lick', 'time_stamp', 'maze_type']
+        data.columns = potential_names[:data.shape[1]]
+
+        if 'maze_type' in data.columns:
+            return "turnv1"
+        elif np.any(data['y'] > 60.0) or np.any(data['y'] < -60.0) \
+                or np.any(data['x'] > 12) or np.any(data['x'] < -12):
+            return "turnv0"
+        elif np.any(data['y'] > 30) or np.any(data['y'] < -30):
+            return "straight50"
+        return "short25"
 
     def calculate_virmen_trials_end_indices(self, maze_type=None):
         """
@@ -106,7 +128,7 @@ class VirmenTank:
             indices = np.array(self.virmen_data.index[self.virmen_data['y'].abs() > 50].tolist())
             indices = indices[np.where(indices < self.vm_rate * self.session_duration)]
 
-        elif maze_type.lower() == 'turnv0':
+        elif maze_type.lower() in ['turnv0', 'turnv1']:
             indices = np.array(self.virmen_data.index[abs(self.virmen_data['y']) +
                                                       abs(self.virmen_data['x']) >= 175].tolist())
             indices = indices[np.where(indices < self.vm_rate * self.session_duration)]
@@ -471,6 +493,121 @@ class VirmenTank:
         self.output_bokeh_plot(layout, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite)
 
         return layout
+
+
+class MazeV1Tank():
+    def __init__(self, trials, data):
+        self.virmen_trials = trials
+        self.virmen_data = data
+        self.correct_array = self.analyze_trials_correctness()
+        self.maze_type_array = self.get_maze_type_array()
+        self.confusion_matrix = self.generate_confusion_matrix()
+
+    @staticmethod
+    def determine_trial_correctness(trial_data):
+        """
+        Determines whether a trial is correct based on the turning direction and maze_type.
+
+        :param trial_data: Dictionary containing the trial data
+        :return: Boolean indicating whether the trial is correct
+        """
+        # Extract relevant data
+        x_values = trial_data['x']
+        maze_type = trial_data['maze_type'][7]
+
+        actual_turn = 'left' if x_values[-1] < 0 else 'right'
+        correct_turn = 'left' if maze_type == 0 else 'right'
+
+        # Check if the actual turn matches the correct turn
+        return actual_turn == correct_turn
+
+    def analyze_trials_correctness(self):
+        """
+        Analyzes all trials and returns a list of booleans indicating correctness.
+
+        :return: List of booleans, True for correct trials, False for incorrect ones
+        """
+        correctness = []
+        for trial in self.virmen_trials:
+            is_correct = self.determine_trial_correctness(trial)
+            correctness.append(is_correct)
+        return correctness
+
+    def get_maze_type_array(self):
+
+        maze_type_array = []
+        for i in range(len(self.virmen_trials)):
+            maze_type_array.append(self.virmen_trials[i]['maze_type'][-1])
+
+        return maze_type_array
+
+    def generate_confusion_matrix(self, print_info=False):
+        """
+        Generates a confusion matrix based on maze types and trial correctness.
+
+        :param maze_types: List of maze types (0 for left, 1 for right)
+        :param correctness: List of booleans indicating trial correctness
+        :return: 2x2 numpy array representing the confusion matrix
+        """
+        confusion_matrix = np.zeros((2, 2), dtype=int)
+
+        for maze_type, is_correct in zip(self.maze_type_array, self.correct_array):
+            if maze_type == 0:  # Left turn
+                if is_correct:
+                    confusion_matrix[0, 0] += 1  # True Positive
+                else:
+                    confusion_matrix[0, 1] += 1  # False Negative
+            else:  # Right turn
+                if is_correct:
+                    confusion_matrix[1, 1] += 1  # True Negative
+                else:
+                    confusion_matrix[1, 0] += 1  # False Positive
+
+        if print_info:
+            cm = confusion_matrix
+            print("Confusion Matrix:")
+            print(cm)
+            print("\nInterpretation:")
+            print(f"True Positives (Correct Left Turns): {cm[0, 0]}")
+            print(f"False Negatives (Incorrect Left Turns): {cm[0, 1]}")
+            print(f"False Positives (Incorrect Right Turns): {cm[1, 0]}")
+            print(f"True Negatives (Correct Right Turns): {cm[1, 1]}")
+
+            # Calculate and print additional metrics
+            total_trials = np.sum(cm)
+            accuracy = (cm[0, 0] + cm[1, 1]) / total_trials
+            print(f"\nAccuracy: {accuracy:.2%}")
+
+            left_precision = cm[0, 0] / (cm[0, 0] + cm[1, 0]) if (cm[0, 0] + cm[1, 0]) > 0 else 0
+            right_precision = cm[1, 1] / (cm[1, 1] + cm[0, 1]) if (cm[1, 1] + cm[0, 1]) > 0 else 0
+            print(f"Left Turn Precision: {left_precision:.2%}")
+            print(f"Right Turn Precision: {right_precision:.2%}")
+
+            left_recall = cm[0, 0] / (cm[0, 0] + cm[0, 1]) if (cm[0, 0] + cm[0, 1]) > 0 else 0
+            right_recall = cm[1, 1] / (cm[1, 1] + cm[1, 0]) if (cm[1, 1] + cm[1, 0]) > 0 else 0
+            print(f"Left Turn Recall: {left_recall:.2%}")
+            print(f"Right Turn Recall: {right_recall:.2%}")
+
+        return confusion_matrix
+
+    def plot_confusion_matrix(self):
+        """
+        Plots the confusion matrix as a heatmap.
+
+        :param confusion_matrix: 2x2 numpy array representing the confusion matrix
+        """
+
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+
+        plt.figure(figsize=(10, 8))
+        sns.heatmap(self.confusion_matrix, annot=True, fmt='d', cmap='Blues',
+                    xticklabels=['Left', 'Right'], yticklabels=['Left', 'Right'])
+        plt.title('Confusion Matrix of Animal Turns')
+        plt.xlabel('Actual Turn')
+        plt.ylabel('Correct Turn')
+        plt.show()
+
 
 
 if __name__ == "__main__":
