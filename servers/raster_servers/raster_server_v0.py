@@ -5,6 +5,7 @@ from bokeh.events import SelectionGeometry, Reset
 import pickle
 import numpy as np
 import json
+import os
 
 
 def raster_bkapp_v0(doc):
@@ -17,13 +18,21 @@ def raster_bkapp_v0(doc):
         peak_indices_path = config['ProcessedFilePath'] + session_name + "/" + session_name + "_peak_indices.pkl"
         virmen_path = config['VirmenFilePath'] + session_name + ".txt"
 
-        ci = CITank(neuron_path, virmen_path, maze_type="turnv0")
+        ci = CITank(neuron_path, virmen_path)
         print("Successfully loaded: " + neuron_path)
 
-        print("Loading peak indices...")
-        with open(peak_indices_path, 'rb') as f:
-            peak_indices = pickle.load(f)
-        print("Successfully loaded: " + peak_indices_path)
+        # load in the peak indices
+        if os.path.exists(peak_indices_path):
+            print("Found peak indices file, loading...")
+            with open(peak_indices_path, 'rb') as f:
+                peak_indices = pickle.load(f)
+            print("Loaded peak indices!")
+        else:
+            print("Peak indices file not found, calculating...")
+            peak_indices = ci.find_peaks_in_traces(notebook=False)
+            with open(peak_indices_path, 'wb') as f:
+                pickle.dump(peak_indices, f)
+            print("Saved peak indices!")
 
         spike_times = peak_indices
         spike_stats = ci.get_spike_statistics(peak_indices)
