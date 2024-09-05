@@ -7,7 +7,7 @@ class ElecTank(VirmenTank):
     def __init__(self,
                  elec_path,
                  virmen_path,
-                 maze_type,
+                 maze_type=None,
                  vm_rate=20,
                  resample_fs=200,
                  session_duration=30 * 60,

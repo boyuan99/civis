@@ -10,7 +10,7 @@ class CITank(VirmenTank):
     def __init__(self,
                  neuron_path,
                  virmen_path,
-                 maze_type,
+                 maze_type=None,
                  threshold=None,
                  virmen_data_length=None,
                  ci_rate=20,
