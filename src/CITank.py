@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import h5py
 import json
+import os
 from .VirmenTank import VirmenTank
 from scipy.signal import savgol_filter
 
@@ -53,8 +54,13 @@ class CITank(VirmenTank):
         :param filename: .mat file containing config, spatial, Cn, Coor, ids, etc...
         :return: essential variables for plotting
         """
-        with open('config.json', 'r') as file:
-            config = json.load(file)
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(current_dir)
+        config_path = os.path.join(project_root, 'config.json')
+
+        # Load the config
+        with open(config_path, 'r') as config_file:
+            config = json.load(config_file)
 
         with h5py.File(filename, 'r') as file:
             data = file['data']
