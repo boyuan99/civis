@@ -4,3 +4,4 @@ from .trajectory_server_v2 import trajectory_bkapp_v2
 from .trajectory_server_v3 import trajectory_bkapp_v3
 from .trajectory_server_v4 import trajectory_bkapp_v4
 from .trajectory_server_v5 import trajectory_bkapp_v5
+from .trajectory_server_v6 import trajectory_bkapp_v6

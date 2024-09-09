@@ -1,17 +1,17 @@
 from bokeh.plotting import figure
-from bokeh.models import ColumnDataSource, Slider, Button, Arrow, VeeHead, Div, TextInput, Spacer
+from bokeh.models import ColumnDataSource, Slider, Button, Arrow, VeeHead, Div, TextInput, Spacer, CustomJS
 from bokeh.layouts import column, row
 import numpy as np
 import json
 from src import VirmenTank
 
 
-def trajectory_bkapp_v3(doc):
+def trajectory_bkapp_v6(doc):
     global source, trials
 
     trials = []
     source = ColumnDataSource({'x': [], 'y': [], 'face_angle': []})
-    plot = figure(width=550, height=800,
+    plot = figure(width=550, height=800, y_range=(-100, 180),
                   title="Mouse Movement Trajectory")
     plot.line('x', 'y', source=source, line_width=2)
 
@@ -20,19 +20,16 @@ def trajectory_bkapp_v3(doc):
                   x_end=0, y_end=1, line_color="orange")
     plot.add_layout(arrow)
 
-    xpts = np.array([-67.5, -50, 0, 50, 67.5, 10, 10, 67.5, 50, 0, -50, -67.5, -10, -10, -67.5])
-    ypts = np.array([107.5, 125, 75, 125, 107.5, 50, -50, -107.5, -125, -75, -125, -107.5, -50, 50, 107.5])
+    xpts = np.array([-67.5, -50, 0, 50, 67.5, 10, 10, -10, -10, -10, -67.5])
+    ypts = np.array([107.5, 125, 75, 125, 107.5, 50, -65, -65, -50, 50, 107.5])
 
     source_maze = ColumnDataSource(dict(
         xs=[xpts],
         ys=[ypts],
-    ),
-    )
+    ))
 
     plot.multi_line(xs="xs", ys="ys", source=source_maze, line_color="#8073ac", line_width=2)
-    plot.patch([67.5, 50, 70, 87.5], [-107.5, -125, -145, -127.5], alpha=0.5)
     plot.patch([-67.5, -50, -70, -87.5], [107.5, 125, 145, 127.5], alpha=0.5)
-    plot.patch([-67.5, -50, -70, -87.5], [-107.5, -125, -145, -127.5], alpha=0.5)
     plot.patch([67.5, 50, 70, 87.5], [107.5, 125, 145, 127.5], alpha=0.5)
 
     # Widgets
@@ -44,6 +41,7 @@ def trajectory_bkapp_v3(doc):
     previous_button = Button(label="Previous", width=100)
     next_button = Button(label="Next", width=100)
     starts_div = Div(text="Start Time: ", width=400)
+    error_div = Div(text="")
 
     trial_slider.disabled = True
     progress_slider.disabled = True
@@ -54,42 +52,67 @@ def trajectory_bkapp_v3(doc):
     def load_data():
         global source, trials, starts
 
-        with open('config.json', 'r') as file:
-            config = json.load(file)
+        try:
+            with open('config.json', 'r') as file:
+                config = json.load(file)
 
-        session_name = filename_input.value
-        if ".txt" in session_name:
-            file = config['VirmenFilePath'] + session_name
-        else:
-            file = config['VirmenFilePath'] + session_name + ".txt"
+            session_name = filename_input.value
+            if ".txt" in session_name:
+                file = config['VirmenFilePath'] + session_name
+            else:
+                file = config['VirmenFilePath'] + session_name + ".txt"
 
-        vm = VirmenTank(file, height=35)
-        trials = vm.virmen_trials
-        starts = [x/vm.vm_rate for x in vm.trials_start_indices]
 
-        print("Successfully loaded: " + file)
+            # Check if the maze type is correct
+            if VirmenTank.determine_maze_type(file).lower() != "turnv1":
+                raise ValueError(f"Invalid maze type. Expected 'TurnV1', but got '{VirmenTank.determine_maze_type(file)}'")
+            else:
+                vm = VirmenTank(file, height=35)
 
-        if trials:
-            # Enable the widgets now that data is loaded
-            trial_slider.disabled = False
-            progress_slider.disabled = False
-            play_button.disabled = False
-            previous_button.disabled = False
-            next_button.disabled = False
+            trials = vm.virmen_trials
+            starts = [x / vm.vm_rate for x in vm.trials_start_indices]
 
-            initial_trial = trials[0]
-            new_data = {'x': [initial_trial['x'][0]],
-                        'y': [initial_trial['y'][0]],
-                        'face_angle': [initial_trial['face_angle'][0]]}
-            source.data = new_data
+            print("Successfully loaded: " + file)
+            error_div.text = ""  # Clear any previous error messages
 
-            trial_slider.end = len(trials) - 1
-            trial_slider.value = 0
+            if trials:
+                # Enable the widgets now that data is loaded
+                trial_slider.disabled = False
+                progress_slider.disabled = False
+                play_button.disabled = False
+                previous_button.disabled = False
+                next_button.disabled = False
 
-            progress_slider.end = 100
-            progress_slider.value = 0
+                initial_trial = trials[0]
+                new_data = {'x': [initial_trial['x'][0]],
+                            'y': [initial_trial['y'][0]],
+                            'face_angle': [initial_trial['face_angle'][0]]}
+                source.data = new_data
 
-            starts_div.text = f"Start Time: {starts[0]}"
+                trial_slider.end = len(trials) - 1
+                trial_slider.value = 0
+
+                progress_slider.end = 100
+                progress_slider.value = 0
+
+                starts_div.text = f"Start Time: {starts[0]}"
+
+        except ValueError as e:
+            error_div.text = f"Error: {str(e)}"
+            # Disable widgets if data loading fails
+            trial_slider.disabled = True
+            progress_slider.disabled = True
+            play_button.disabled = True
+            previous_button.disabled = True
+            next_button.disabled = True
+        except Exception as e:
+            error_div.text = f"An unexpected error occurred: {str(e)}"
+            # Disable widgets if data loading fails
+            trial_slider.disabled = True
+            progress_slider.disabled = True
+            play_button.disabled = True
+            previous_button.disabled = True
+            next_button.disabled = True
 
     load_button.on_click(load_data)
 
@@ -145,7 +168,7 @@ def trajectory_bkapp_v3(doc):
 
             play_button.label = "❚❚ Pause"
             is_playing = True
-            # Schedule the periodic callback with an interval of 100ms (0.1 seconds)
+            # Schedule the periodic callback with an interval of 50ms (0.05 seconds)
             play_interval_id = doc.add_periodic_callback(update_progress, 50)
         else:
             play_button.label = "► Play"
@@ -170,6 +193,7 @@ def trajectory_bkapp_v3(doc):
 
     file_input_row = row(filename_input, column(Spacer(height=20), load_button))
     trial_navigation_row = row(previous_button, next_button)
-    tool_widgets = column(file_input_row, trial_slider, progress_slider, play_button, trial_navigation_row, starts_div)
+    tool_widgets = column(file_input_row, trial_slider, progress_slider, play_button, trial_navigation_row, starts_div,
+                          error_div)
     layout = row(plot, Spacer(width=30), tool_widgets)
     doc.add_root(layout)
