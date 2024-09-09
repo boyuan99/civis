@@ -28,12 +28,13 @@ class VirmenTank:
         self.polyorder = polyorder  # Polynomial order
         self.velocity_height = velocity_height
         self.velocity_distance = velocity_distance
-        self.maze_type = self.determine_maze_type() if maze_type is None else maze_type
+        self.maze_type = self.determine_maze_type(self.virmen_path) if maze_type is None else maze_type
         self.t = np.arange(0, self.session_duration, 1 / self.vm_rate)
 
-        self.virmen_trials, self.virmen_data = self.read_and_process_data(self.virmen_path, threshold=self.threshold,
-                                                                          length=virmen_data_length,
-                                                                          maze_type=maze_type)
+        self.virmen_trials, self.virmen_data, self.trials_start_indices = self.read_and_process_data(self.virmen_path,
+                                                                                                     threshold=self.threshold,
+                                                                                                     length=virmen_data_length,
+                                                                                                     maze_type=maze_type)
         self.trials_end_indices = self.calculate_virmen_trials_end_indices(self.maze_type)
         self.lick_raw, self.lick_raw_mask, self.lick = self.find_lick_data()
         self.pstcr_raw, self.pstcr = self.find_position_movement_rate()  # position change rate
@@ -57,9 +58,9 @@ class VirmenTank:
             threshold = [70.0, -70.0]
 
         if maze_type is None:
-            maze_type = self.determine_maze_type()
+            maze_type = self.determine_maze_type(file_path)
 
-        determined_maze_type = self.determine_maze_type()
+        determined_maze_type = self.determine_maze_type(file_path)
         if maze_type != determined_maze_type:
             raise ValueError(
                 f"Provided maze_type '{maze_type}' does not match the determined maze type '{determined_maze_type}'. "
@@ -75,33 +76,38 @@ class VirmenTank:
 
         # Identifying trials
         trials = []
+        starts = []
         start = 0
 
         if maze_type.lower() == 'straight25':
             for i in range(len(data)):
                 if data.iloc[i]['y'] >= 25 or data.iloc[i]['y'] <= -25:
                     trials.append(data[start:i + 1].to_dict(orient='list'))
+                    starts.append(start)
                     start = i + 1
 
         elif maze_type.lower() == 'straight50':
             for i in range(len(data)):
                 if data.iloc[i]['y'] >= 50 or data.iloc[i]['y'] <= -50:
                     trials.append(data[start:i + 1].to_dict(orient='list'))
+                    starts.append(start)
                     start = i + 1
 
         elif maze_type.lower() in ['turnv0', 'turnv1']:
             for i in range(len(data)):
                 if abs(data.iloc[i]['y']) + abs(data.iloc[i]['x']) >= 175:
                     trials.append(data[start:i + 1].to_dict(orient='list'))
+                    starts.append(start)
                     start = i + 1
 
             if maze_type.lower() == 'turnv1':
                 self.extend_data = MazeV1Tank(trials, data)
 
-        return [trials, data]
+        return [trials, data, starts]
 
-    def determine_maze_type(self):
-        data = pd.read_csv(self.virmen_path, sep=r'\s+|,', engine='python', header=None)
+    @classmethod
+    def determine_maze_type(cls, virmen_path):
+        data = pd.read_csv(virmen_path, sep=r'\s+|,', engine='python', header=None)
         potential_names = ['x', 'y', 'face_angle', 'dx', 'dy', 'lick', 'time_stamp', 'maze_type']
         data.columns = potential_names[:data.shape[1]]
 
@@ -607,7 +613,6 @@ class MazeV1Tank():
         plt.xlabel('Actual Turn')
         plt.ylabel('Correct Turn')
         plt.show()
-
 
 
 if __name__ == "__main__":
