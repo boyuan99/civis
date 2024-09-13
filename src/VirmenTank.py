@@ -451,26 +451,45 @@ class VirmenTank:
         :return: None
         """
         from bokeh.plotting import figure
-        from bokeh.models import Span, HoverTool
-        from bokeh.layouts import column
+        from bokeh.models import Span, HoverTool, CheckboxGroup, CustomJS
+        from bokeh.layouts import column, row
 
         p = figure(width=800, height=400, y_range=[0, 1.2], active_drag='pan', active_scroll='wheel_zoom', title='Lick')
         p.line(self.t, self.lick_raw, line_color='navy', legend_label='raw', line_width=1)
         p.line(self.t, self.lick_raw_mask, line_color='palevioletred', legend_label='mask', line_width=2)
         p.line(self.t, self.lick, line_color='gold', legend_label='filtered', line_width=2)
 
+        # Different groups of spans
+        trials_end_spans = []
+        velocity_peak_spans = []
+        movement_onset_spans = []
+
+        # Adding spans for trials end
         for idx in self.trials_end_indices:
-            vline = Span(location=idx / self.vm_rate, dimension='height', line_color='green', line_width=2)
-            p.add_layout(vline)
+            vline = Span(location=idx / self.vm_rate, dimension='height', line_color='green', line_width=2,
+                         visible=True)
+            trials_end_spans.append(vline)
+            p.add_layout(vline, 'below')
+
+        # Adding spans for velocity peaks
+        for idx in self.velocity_peak_indices:
+            vline = Span(location=idx / self.vm_rate, dimension='height', line_color='blue', line_width=2, visible=True)
+            velocity_peak_spans.append(vline)
+            p.add_layout(vline, 'below')
+
+        # Adding spans for movement onsets
+        for idx in self.movement_onset_indices:
+            vline = Span(location=idx / self.vm_rate, dimension='height', line_color='brown', line_width=2,
+                         visible=True)
+            movement_onset_spans.append(vline)
+            p.add_layout(vline, 'below')
 
         p.legend.click_policy = "hide"
-
         hover = HoverTool()
         hover.tooltips = [
             ("Index", "$index"),
             ("(x, y)", "($x, $y)"),
         ]
-
         p.add_tools(hover)
 
         ################################################################
@@ -481,20 +500,48 @@ class VirmenTank:
         p_v.line(self.t, self.pstcr, line_color='red', legend_label='position change rate', line_width=2)
         p_v.line(self.t, self.velocity, line_color='purple', legend_label='velocity', line_width=2)
 
+        # Copy spans to velocity plot
+        for span in trials_end_spans + velocity_peak_spans + movement_onset_spans:
+            p_v.add_layout(span)
+
         hover_v = HoverTool()
         hover_v.tooltips = [
             ("Index", "$index"),
             ("(x, y)", "($x, $y)"),
         ]
-
         p_v.add_tools(hover_v)
         p_v.legend.click_policy = "hide"
 
-        for idx in self.trials_end_indices:
-            vline = Span(location=idx / self.vm_rate, dimension='height', line_color='green', line_width=2)
-            p_v.add_layout(vline)
+        # Checkboxes for toggling span visibility
+        trials_checkbox = CheckboxGroup(labels=["Show Trial Ends"], active=[0], width=150)
+        velocity_checkbox = CheckboxGroup(labels=["Show Velocity Peaks"], active=[0], width=150)
+        movement_checkbox = CheckboxGroup(labels=["Show Movement Onsets"], active=[0], width=150)
 
-        layout = column(p, p_v)
+        # Custom JS callbacks for each checkbox
+        trials_callback = CustomJS(args={'spans': trials_end_spans, 'checkbox': trials_checkbox}, code="""
+            for (let span of spans) {
+                span.visible = checkbox.active.includes(0);
+            }
+        """)
+        trials_checkbox.js_on_change('active', trials_callback)
+
+        velocity_callback = CustomJS(args={'spans': velocity_peak_spans, 'checkbox': velocity_checkbox}, code="""
+            for (let span of spans) {
+                span.visible = checkbox.active.includes(0);
+            }
+        """)
+        velocity_checkbox.js_on_change('active', velocity_callback)
+
+        movement_callback = CustomJS(args={'spans': movement_onset_spans, 'checkbox': movement_checkbox}, code="""
+            for (let span of spans) {
+                span.visible = checkbox.active.includes(0);
+            }
+        """)
+        movement_checkbox.js_on_change('active', movement_callback)
+
+        # Layout the plot and the checkboxes
+        checkbox_row = row(trials_checkbox, velocity_checkbox, movement_checkbox)
+        layout = column(checkbox_row, p, p_v)
 
         self.output_bokeh_plot(layout, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite)
 
