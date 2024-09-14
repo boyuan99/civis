@@ -386,8 +386,8 @@ class VirmenTank:
 
         return onsets
 
-    @staticmethod
-    def output_bokeh_plot(plot, save_path=None, title=None, notebook=False, overwrite=False):
+    @classmethod
+    def output_bokeh_plot(cls, plot, save_path=None, title=None, notebook=False, overwrite=False):
         import os
         from bokeh.plotting import figure
         from bokeh.layouts import LayoutDOM
@@ -643,23 +643,73 @@ class MazeV1Tank():
 
         return confusion_matrix
 
-    def plot_confusion_matrix(self):
+    def plot_confusion_matrix(self, save_path=None, title=None, notebook=False, overwrite=False, backend='matplotlib'):
         """
         Plots the confusion matrix as a heatmap.
 
-        :param confusion_matrix: 2x2 numpy array representing the confusion matrix
+        :param backend: The backend to use for plotting ('matplotlib' or 'bokeh').
         """
-
         import matplotlib.pyplot as plt
         import seaborn as sns
+        from bokeh.plotting import figure
+        from bokeh.models import BasicTicker, ColorBar, LinearColorMapper, ColumnDataSource
+        from bokeh.palettes import Blues8
 
-        plt.figure(figsize=(10, 8))
-        sns.heatmap(self.confusion_matrix, annot=True, fmt='d', cmap='Blues',
-                    xticklabels=['Left', 'Right'], yticklabels=['Left', 'Right'])
-        plt.title('Confusion Matrix of Animal Turns')
-        plt.xlabel('Actual Turn')
-        plt.ylabel('Correct Turn')
-        plt.show()
+        if backend == 'matplotlib':
+            fig, ax = plt.subplots(figsize=(5, 4))
+            sns.heatmap(self.confusion_matrix, annot=True, fmt='d', cmap='Blues',
+                        xticklabels=['Left', 'Right'], yticklabels=['Left', 'Right'], ax=ax)
+            ax.set_title('Confusion Matrix of Animal Turns')
+            ax.set_xlabel('Actual Turn')
+            ax.set_ylabel('Predicted Turn')
+
+            return fig
+
+        elif backend == 'bokeh':
+
+
+            # Assuming self.confusion_matrix is a 2x2 numpy array
+            confusion_matrix = self.confusion_matrix
+
+            # Create data for the heatmap
+            x_labels = ['Left', 'Right']
+            y_labels = ['Left', 'Right']
+            data = {
+                'x': [x for x in x_labels for _ in y_labels],
+                'y': y_labels * len(x_labels),
+                'value': confusion_matrix.flatten().tolist(),
+            }
+
+            source = ColumnDataSource(data=data)
+
+            # Create the color mapper
+            color_mapper = LinearColorMapper(palette=Blues8[::-1], low=0, high=confusion_matrix.max())
+
+            # Create the figure
+            p = figure(title="Confusion Matrix of Animal Turns",
+                       x_range=x_labels, y_range=list(reversed(y_labels)),
+                       x_axis_label="Actual Turn", y_axis_label="Predicted Turn",
+                       width=400, height=350, toolbar_location=None, tools="")
+
+            # Create the heatmap
+            p.rect(x='x', y='y', width=1, height=1, source=source,
+                   line_color=None, fill_color={'field': 'value', 'transform': color_mapper})
+
+            # Add color bar
+            color_bar = ColorBar(color_mapper=color_mapper, ticker=BasicTicker(desired_num_ticks=len(Blues8)),
+                                 label_standoff=6, border_line_color=None, location=(0, 0))
+
+            p.add_layout(color_bar, 'right')
+
+            # Add text annotations
+            p.text(x='x', y='y', text='value', source=source,
+                   text_align="center", text_baseline="middle")
+
+            VirmenTank.output_bokeh_plot(p, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite)
+
+            return p
+        else:
+            raise ValueError("Unsupported backend. Use 'matplotlib' or 'bokeh'.")
 
 
 if __name__ == "__main__":
