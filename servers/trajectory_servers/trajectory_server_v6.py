@@ -1,13 +1,15 @@
 from bokeh.plotting import figure
-from bokeh.models import ColumnDataSource, Slider, Button, Arrow, VeeHead, Div, TextInput, Spacer, CustomJS
+from bokeh.models import ColumnDataSource, Slider, Button, Arrow, VeeHead, Div, TextInput, Spacer, CustomJS, \
+    LinearColorMapper, ColorBar, BasicTicker
 from bokeh.layouts import column, row
+from bokeh.palettes import Blues8
 import numpy as np
 import json
 from src import VirmenTank
 
 
 def trajectory_bkapp_v6(doc):
-    global source, trials
+    global source, trials, confusion_matrix_source
 
     trials = []
     source = ColumnDataSource({'x': [], 'y': [], 'face_angle': []})
@@ -49,8 +51,36 @@ def trajectory_bkapp_v6(doc):
     previous_button.disabled = True
     next_button.disabled = True
 
+    # Initialize confusion matrix plot with default data
+    default_matrix = np.array([[-1, -1], [-1, -1]])
+    x_labels = ['Left', 'Right']
+    y_labels = ['Left', 'Right']
+    confusion_matrix_source = ColumnDataSource(data={
+        'x': [x for x in x_labels for _ in y_labels],
+        'y': y_labels * len(x_labels),
+        'value': default_matrix.flatten().tolist(),
+    })
+
+    color_mapper = LinearColorMapper(palette=Blues8[::-1], low=-1, high=1)
+
+    confusion_matrix_plot = figure(title="Confusion Matrix of Animal Turns",
+                                   x_range=x_labels, y_range=list(reversed(y_labels)),
+                                   x_axis_label="Actual Turn", y_axis_label="Predicted Turn",
+                                   width=400, height=350, toolbar_location=None, tools="")
+
+    confusion_matrix_plot.rect(x='x', y='y', width=1, height=1, source=confusion_matrix_source,
+                               line_color=None, fill_color={'field': 'value', 'transform': color_mapper})
+
+    color_bar = ColorBar(color_mapper=color_mapper, ticker=BasicTicker(desired_num_ticks=len(Blues8)),
+                         label_standoff=6, border_line_color=None, location=(0, 0))
+
+    confusion_matrix_plot.add_layout(color_bar, 'right')
+
+    confusion_matrix_plot.text(x='x', y='y', text='value', source=confusion_matrix_source,
+                               text_align="center", text_baseline="middle")
+
     def load_data():
-        global source, trials, starts
+        global source, trials, starts, confusion_matrix_source
 
         try:
             with open('config.json', 'r') as file:
@@ -62,10 +92,10 @@ def trajectory_bkapp_v6(doc):
             else:
                 file = config['VirmenFilePath'] + session_name + ".txt"
 
-
             # Check if the maze type is correct
             if VirmenTank.determine_maze_type(file).lower() != "turnv1":
-                raise ValueError(f"Invalid maze type. Expected 'TurnV1', but got '{VirmenTank.determine_maze_type(file)}'")
+                raise ValueError(
+                    f"Invalid maze type. Expected 'TurnV1', but got '{VirmenTank.determine_maze_type(file)}'")
             else:
                 vm = VirmenTank(file, height=35)
 
@@ -96,6 +126,14 @@ def trajectory_bkapp_v6(doc):
                 progress_slider.value = 0
 
                 starts_div.text = f"Start Time: {starts[0]}"
+
+                # Update confusion matrix plot
+                new_confusion_matrix = vm.extend_data.confusion_matrix
+                confusion_matrix_source.data.update({
+                    'value': new_confusion_matrix.flatten().tolist()
+                })
+                color_mapper.low = new_confusion_matrix.min()
+                color_mapper.high = new_confusion_matrix.max()
 
         except ValueError as e:
             error_div.text = f"Error: {str(e)}"
@@ -195,5 +233,5 @@ def trajectory_bkapp_v6(doc):
     trial_navigation_row = row(previous_button, next_button)
     tool_widgets = column(file_input_row, trial_slider, progress_slider, play_button, trial_navigation_row, starts_div,
                           error_div)
-    layout = row(plot, Spacer(width=30), tool_widgets)
+    layout = row(plot, Spacer(width=30), column(tool_widgets, confusion_matrix_plot))
     doc.add_root(layout)
