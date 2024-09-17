@@ -36,6 +36,8 @@ class VirmenTank:
                                                                                                      length=virmen_data_length,
                                                                                                      maze_type=maze_type)
         self.trials_end_indices = self.calculate_virmen_trials_end_indices(self.maze_type)
+        self.trial_num = len(self.trials_end_indices)
+        self.trial_num_all = len(self.trials_start_indices)
         self.lick_raw, self.lick_raw_mask, self.lick = self.find_lick_data()
         self.pstcr_raw, self.pstcr = self.find_position_movement_rate()  # position change rate
         self.velocity = self.find_velocity()
@@ -112,10 +114,13 @@ class VirmenTank:
         data.columns = potential_names[:data.shape[1]]
 
         if 'maze_type' in data.columns:
-            return "turnv1"
-        elif np.any(data['y'] > 60.0) or np.any(data['y'] < -60.0) \
-                or np.any(data['x'] > 12) or np.any(data['x'] < -12):
-            return "turnv0"
+            arr = data['x']
+            mask = np.abs(arr) < 0.001
+            if np.any(np.convolve(mask, np.ones(40), mode='valid') == 40):
+                return 'turnv1'
+            else:
+                return 'turnv0'
+
         elif np.any(data['y'] > 30) or np.any(data['y'] < -30):
             return "straight50"
         return "short25"
