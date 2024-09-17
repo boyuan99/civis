@@ -1,6 +1,6 @@
 from bokeh.plotting import figure
 from bokeh.models import ColumnDataSource, Slider, Button, Arrow, VeeHead, Div, TextInput, Spacer, CustomJS, \
-    LinearColorMapper, ColorBar, BasicTicker
+    LinearColorMapper, ColorBar, BasicTicker, Select
 from bokeh.layouts import column, row
 from bokeh.palettes import Blues8
 import numpy as np
@@ -9,7 +9,7 @@ from src import VirmenTank
 
 
 def trajectory_bkapp_v6(doc):
-    global source, trials, confusion_matrix_source
+    global source, trials, confusion_matrix_source, correct_array
 
     trials = []
     source = ColumnDataSource({'x': [], 'y': [], 'face_angle': []})
@@ -43,13 +43,20 @@ def trajectory_bkapp_v6(doc):
     previous_button = Button(label="Previous", width=100)
     next_button = Button(label="Next", width=100)
     starts_div = Div(text="Start Time: ", width=400)
+    correctness_div = Div(text="Trial Correctness: ", width=400)
     error_div = Div(text="")
+
+    # New dropdown menus for correct and incorrect trials
+    correct_trials_dropdown = Select(title="Correct Trials:", value="", options=[], width=200)
+    incorrect_trials_dropdown = Select(title="Incorrect Trials:", value="", options=[], width=200)
 
     trial_slider.disabled = True
     progress_slider.disabled = True
     play_button.disabled = True
     previous_button.disabled = True
     next_button.disabled = True
+    correct_trials_dropdown.disabled = True
+    incorrect_trials_dropdown.disabled = True
 
     # Initialize confusion matrix plot with default data
     default_matrix = np.array([[-1, -1], [-1, -1]])
@@ -80,7 +87,7 @@ def trajectory_bkapp_v6(doc):
                                text_align="center", text_baseline="middle")
 
     def load_data():
-        global source, trials, starts, confusion_matrix_source
+        global source, trials, starts, confusion_matrix_source, correct_array
 
         try:
             with open('config.json', 'r') as file:
@@ -101,6 +108,7 @@ def trajectory_bkapp_v6(doc):
 
             trials = vm.virmen_trials
             starts = [x / vm.vm_rate for x in vm.trials_start_indices]
+            correct_array = vm.extend_data.correct_array
 
             print("Successfully loaded: " + file)
             error_div.text = ""  # Clear any previous error messages
@@ -112,6 +120,8 @@ def trajectory_bkapp_v6(doc):
                 play_button.disabled = False
                 previous_button.disabled = False
                 next_button.disabled = False
+                correct_trials_dropdown.disabled = False
+                incorrect_trials_dropdown.disabled = False
 
                 initial_trial = trials[0]
                 new_data = {'x': [initial_trial['x'][0]],
@@ -127,6 +137,11 @@ def trajectory_bkapp_v6(doc):
 
                 starts_div.text = f"Start Time: {starts[0]}"
 
+                if correct_array[0]:
+                    correctness_div.text = f"Trial Correctness: Correct"
+                else:
+                    correctness_div.text = f"Trial Correctness: Wrong"
+
                 # Update confusion matrix plot
                 new_confusion_matrix = vm.extend_data.confusion_matrix
                 confusion_matrix_source.data.update({
@@ -134,6 +149,18 @@ def trajectory_bkapp_v6(doc):
                 })
                 color_mapper.low = new_confusion_matrix.min()
                 color_mapper.high = new_confusion_matrix.max()
+
+                # Update dropdown menus
+                correct_trials = [f"Trial {i}" for i, correct in enumerate(correct_array) if correct]
+                incorrect_trials = [f"Trial {i}" for i, correct in enumerate(correct_array) if not correct]
+
+                correct_trials_dropdown.options = correct_trials
+                incorrect_trials_dropdown.options = incorrect_trials
+
+                if correct_trials:
+                    correct_trials_dropdown.value = correct_trials[0]
+                if incorrect_trials:
+                    incorrect_trials_dropdown.value = incorrect_trials[0]
 
         except ValueError as e:
             error_div.text = f"Error: {str(e)}"
@@ -143,6 +170,8 @@ def trajectory_bkapp_v6(doc):
             play_button.disabled = True
             previous_button.disabled = True
             next_button.disabled = True
+            correct_trials_dropdown.disabled = True
+            incorrect_trials_dropdown.disabled = True
         except Exception as e:
             error_div.text = f"An unexpected error occurred: {str(e)}"
             # Disable widgets if data loading fails
@@ -151,6 +180,8 @@ def trajectory_bkapp_v6(doc):
             play_button.disabled = True
             previous_button.disabled = True
             next_button.disabled = True
+            correct_trials_dropdown.disabled = True
+            incorrect_trials_dropdown.disabled = True
 
     load_button.on_click(load_data)
 
@@ -181,6 +212,11 @@ def trajectory_bkapp_v6(doc):
                     'face_angle': trial_data['face_angle'][:max_index]}
         source.data = new_data
         starts_div.text = f"Start Time: {starts[trial_index]}"
+
+        if correct_array[trial_index]:
+            correctness_div.text = f"Trial Correctness: Correct"
+        else:
+            correctness_div.text = f"Trial Correctness: Wrong"
 
     trial_slider.on_change('value', update_plot)
     progress_slider.on_change('value', update_plot)
@@ -229,9 +265,18 @@ def trajectory_bkapp_v6(doc):
     previous_button.on_click(previous_trial)
     next_button.on_click(next_trial)
 
+    def update_trial_from_dropdown(attr, old, new):
+        if new:
+            trial_index = int(new.split()[1])
+            trial_slider.value = trial_index
+
+    correct_trials_dropdown.on_change('value', update_trial_from_dropdown)
+    incorrect_trials_dropdown.on_change('value', update_trial_from_dropdown)
+
     file_input_row = row(filename_input, column(Spacer(height=20), load_button))
     trial_navigation_row = row(previous_button, next_button)
-    tool_widgets = column(file_input_row, trial_slider, progress_slider, play_button, trial_navigation_row, starts_div,
-                          error_div)
+    dropdown_row = row(correct_trials_dropdown, incorrect_trials_dropdown)
+    tool_widgets = column(file_input_row, trial_slider, progress_slider, play_button,
+                          trial_navigation_row, starts_div, correctness_div, dropdown_row, error_div)
     layout = row(plot, Spacer(width=30), column(tool_widgets, confusion_matrix_plot))
     doc.add_root(layout)
