@@ -35,7 +35,7 @@ class VirmenTank:
                                                                                                      threshold=self.threshold,
                                                                                                      length=virmen_data_length,
                                                                                                      maze_type=maze_type)
-        self.trials_end_indices = self.calculate_virmen_trials_end_indices(self.maze_type)
+        self.trials_end_indices, self.trials_end_indices_all = self.calculate_virmen_trials_end_indices(self.maze_type)
         self.trial_num = len(self.trials_end_indices)
         self.trial_num_all = len(self.trials_start_indices)
         self.lick_raw, self.lick_raw_mask, self.lick = self.find_lick_data()
@@ -132,36 +132,31 @@ class VirmenTank:
         :return: List of indices where 'y' value exceeds the threshold.
         """
         if maze_type.lower() == 'straight25':
-            indices = np.array(self.virmen_data.index[self.virmen_data['y'].abs() > 25].tolist())
-            indices = indices[np.where(indices < self.vm_rate * self.session_duration)]
+            indices_all = np.array(self.virmen_data.index[self.virmen_data['y'].abs() > 25].tolist())
+            indices = indices_all[np.where(indices_all < self.vm_rate * self.session_duration)]
 
         elif maze_type.lower() == 'straight50':
-            indices = np.array(self.virmen_data.index[self.virmen_data['y'].abs() > 50].tolist())
-            indices = indices[np.where(indices < self.vm_rate * self.session_duration)]
+            indices_all = np.array(self.virmen_data.index[self.virmen_data['y'].abs() > 50].tolist())
+            indices = indices_all[np.where(indices_all < self.vm_rate * self.session_duration)]
 
         elif maze_type.lower() in ['turnv0', 'turnv1']:
-            indices = np.array(self.virmen_data.index[abs(self.virmen_data['y']) +
+            indices_all = np.array(self.virmen_data.index[abs(self.virmen_data['y']) +
                                                       abs(self.virmen_data['x']) >= 175].tolist())
-            indices = indices[np.where(indices < self.vm_rate * self.session_duration)]
+            indices = indices_all[np.where(indices_all < self.vm_rate * self.session_duration)]
 
         else:
             indices = []
+            indices_all = []
 
-        return indices
+        return indices, indices_all
 
-    @staticmethod
-    def compute_trial_bounds(data, threshold):
+    def compute_trial_bounds(self):
         """
-        Compute trial boundaries once for the dataset
-
-        Example: trial_bounds = compute_trial_bounds(virmen_data, threshold=[25, -25])
+        Compute trial boundaries using existing start and end indices
         """
         trial_bounds = []
-        start = 0
-        for i in range(len(data)):
-            if data.iloc[i]['y'] >= threshold[0] or data.iloc[i]['y'] <= threshold[1]:
-                trial_bounds.append([start, i])
-                start = i + 1
+        for start, end in zip(self.trials_start_indices, self.trials_end_indices):
+            trial_bounds.append([start, end])
         return trial_bounds
 
     @staticmethod
