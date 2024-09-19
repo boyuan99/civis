@@ -10,9 +10,10 @@ from bokeh.models import (ColumnDataSource, Slider, Button, BoxAnnotation, Span,
 from bokeh.palettes import Turbo256
 from bokeh.layouts import column, row
 
-current_dir = os.path.dirname(__file__)
-parent_dir = os.path.abspath(os.path.join(current_dir, '..'))
-sys.path.insert(0, parent_dir)
+current_dir = os.path.dirname(os.path.abspath(__file__))
+servers_dir = os.path.dirname(current_dir)
+project_root = os.path.dirname(servers_dir)
+sys.path.append(project_root)
 
 
 def get_data(ciTank, peak_indices_par, neuron_id):
@@ -56,7 +57,7 @@ def place_cell_vis_bkapp_v2(doc):
     plot_t1.add_layout(vline1)
     image_tab1 = TabPanel(child=plot_t1, title="Trajectory")
 
-    plot_t2 = figure(width=300, height=800, y_range=[-51, 51], x_range=[-11, 11],  title="Firing Places")
+    plot_t2 = figure(width=300, height=800, y_range=[-51, 51], x_range=[-11, 11], title="Firing Places")
     color_mapper = LinearColorMapper(palette=Turbo256[16:], low=0, high=1)
     plot_t2.image(image='image', x=-11, y=-51, dw=22, dh=102, color_mapper=color_mapper, source=heatmap_source)
     color_bar = ColorBar(color_mapper=color_mapper, width=8, location=(0, 0))
@@ -76,12 +77,13 @@ def place_cell_vis_bkapp_v2(doc):
             peak_trial_source, peak_point_source, remain_trial_source
 
         session_name = session_input.value
-        with open('config.json', 'r') as file:
+        config_path = os.path.join(project_root, 'config.json')
+        with open(config_path, 'r') as file:
             config = json.load(file)
 
         # load in the DataTank
-        neuron_path = config['ProcessedFilePath'] + session_name + '/' + session_name + '_v7.mat'
-        virmen_path = config['VirmenFilePath'] + session_name + ".txt"
+        neuron_path = os.path.join(config['ProcessedFilePath'], session_name, f'{session_name}_v7.mat')
+        virmen_path = os.path.join(config['VirmenFilePath'], f'{session_name}.txt')
         print("Loading neuron data " + session_name + "...")
         ci = CITank(neuron_path, virmen_path, maze_type="straight50", height=4)
         print("Successfully loaded: " + neuron_path)
@@ -113,7 +115,7 @@ def place_cell_vis_bkapp_v2(doc):
         trials = ci.virmen_trials
         data = ci.virmen_data
 
-        trial_bounds = ci.compute_trial_bounds(ci.virmen_data, threshold=[50, -50])
+        trial_bounds = ci.compute_trial_bounds()
         trial_indices = []
         for indices in peak_indices:
             trial_index = ci.find_trial_for_indices(trial_bounds, indices)
@@ -218,4 +220,5 @@ def place_cell_vis_bkapp_v2(doc):
     layout = row(images, Spacer(width=30), tool_widgets)
     doc.add_root(layout)
 
-# place_cell_vis_bkapp_v1(curdoc())
+
+place_cell_vis_bkapp_v2(curdoc())

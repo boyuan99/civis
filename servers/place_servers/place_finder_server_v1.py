@@ -86,7 +86,7 @@ def place_cell_vis_bkapp_v1(doc):
 
         [trials, data] = ci.read_and_process_data(ci.virmen_path, threshold=[25, -25],
                                                   length=ci.session_duration * ci.ci_rate)
-        trial_bounds = ci.compute_trial_bounds(data, threshold=[25, -25])
+        trial_bounds = ci.compute_trial_bounds()
         trial_indices = []
         for indices in peak_indices:
             trial_index = ci.find_trial_for_indices(trial_bounds, indices)
