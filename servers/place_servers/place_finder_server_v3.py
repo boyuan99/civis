@@ -16,15 +16,49 @@ project_root = os.path.dirname(servers_dir)
 sys.path.append(project_root)
 
 
-def get_data(ciTank, peak_indices_par, neuron_id):
+def get_data(ciTank, peak_indices_par, neuron_id, normalization_method='percentile'):
     from scipy.ndimage import gaussian_filter
+    import numpy as np
 
-    x = ciTank.virmen_data.iloc[peak_indices_par[neuron_id]]['x']
-    y = ciTank.virmen_data.iloc[peak_indices_par[neuron_id]]['y']
-    hist, xedges, yedges = np.histogram2d(x, y, bins=(27, 56), range=[[-67.5, 67.5], [-100, 180]])
-    hist_img = np.transpose(hist)
-    smoothed_image = gaussian_filter(hist_img, sigma=1)
-    return smoothed_image
+    # Get x and y coordinates for all timepoints
+    x_all = ciTank.virmen_data['x']
+    y_all = ciTank.virmen_data['y']
+
+    # Create occupancy map
+    occupancy, xedges, yedges = np.histogram2d(x_all, y_all, bins=(27, 56), range=[[-67.5, 67.5], [-100, 180]])
+    occupancy = occupancy.T  # Transpose to match the orientation of our heatmap
+
+    # Get x and y coordinates for spike events
+    x_spikes = ciTank.virmen_data.iloc[peak_indices_par[neuron_id]]['x']
+    y_spikes = ciTank.virmen_data.iloc[peak_indices_par[neuron_id]]['y']
+
+    # Create spike count map
+    spike_counts, _, _ = np.histogram2d(x_spikes, y_spikes, bins=(27, 56), range=[[-67.5, 67.5], [-100, 180]])
+    spike_counts = spike_counts.T  # Transpose to match the orientation of our heatmap
+
+    # Calculate firing rate map (spikes per second)
+    time_spent = occupancy / ciTank.vm_rate  # Convert frame counts to time (assuming vm_rate is in Hz)
+    firing_rate = np.divide(spike_counts, time_spent, where=time_spent!=0)  # Avoid division by zero
+    firing_rate[time_spent == 0] = 0  # Set rate to 0 where no time was spent
+
+    # Apply Gaussian smoothing
+    smoothed_rate = gaussian_filter(firing_rate, sigma=1)
+
+    if normalization_method == 'percentile':
+        # Percentile-based normalization
+        p_low, p_high = np.percentile(smoothed_rate[smoothed_rate > 0], [2, 98])
+        normalized_rate = np.clip(smoothed_rate, p_low, p_high)
+        normalized_rate = (normalized_rate - p_low) / (p_high - p_low)
+    elif normalization_method == 'log':
+        # Logarithmic scaling
+        epsilon = 1e-10  # Small constant to avoid log(0)
+        log_rate = np.log(smoothed_rate + epsilon)
+        normalized_rate = (log_rate - np.min(log_rate)) / (np.max(log_rate) - np.min(log_rate))
+    else:
+        # Simple min-max normalization
+        normalized_rate = (smoothed_rate - np.min(smoothed_rate)) / (np.max(smoothed_rate) - np.min(smoothed_rate))
+
+    return normalized_rate
 
 
 def place_cell_vis_bkapp_v3(doc):
@@ -126,27 +160,7 @@ def place_cell_vis_bkapp_v3(doc):
                                    item not in list(trial_indices[i].values())]
             remain_trial_indices.append(remain_trials_index)
 
-        trial_lines = {'x': [], 'y': []}
-        peak_points = {'px': [], 'py': []}
-        remain_trial_lines = {'rx': [], 'ry': []}
-        # Populate data for peak trials and points
-        for i in range(len(trial_indices[0])):
-            trial_lines['x'].append(
-                trials[list(trial_indices[0].values())[i]]['x'])  # Ensure conversion to list if necessary
-            trial_lines['y'].append(trials[list(trial_indices[0].values())[i]]['y'])
-            peak_points['px'].append(data.iloc[peak_indices[0][i]]['x'])
-            peak_points['py'].append(data.iloc[peak_indices[0][i]]['y'])
-
-        # Populate data for remaining trials
-        for i in remain_trial_indices[0]:
-            remain_trial_lines['rx'].append(trials[i]['x'])
-            remain_trial_lines['ry'].append(trials[i]['y'])
-
-        peak_trial_source.data = trial_lines
-        peak_point_source.data = peak_points
-        remain_trial_source.data = remain_trial_lines
-
-        heatmap_source.data['image'] = [get_data(ci, peak_indices, 0)]
+        update_plot(None, None, None)
 
         print("Visualization loaded!")
         print("=================================================")
@@ -218,6 +232,7 @@ def place_cell_vis_bkapp_v3(doc):
     images = Tabs(tabs=[image_tab1, image_tab2])
     layout = row(images, Spacer(width=30), tool_widgets)
     doc.add_root(layout)
+
 
 # Uncomment the following line to run the Bokeh server application
 place_cell_vis_bkapp_v3(curdoc())
