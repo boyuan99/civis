@@ -16,16 +16,49 @@ project_root = os.path.dirname(servers_dir)
 sys.path.append(project_root)
 
 
-def get_data(ciTank, peak_indices_par, neuron_id):
+def get_data(ciTank, peak_indices_par, neuron_id, normalization_method='percentile'):
     from scipy.ndimage import gaussian_filter
+    import numpy as np
 
-    x = ciTank.virmen_data.iloc[peak_indices_par[neuron_id]]['x']
-    y = ciTank.virmen_data.iloc[peak_indices_par[neuron_id]]['y']
-    hist, xedges, yedges = np.histogram2d(x, y, bins=(20, 100), range=[[-11, 11], [-51, 51]])
-    hist_img = np.transpose(hist)
-    smoothed_image = gaussian_filter(hist_img, sigma=1)
-    return smoothed_image
+    # Get x and y coordinates for all timepoints
+    x_all = ciTank.virmen_data['x']
+    y_all = ciTank.virmen_data['y']
 
+    # Create occupancy map
+    occupancy, xedges, yedges = np.histogram2d(x_all, y_all, bins=(20, 100), range=[[-10, 10], [-50, 50]])
+    occupancy = occupancy.T  # Transpose to match the orientation of our heatmap
+
+    # Get x and y coordinates for spike events
+    x_spikes = ciTank.virmen_data.iloc[peak_indices_par[neuron_id]]['x']
+    y_spikes = ciTank.virmen_data.iloc[peak_indices_par[neuron_id]]['y']
+
+    # Create spike count map
+    spike_counts, _, _ = np.histogram2d(x_spikes, y_spikes, bins=(20, 100), range=[[-10, 10], [-50, 50]])
+    spike_counts = spike_counts.T  # Transpose to match the orientation of our heatmap
+
+    # Calculate firing rate map (spikes per second)
+    time_spent = occupancy / ciTank.vm_rate  # Convert frame counts to time (assuming vm_rate is in Hz)
+    firing_rate = np.divide(spike_counts, time_spent, where=time_spent!=0)  # Avoid division by zero
+    firing_rate[time_spent == 0] = 0  # Set rate to 0 where no time was spent
+
+    # Apply Gaussian smoothing
+    smoothed_rate = gaussian_filter(firing_rate, sigma=1)
+
+    if normalization_method == 'percentile':
+        # Percentile-based normalization
+        p_low, p_high = np.percentile(smoothed_rate[smoothed_rate > 0], [2, 98])
+        normalized_rate = np.clip(smoothed_rate, p_low, p_high)
+        normalized_rate = (normalized_rate - p_low) / (p_high - p_low)
+    elif normalization_method == 'log':
+        # Logarithmic scaling
+        epsilon = 1e-10  # Small constant to avoid log(0)
+        log_rate = np.log(smoothed_rate + epsilon)
+        normalized_rate = (log_rate - np.min(log_rate)) / (np.max(log_rate) - np.min(log_rate))
+    else:
+        # Simple min-max normalization
+        normalized_rate = (smoothed_rate - np.min(smoothed_rate)) / (np.max(smoothed_rate) - np.min(smoothed_rate))
+
+    return normalized_rate
 
 def place_cell_vis_bkapp_v2(doc):
     from src import CITank
@@ -33,7 +66,7 @@ def place_cell_vis_bkapp_v2(doc):
     global session_name, peak_indices, ci, remain_trial_indices, trials, data, \
         peak_trial_source, peak_point_source, remain_trial_source, heatmap_source
 
-    plot_t1 = figure(width=300, height=800, y_range=[-60, 60], x_range=[-10, 10], title="Firing Places")
+    plot_t1 = figure(width=300, height=800, y_range=[-51, 51], x_range=[-11, 11], title="Firing Places")
 
     # ColumnDataSources for different parts of the plot_t1
     peak_trial_source = ColumnDataSource(data={'x': [], 'y': []})
@@ -45,16 +78,6 @@ def place_cell_vis_bkapp_v2(doc):
     plot_t1.multi_line(xs='x', ys='y', source=peak_trial_source, line_width=2, color='red', alpha=0.5)
     plot_t1.circle(x='px', y='py', source=peak_point_source, size=7, color='red', alpha=1)
     plot_t1.multi_line(xs='rx', ys='ry', source=remain_trial_source, line_width=2, color='blue', alpha=0.3)
-
-    # Annotations and spans
-    high_box = BoxAnnotation(bottom=50, fill_alpha=0.5, fill_color='blue')
-    plot_t1.add_layout(high_box)
-    low_box = BoxAnnotation(top=-50, fill_alpha=0.5, fill_color='blue')
-    plot_t1.add_layout(low_box)
-    vline0 = Span(location=-9, dimension='height', line_color='black', line_width=2)
-    plot_t1.add_layout(vline0)
-    vline1 = Span(location=9, dimension='height', line_color='black', line_width=2)
-    plot_t1.add_layout(vline1)
     image_tab1 = TabPanel(child=plot_t1, title="Trajectory")
 
     plot_t2 = figure(width=300, height=800, y_range=[-51, 51], x_range=[-11, 11], title="Firing Places")
