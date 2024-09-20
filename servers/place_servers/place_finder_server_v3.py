@@ -25,7 +25,7 @@ def get_data(ciTank, peak_indices_par, neuron_id, normalization_method='percenti
     y_all = ciTank.virmen_data['y']
 
     # Create occupancy map
-    occupancy, xedges, yedges = np.histogram2d(x_all, y_all, bins=(27, 56), range=[[-67.5, 67.5], [-100, 180]])
+    occupancy, xedges, yedges = np.histogram2d(x_all, y_all, bins=(67, 140), range=[[-67.5, 67.5], [-100, 180]])
     occupancy = occupancy.T  # Transpose to match the orientation of our heatmap
 
     # Get x and y coordinates for spike events
@@ -33,7 +33,7 @@ def get_data(ciTank, peak_indices_par, neuron_id, normalization_method='percenti
     y_spikes = ciTank.virmen_data.iloc[peak_indices_par[neuron_id]]['y']
 
     # Create spike count map
-    spike_counts, _, _ = np.histogram2d(x_spikes, y_spikes, bins=(27, 56), range=[[-67.5, 67.5], [-100, 180]])
+    spike_counts, _, _ = np.histogram2d(x_spikes, y_spikes, bins=(67, 140), range=[[-67.5, 67.5], [-100, 180]])
     spike_counts = spike_counts.T  # Transpose to match the orientation of our heatmap
 
     # Calculate firing rate map (spikes per second)
