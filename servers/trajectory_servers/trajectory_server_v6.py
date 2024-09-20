@@ -1,14 +1,22 @@
-from bokeh.plotting import figure
+import numpy as np
+import json
+import os
+import sys
+
+from bokeh.plotting import figure, curdoc
 from bokeh.models import ColumnDataSource, Slider, Button, Arrow, VeeHead, Div, TextInput, Spacer, CustomJS, \
     LinearColorMapper, ColorBar, BasicTicker, Select
 from bokeh.layouts import column, row
 from bokeh.palettes import Blues8
-import numpy as np
-import json
-from src import VirmenTank
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+servers_dir = os.path.dirname(current_dir)
+project_root = os.path.dirname(servers_dir)
+sys.path.append(project_root)
 
 
 def trajectory_bkapp_v6(doc):
+    from src import VirmenTank
     global source, trials, confusion_matrix_source, correct_array
 
     trials = []
@@ -90,14 +98,15 @@ def trajectory_bkapp_v6(doc):
         global source, trials, starts, confusion_matrix_source, correct_array
 
         try:
-            with open('config.json', 'r') as file:
+            config_path = os.path.join(project_root, 'config.json')
+            with open(config_path, 'r') as file:
                 config = json.load(file)
 
             session_name = filename_input.value
             if ".txt" in session_name:
-                file = config['VirmenFilePath'] + session_name
+                file = os.path.join(config['VirmenFilePath'], session_name)
             else:
-                file = config['VirmenFilePath'] + session_name + ".txt"
+                file = os.path.join(config['VirmenFilePath'], f'{session_name}.txt')
 
             # Check if the maze type is correct
             if VirmenTank.determine_maze_type(file).lower() != "turnv1":
@@ -280,3 +289,7 @@ def trajectory_bkapp_v6(doc):
                           trial_navigation_row, starts_div, correctness_div, dropdown_row, error_div)
     layout = row(plot, Spacer(width=30), column(tool_widgets, confusion_matrix_plot))
     doc.add_root(layout)
+
+
+# Uncomment the following line to run the Bokeh server application
+trajectory_bkapp_v6(curdoc())
