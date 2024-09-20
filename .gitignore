@@ -3,3 +3,4 @@ standalones/
 **/__pycache__/
 test.py
 config.json
+.DS_Store
