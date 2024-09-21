@@ -621,10 +621,10 @@ class MazeV1Tank():
             print("Confusion Matrix:")
             print(cm)
             print("\nInterpretation:")
-            print(f"True Positives (Correct Left Turns): {cm[0, 0]}")
-            print(f"False Negatives (Incorrect Left Turns): {cm[0, 1]}")
-            print(f"False Positives (Incorrect Right Turns): {cm[1, 0]}")
-            print(f"True Negatives (Correct Right Turns): {cm[1, 1]}")
+            print(f"Correct Left Turns: {cm[0, 0]}")
+            print(f"Incorrect Left Turns: {cm[0, 1]}")
+            print(f"Incorrect Right Turns: {cm[1, 0]}")
+            print(f"Correct Right Turns: {cm[1, 1]}")
 
             # Calculate and print additional metrics
             total_trials = np.sum(cm)
@@ -688,7 +688,7 @@ class MazeV1Tank():
             # Create the figure
             p = figure(title="Confusion Matrix of Animal Turns",
                        x_range=x_labels, y_range=list(reversed(y_labels)),
-                       x_axis_label="Actual Turn", y_axis_label="Predicted Turn",
+                       x_axis_label="Actual Turn", y_axis_label="Should Turn",
                        width=400, height=350, toolbar_location=None, tools="")
 
             # Create the heatmap
