@@ -607,12 +607,12 @@ class MazeV1Tank():
         for maze_type, is_correct in zip(self.maze_type_array, self.correct_array):
             if maze_type == 0:  # Left turn
                 if is_correct:
-                    confusion_matrix[0, 0] += 1  # True Positive
+                    confusion_matrix[0, 0] += 1  # Correct Left Turn
                 else:
-                    confusion_matrix[0, 1] += 1  # False Negative
+                    confusion_matrix[0, 1] += 1  # Incorrect Right Turn
             else:  # Right turn
                 if is_correct:
-                    confusion_matrix[1, 1] += 1  # True Negative
+                    confusion_matrix[1, 1] += 1  # Correct Right Turn
                 else:
                     confusion_matrix[1, 0] += 1  # False Positive
 
@@ -622,8 +622,8 @@ class MazeV1Tank():
             print(cm)
             print("\nInterpretation:")
             print(f"Correct Left Turns: {cm[0, 0]}")
-            print(f"Incorrect Left Turns: {cm[0, 1]}")
-            print(f"Incorrect Right Turns: {cm[1, 0]}")
+            print(f"Incorrect Right Turns: {cm[0, 1]}")
+            print(f"Incorrect Left Turns: {cm[1, 0]}")
             print(f"Correct Right Turns: {cm[1, 1]}")
 
             # Calculate and print additional metrics
@@ -660,8 +660,8 @@ class MazeV1Tank():
             sns.heatmap(self.confusion_matrix, annot=True, fmt='d', cmap='Blues',
                         xticklabels=['Left', 'Right'], yticklabels=['Left', 'Right'], ax=ax)
             ax.set_title('Confusion Matrix of Animal Turns')
-            ax.set_xlabel('Actual Turn')
-            ax.set_ylabel('Predicted Turn')
+            ax.set_ylabel('Actual Turn')
+            ax.set_xlabel('Should Turn')
 
             return fig
 
@@ -688,7 +688,7 @@ class MazeV1Tank():
             # Create the figure
             p = figure(title="Confusion Matrix of Animal Turns",
                        x_range=x_labels, y_range=list(reversed(y_labels)),
-                       x_axis_label="Actual Turn", y_axis_label="Should Turn",
+                       x_axis_label="Should Turn", y_axis_label="Actual Turn",
                        width=400, height=350, toolbar_location=None, tools="")
 
             # Create the heatmap

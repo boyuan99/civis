@@ -80,7 +80,7 @@ def trajectory_bkapp_v6(doc):
 
     confusion_matrix_plot = figure(title="Confusion Matrix of Animal Turns",
                                    x_range=x_labels, y_range=list(reversed(y_labels)),
-                                   x_axis_label="Actual Turn", y_axis_label="Predicted Turn",
+                                   y_axis_label="Actual Turn", x_axis_label="Should Turn",
                                    width=400, height=350, toolbar_location=None, tools="")
 
     confusion_matrix_plot.rect(x='x', y='y', width=1, height=1, source=confusion_matrix_source,
