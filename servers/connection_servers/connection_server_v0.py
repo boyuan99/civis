@@ -37,7 +37,7 @@ def load_data(filename):
     return C, C_raw, Cn, ids, Coor, centroids, virmenPath
 
 
-def connection_old_bkapp(doc):
+def connection_bkapp_v0(doc):
     global source, lines_source
     source = ColumnDataSource(data=dict(x=[], y=[], ids=[]))
     lines_source = ColumnDataSource(data=dict(xs=[], ys=[], colors=[]))
