@@ -66,7 +66,7 @@ def raster_bkapp_v1(doc):
 
     virmen_data = pd.DataFrame()
     virmen_source = ColumnDataSource({'x': [], 'y': [], 'face_angle': []})
-    plot = figure(width=550, height=800, title="Mouse Movement Trajectory")
+    plot = figure(width=550, height=800, y_range=(-100,180),title="Mouse Movement Trajectory")
     plot.line('x', 'y', source=virmen_source, line_width=2)
 
     arrow = Arrow(end=VeeHead(fill_color="orange", size=10, line_width=1),
@@ -74,8 +74,8 @@ def raster_bkapp_v1(doc):
                   x_end=0, y_end=1, line_color="orange")
     plot.add_layout(arrow)
 
-    xpts = np.array([-67.5, -50, 0, 50, 67.5, 10, 10, 67.5, 50, 0, -50, -67.5, -10, -10, -67.5])
-    ypts = np.array([107.5, 125, 75, 125, 107.5, 50, -50, -107.5, -125, -75, -125, -107.5, -50, 50, 107.5])
+    xpts = np.array([-67.5, -50, 0, 50, 67.5, 10, 10, -10, -10, -10, -67.5])
+    ypts = np.array([107.5, 125, 75, 125, 107.5, 50, -65, -65, -50, 50, 107.5])
 
     source_maze = ColumnDataSource(dict(
         xs=[xpts],
@@ -83,9 +83,7 @@ def raster_bkapp_v1(doc):
     ))
 
     plot.multi_line(xs="xs", ys="ys", source=source_maze, line_color="#8073ac", line_width=2)
-    plot.patch([67.5, 50, 70, 87.5], [-107.5, -125, -145, -127.5], alpha=0.5)
     plot.patch([-67.5, -50, -70, -87.5], [107.5, 125, 145, 127.5], alpha=0.5)
-    plot.patch([-67.5, -50, -70, -87.5], [-107.5, -125, -145, -127.5], alpha=0.5)
     plot.patch([67.5, 50, 70, 87.5], [107.5, 125, 145, 127.5], alpha=0.5)
 
     # Widgets
