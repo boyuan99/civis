@@ -7,32 +7,16 @@ import json
 import pickle
 import os
 import sys
+from src import CITank #Is there a reason we cant do this
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 servers_dir = os.path.dirname(current_dir)
 project_root = os.path.dirname(servers_dir)
 sys.path.append(project_root)
 
-
 def connection_bkapp_v1(doc):
     from src import CITank
-
-    source = ColumnDataSource(data=dict(x=[], y=[], ids=[]))
-    lines_source = ColumnDataSource(data=dict(xs=[], ys=[], colors=[]))
-
-    # Initialize TextInput widgets for file paths
-    neuron_path_input = TextInput(value="", title="Session Name:")
-    load_button = Button(label="Load Data", button_type="success")
-    details_div = Div(width=300, height=800, sizing_mode="fixed", text="Details will appear here after loading")
-
-    neuron_categories = {}
-    category_select = Select(title="Neuron Category:", value="All",
-                             options=["All"] + sorted(list(neuron_categories.keys())))
-
-    view = CDSView(filter=GroupFilter(column_name='categories', group='All'))
-
-    def load_data():
-
+    def load_data(neuron_path_input, category_select):
         config_path = os.path.join(project_root, 'config.json')
         with open(config_path, 'r') as file:
             config = json.load(file)
@@ -60,6 +44,32 @@ def connection_bkapp_v1(doc):
         exclude_keys = ['velocity', 'lick', 'pstcr']
         neuron_categories = {k: v for k, v in neuron_categories_all.items() if k not in exclude_keys}
         category_select.options = ["All"] + sorted(list(neuron_categories.keys()))
+        return ci, neuron_categories, correlation_matrix
+
+    #Create initial empty plot
+    TOOLS = "pan, wheel_zoom, zoom_in, zoom_out, box_zoom, reset, save"
+    p = figure(width=800, height=800, tools=TOOLS,
+               active_scroll="wheel_zoom", title="Neuron Correlation Visualizer")
+    # Adds empty image
+    p.image(image=[], x=0, y=0, palette="Greys256")
+
+    source = ColumnDataSource(data=dict(x=[], y=[], ids=[]))
+    lines_source = ColumnDataSource(data=dict(xs=[], ys=[], colors=[]))
+
+    # Initialize TextInput widgets for file paths
+    neuron_path_input = TextInput(value="", title="Session Name:")
+    load_button = Button(label="Load Data", button_type="success")
+    details_div = Div(width=300, height=800, sizing_mode="fixed", text="Details will appear here after loading")
+    # Add image
+    neuron_categories = {}
+    category_select = Select(title="Neuron Category:", value="All",
+                             options=["All"] + sorted(list(neuron_categories.keys())))
+
+    view = CDSView(filter=GroupFilter(column_name='categories', group='All'))
+    #change this to update data
+    def update_data():
+        #loads data from file
+        [ci, neuron_categories,correlation_matrix] = load_data(neuron_path_input,category_select)
 
         neuron_colors = [
             "#F44336",  # Red
@@ -107,11 +117,12 @@ def connection_bkapp_v1(doc):
             colors=[neuron_id_to_color.get(str(int(id)), "#FFFFFF") for id in ci.ids],  # Use white as default color
             categories=[neuron_id_to_category.get(str(int(id)), "Unknown") for id in ci.ids]  # Assign categories
         )
-
-        TOOLS = "pan, wheel_zoom, zoom_in, zoom_out, box_zoom, reset, save"
-        p = figure(width=800, height=800, x_range=[0, width], y_range=[0, height], tools=TOOLS,
-                   active_scroll="wheel_zoom", title="Neuron Correlation Visualizer")
-        # Add image
+        #updates graph
+        p.x_range.start = 0
+        p.x_range.end = width
+        p.y_range.start = 0
+        p.y_range.end = height
+        # updates image
         p.image(image=[np.flipud(ci.Cn)], x=0, y=0, dw=width, dh=height, palette="Greys256")
 
         # Add centroids
@@ -180,11 +191,12 @@ def connection_bkapp_v1(doc):
         source.selected.on_change('indices', update_lines)
 
         # Replace placeholder with the actual plot and details div
-        layout.children[1] = row(p, column(category_select, details_div))
+        layout.children[1].children[1] = column(category_select, details_div)
 
-    load_button.on_click(load_data)
-
-    layout = column(row(neuron_path_input, column(Spacer(height=20), load_button)), details_div)
+    #formats graph and load button with placeholder for details and category selector
+    load_button.on_click(update_data)
+    choose_file = row(neuron_path_input, column(Spacer(height=20), load_button))
+    layout = row(p,column(choose_file, details_div))
     doc.add_root(layout)
 
 
