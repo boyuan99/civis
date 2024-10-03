@@ -126,8 +126,6 @@ class CITank(VirmenTank):
         iterator = tqdm(self.C_denoised, desc="Finds peaks in each calcium trace") if use_tqdm else self.C_denoised
 
         for i, C_pick in enumerate(iterator):
-
-
             peak_calciums, _ = find_peaks(C_pick)
 
             peak_indices_all.append(peak_calciums)
@@ -1058,6 +1056,34 @@ class CITank(VirmenTank):
         self.output_bokeh_plot(layout, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite)
 
         return layout
+
+    def show_single_signal(self, index,
+                           save_path=None, title=f"example signal", notebook=False, overwrite=False):
+        from bokeh.plotting import figure
+
+        p = figure(width=800, height=300, title=title)
+
+        p.line(self.t, self.C_raw[index], color="blue", alpha=0.7, legend_label="Calcium Trace")
+
+        self.output_bokeh_plot(p, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite)
+
+        return p
+
+    def show_multiple_signal(self, signal_gap=2, scale_gap=2,
+                             save_path=None, title=f"Multiple Example signals", notebook=False, overwrite=False):
+        from bokeh.plotting import figure
+        from bokeh.palettes import Category10
+
+        p = figure(width=800, height=600, title="Multiple Signals Examples")
+
+        colors = Category10[10]
+
+        for i in range(10):
+            p.line(self.t, self.C_raw[i * signal_gap] + i * scale_gap, color=colors[i], alpha=0.7)
+
+        self.output_bokeh_plot(p, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite)
+
+        return p
 
 
 if __name__ == "__main__":
