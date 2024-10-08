@@ -135,7 +135,7 @@ def trajectory_bkapp_v5(doc):
             last_x = trial_data['x'][max_index - 1]
             last_y = trial_data['y'][max_index - 1]
             angle_rad = trial_data['face_angle'][max_index - 1] + np.pi / 2  # Adjust angle to make arrow face up
-            arrow_length = 5
+            arrow_length = 2
 
             arrow.x_start = last_x
             arrow.y_start = last_y
