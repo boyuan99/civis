@@ -710,6 +710,20 @@ class MazeV1Tank():
             return p
         else:
             raise ValueError("Unsupported backend. Use 'matplotlib' or 'bokeh'.")
+    def current_accuracy(self,save_path=None, title=None, notebook=False, overwrite=False):
+        """
+        Returns dictionary of trial as key and accurancy as item (as decimal) up to and including that trial
+        """
+        from bokeh.plotting import figure
+
+        correctness= self.analyze_trials_correctness()
+        trials= {0: int(correctness[0])}
+
+        for i in range(1,len(correctness)):
+            trials[i]= (trials[i-1]*i+int(correctness[i]))/(i+1)
+
+        return trials
+
 
 
 if __name__ == "__main__":

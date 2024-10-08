@@ -5,9 +5,10 @@ import sys
 
 from bokeh.plotting import figure, curdoc
 from bokeh.models import ColumnDataSource, Slider, Button, Arrow, VeeHead, Div, TextInput, Spacer, CustomJS, \
-    LinearColorMapper, ColorBar, BasicTicker, Select
+    LinearColorMapper, ColorBar, BasicTicker, Select, Tabs, TabPanel
 from bokeh.layouts import column, row
 from bokeh.palettes import Blues8
+
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 servers_dir = os.path.dirname(current_dir)
@@ -17,7 +18,7 @@ sys.path.append(project_root)
 
 def trajectory_bkapp_v6(doc):
     from src import VirmenTank
-    global source, trials, confusion_matrix_source, correct_array
+    global source, trials, confusion_matrix_source, correct_array, accuracy_source
 
     trials = []
     source = ColumnDataSource({'x': [], 'y': [], 'face_angle': []})
@@ -54,6 +55,7 @@ def trajectory_bkapp_v6(doc):
     correctness_div = Div(text="Trial Correctness: ", width=400)
     error_div = Div(text="")
 
+
     # New dropdown menus for correct and incorrect trials
     correct_trials_dropdown = Select(title="Correct Trials:", value="", options=[], width=200)
     incorrect_trials_dropdown = Select(title="Incorrect Trials:", value="", options=[], width=200)
@@ -76,6 +78,9 @@ def trajectory_bkapp_v6(doc):
         'value': default_matrix.flatten().tolist(),
     })
 
+    # Initialize accuracy vs time plot with default data
+    accuracy_source=ColumnDataSource(data={'x':[], 'y':[]})
+
     color_mapper = LinearColorMapper(palette=Blues8[::-1], low=-1, high=1)
 
     confusion_matrix_plot = figure(title="Confusion Matrix of Animal Turns",
@@ -94,8 +99,16 @@ def trajectory_bkapp_v6(doc):
     confusion_matrix_plot.text(x='x', y='y', text='value', source=confusion_matrix_source,
                                text_align="center", text_baseline="middle")
 
+    accuracy = figure(title="Accuracy Plot",x_axis_label='Trial', y_axis_label='Accuracy(%)')
+    accuracy.line(x='x', y='y',source=accuracy_source)
+
+    confusion_matrix_tab = TabPanel(child=confusion_matrix_plot, title="Confusion Matrix")
+    accuracy_tab = TabPanel(child=accuracy, title="Accuracy")
+
     def load_data():
-        global source, trials, starts, confusion_matrix_source, correct_array
+        global source, trials, starts, confusion_matrix_source, correct_array, accuracy_trials
+
+        print("Loading Data...")
 
         try:
             config_path = os.path.join(project_root, 'config.json')
@@ -118,6 +131,9 @@ def trajectory_bkapp_v6(doc):
             trials = vm.virmen_trials
             starts = [x / vm.vm_rate for x in vm.trials_start_indices]
             correct_array = vm.extend_data.correct_array
+
+            accuracy_trials=vm.extend_data.current_accuracy()
+            accuracy_source.data={'x':list(accuracy_trials.keys()), 'y': list(accuracy_trials.values())}
 
             print("Successfully loaded: " + file)
             error_div.text = ""  # Clear any previous error messages
@@ -282,12 +298,14 @@ def trajectory_bkapp_v6(doc):
     correct_trials_dropdown.on_change('value', update_trial_from_dropdown)
     incorrect_trials_dropdown.on_change('value', update_trial_from_dropdown)
 
+    tab_buttons = Tabs(tabs=[confusion_matrix_tab,accuracy_tab])
+
     file_input_row = row(filename_input, column(Spacer(height=20), load_button))
     trial_navigation_row = row(previous_button, next_button)
     dropdown_row = row(correct_trials_dropdown, incorrect_trials_dropdown)
     tool_widgets = column(file_input_row, trial_slider, progress_slider, play_button,
                           trial_navigation_row, starts_div, correctness_div, dropdown_row, error_div)
-    layout = row(plot, Spacer(width=30), column(tool_widgets, confusion_matrix_plot))
+    layout = row(plot, Spacer(width=30), column(tool_widgets, tab_buttons))
     doc.add_root(layout)
 
 
