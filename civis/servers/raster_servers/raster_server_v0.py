@@ -9,7 +9,7 @@ import os
 
 
 def raster_bkapp_v0(doc):
-    from src import CITank
+    from civis.src.CITank import CITank
     def load_data(session_name):
         with open('config.json', 'r') as file:
             config = json.load(file)

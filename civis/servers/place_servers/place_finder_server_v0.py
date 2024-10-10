@@ -4,7 +4,7 @@ import os
 import sys
 import pickle
 
-from bokeh.plotting import figure, curdoc
+from bokeh.plotting import figure
 from bokeh.models import ColumnDataSource, Slider, Button, BoxAnnotation, Span, TextInput, Spacer
 from bokeh.layouts import column, row
 
@@ -14,7 +14,7 @@ sys.path.insert(0, parent_dir)
 
 
 def place_cell_vis_bkapp_v0(doc):
-    from src import CITank
+    from civis.src.CITank import CITank
 
     global source, ci, session_name, peak_indices
 
