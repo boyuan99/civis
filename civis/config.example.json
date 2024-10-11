@@ -1,6 +1,6 @@
 {
-  "ProcessedFilePath": "/Users/edward41803/Documents/CIS_Processed_Data/ProcessedData/",
-  "VirmenFilePath": "/Users/edward41803/Documents/CIS_Processed_Data/VirmenData/",
+  "ProcessedFilePath": "($your path to ProcessedData)/ProcessedData/",
+  "VirmenFilePath": "($your path to VirmenData)/VirmenData/",
   "LabelsPath": "($your path to ProcessedData)/ProcessedData/",
-  "ElecPath": "/Users/edward41803/Documents/CIS_Processed_Data/ElecData/"
+  "ElecPath": "($your path to ElecData)/ElecData/"
 }
