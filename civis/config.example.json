@@ -1,6 +1,6 @@
 {
   "ProcessedFilePath": "($your path to ProcessedData)/ProcessedData/",
-  "VirmenFilePath": "($your path to VirmenData)/VirmenData/",
+  "VirmenFilePath": "($your path to ProcessedData)/VirmenData/",
   "LabelsPath": "($your path to ProcessedData)/ProcessedData/",
-  "ElecPath": "($your path to ElecData)/ElecData/"
+  "ElecPath": "($your path to ProcessedData)/ElecData/"
 }
