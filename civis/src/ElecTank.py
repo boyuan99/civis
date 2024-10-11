@@ -213,7 +213,7 @@ class ElecTank(VirmenTank):
     def plot_time_frequency_spectrogram(self, freqs=None, tfr=None,
                                         freq_start=1, freq_stop=100, freq_step=0.1,
                                         time_start=0, time_end=None,
-                                        time_dec_factor=100, freq_dec_factor=10,
+                                        time_dec_factor=20, freq_dec_factor=10,
                                         palette="Turbo256",
                                         save_path=None, notebook=False, overwrite=False):
         import mne
@@ -251,7 +251,7 @@ class ElecTank(VirmenTank):
                     x_axis_label="Time (s)", y_axis_label="Frequency (Hz)",
                     x_range=(time_dec[0], time_dec[-1]), y_range=(freqs_dec[0], 40),
                     active_scroll="wheel_zoom")
-        color_mapper = LinearColorMapper(palette=palette, low=power.min(), high=power.max())
+        color_mapper = LinearColorMapper(palette=palette, low=np.percentile(power.ravel(), 1), high=np.percentile(power.ravel(), 99))
         p1.image(image=[power], x=time_dec[0], y=freqs_dec[0], dw=dw, dh=dh,
                  color_mapper=color_mapper)
 
