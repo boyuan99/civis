@@ -5,7 +5,7 @@ import sys
 import pickle
 
 from bokeh.plotting import figure, curdoc
-from bokeh.models import (ColumnDataSource, Slider, Button, BoxAnnotation, Span, TextInput, TabPanel, Tabs,
+from bokeh.models import (ColumnDataSource, Slider, Button, TextInput, TabPanel, Tabs,
                           Spacer, LinearColorMapper, ColorBar)
 from bokeh.palettes import Turbo256
 from bokeh.layouts import column, row
@@ -62,7 +62,7 @@ def get_data(ciTank, peak_indices_par, neuron_id, normalization_method='percenti
 
 
 def place_cell_vis_bkapp_v3(doc):
-    from src import CITank
+    from civis.src.CITank import CITank
 
     global session_name, peak_indices, ci, remain_trial_indices, trials, data, \
         peak_trial_source, peak_point_source, remain_trial_source, heatmap_source

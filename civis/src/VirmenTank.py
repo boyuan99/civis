@@ -1,13 +1,14 @@
 import pandas as pd
 import numpy as np
-import h5py
+import os
 import json
 from scipy.signal import find_peaks, savgol_filter
 
 
 class VirmenTank:
     def __init__(self,
-                 virmen_path,
+                 session_name,
+                 virmen_path=None,
                  maze_type=None,
                  threshold=None,
                  virmen_data_length=None,
@@ -18,6 +19,12 @@ class VirmenTank:
                  window_length=31,
                  polyorder=3,
                  height=8):
+
+        self.session_name = session_name
+        self.config = self.load_config()
+
+        virmen_path = os.path.join(self.config['VirmenFilePath'],
+                                   f"{session_name}.txt") if virmen_path is None else virmen_path
 
         self.extend_data = None
         self.virmen_path = virmen_path
@@ -54,6 +61,18 @@ class VirmenTank:
                                                 distance=self.velocity_distance)[0]
         self.lick_edge_indices = np.where(np.diff(self.lick) > 0)[0]
         self.movement_onset_indices = self.find_movement_onset(self.smoothed_velocity, self.velocity_peak_indices)
+
+    def load_config(self):
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        civis_dir = os.path.dirname(current_dir)
+        config_path = os.path.join(civis_dir, 'config.json')
+
+        try:
+            with open(config_path, 'r') as config_file:
+                return json.load(config_file)
+        except FileNotFoundError:
+            print(f"Config file not found at {config_path}. Using default configuration.")
+            return {}
 
     def read_and_process_data(self, file_path, threshold=None, length=None, maze_type=None):
         if threshold is None:
@@ -141,7 +160,7 @@ class VirmenTank:
 
         elif maze_type.lower() in ['turnv0', 'turnv1']:
             indices_all = np.array(self.virmen_data.index[abs(self.virmen_data['y']) +
-                                                      abs(self.virmen_data['x']) >= 175].tolist())
+                                                          abs(self.virmen_data['x']) >= 175].tolist())
             indices = indices_all[np.where(indices_all < self.vm_rate * self.session_duration)]
 
         else:
@@ -666,7 +685,6 @@ class MazeV1Tank():
             return fig
 
         elif backend == 'bokeh':
-
 
             # Assuming self.confusion_matrix is a 2x2 numpy array
             confusion_matrix = self.confusion_matrix

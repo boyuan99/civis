@@ -9,8 +9,10 @@ from scipy.signal import savgol_filter
 
 class CITank(VirmenTank):
     def __init__(self,
-                 neuron_path,
-                 virmen_path,
+                 session_name,
+                 ci_path=None,
+                 virmen_path=None,
+                 height=30,
                  maze_type=None,
                  threshold=None,
                  virmen_data_length=None,
@@ -20,28 +22,36 @@ class CITank(VirmenTank):
                  velocity_height=0.7,
                  velocity_distance=100,
                  window_length=51,
-                 polyorder=3,
-                 height=8):
+                 polyorder=3):
 
-        # Pass all the necessary parameters to the parent class
-        super().__init__(virmen_path=virmen_path,
-                         threshold=threshold,
-                         maze_type=maze_type,
-                         virmen_data_length=virmen_data_length,
-                         vm_rate=vm_rate,
-                         velocity_height=velocity_height,
-                         velocity_distance=velocity_distance,
-                         session_duration=session_duration,
-                         window_length=window_length,
-                         polyorder=polyorder,
-                         height=height)
+        self.session_name = session_name
+        self.config = self.load_config()
 
-        self.neuron_path = neuron_path
+        ci_path = os.path.join(self.config['ProcessedFilePath'], session_name,
+                               f"{session_name}_v7.mat") if ci_path is None else ci_path
+        virmen_path = os.path.join(self.config['VirmenFilePath'],
+                                   f"{session_name}.txt") if virmen_path is None else virmen_path
+
+        super().__init__(
+            session_name=session_name,
+            virmen_path=virmen_path,
+            threshold=threshold,
+            maze_type=maze_type,
+            virmen_data_length=virmen_data_length,
+            vm_rate=vm_rate,
+            velocity_height=velocity_height,
+            velocity_distance=velocity_distance,
+            session_duration=session_duration,
+            window_length=window_length,
+            polyorder=polyorder,
+            height=height)
+
+        self.ci_path = ci_path
         self.ci_rate = ci_rate
         self.session_duration = session_duration
 
-        (self.C, self.C_raw, self.Cn, self.ids, self.Coor, self.centroids, _,
-         self.C_denoised, self.C_deconvolved, self.C_baseline, self.C_reraw) = self.load_data(neuron_path)
+        (self.C, self.C_raw, self.Cn, self.ids, self.Coor, self.centroids,
+         self.C_denoised, self.C_deconvolved, self.C_baseline, self.C_reraw) = self.load_data(ci_path)
 
         self.C_raw = self.shift_signal(self.compute_deltaF_over_F(self.C_raw))
         self.ca_all = self.normalize_signal(self.shift_signal_single(np.mean(self.C_raw, axis=0)))
@@ -75,8 +85,6 @@ class CITank(VirmenTank):
             C_baseline = np.transpose(data['C_baseline'][()])
             C_reraw = np.transpose(data['C_reraw'][()])
             centroids = np.transpose(data['centroids'][()])
-            # virmenPath = data['virmenPath'][()].tobytes().decode('utf-16le')
-            virmenPath = config['PickedVirmenDataFilePath'] + data['virmenFileName'][()].tobytes().decode('utf-16le')
 
             for i in range(Coor_cell_array.shape[1]):
                 ref = Coor_cell_array[0, i]  # Get the reference
@@ -85,7 +93,7 @@ class CITank(VirmenTank):
 
                 Coor.append(np.transpose(coor_matrix))
 
-        return C, C_raw, Cn, ids, Coor, centroids, virmenPath, C_denoised, C_deconvolved, C_baseline, C_reraw
+        return C, C_raw, Cn, ids, Coor, centroids, C_denoised, C_deconvolved, C_baseline, C_reraw
 
     @staticmethod
     def compute_deltaF_over_F(fluorescence, baseline_indices=None):

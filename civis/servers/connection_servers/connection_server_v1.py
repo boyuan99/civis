@@ -7,7 +7,6 @@ import json
 import pickle
 import os
 import sys
-from src import CITank #Is there a reason we cant do this
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 servers_dir = os.path.dirname(current_dir)
@@ -15,7 +14,7 @@ project_root = os.path.dirname(servers_dir)
 sys.path.append(project_root)
 
 def connection_bkapp_v1(doc):
-    from src import CITank
+    from civis.src.CITank import CITank
     def load_data(neuron_path_input, category_select):
         config_path = os.path.join(project_root, 'config.json')
         with open(config_path, 'r') as file:

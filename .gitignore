@@ -2,5 +2,6 @@ standalones/
 .idea
 **/__pycache__/
 test.py
-config.json
+civis/config.json
 .DS_Store
+/civis.egg-info/

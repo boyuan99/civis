@@ -6,6 +6,11 @@ from bokeh.models import HoverTool, ColumnDataSource, Slider, Button, TextInput,
 from bokeh.layouts import column, row
 import json
 import h5py
+import os
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+CONFIG_PATH = os.path.join(BASE_DIR, 'config.json')
 
 
 def load_data(filename):
@@ -259,7 +264,7 @@ def labeler_bkapp(doc):
 
     def save_labels():
 
-        with open('config.json', 'r') as file:
+        with open(CONFIG_PATH, 'r') as file:
             config = json.load(file)
 
         df = pd.DataFrame(labels, columns=["Keep", "Discard", "Unlabeled"])
@@ -430,7 +435,7 @@ def labeler_bkapp(doc):
     def update_data():
         global session_name
 
-        with open('config.json', 'r') as file:
+        with open(CONFIG_PATH, 'r') as file:
             config = json.load(file)
         session_name = sessionname_input.value
         neuron_path = config['ProcessedFilePath'] + session_name + '/' + session_name + '_v7.mat'

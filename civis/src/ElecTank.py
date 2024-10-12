@@ -1,12 +1,14 @@
 import numpy as np
 import tdt
+import os
 from .VirmenTank import VirmenTank
 
 
 class ElecTank(VirmenTank):
     def __init__(self,
-                 elec_path,
-                 virmen_path,
+                 session_name,
+                 elec_path=None,
+                 virmen_path=None,
                  maze_type=None,
                  vm_rate=20,
                  resample_fs=200,
@@ -20,18 +22,27 @@ class ElecTank(VirmenTank):
                  notch_fs=[60],
                  notch_Q=30,
                  threshold=None):
-        # Pass all the necessary parameters to the parent class
-        super().__init__(virmen_path=virmen_path,
-                         threshold=threshold,
-                         maze_type=maze_type,
-                         virmen_data_length=virmen_data_length,
-                         vm_rate=vm_rate,
-                         velocity_height=velocity_height,
-                         velocity_distance=velocity_distance,
-                         session_duration=session_duration,
-                         window_length=window_length,
-                         polyorder=polyorder,
-                         height=height)
+
+        self.session_name = session_name
+        self.config = self.load_config()
+
+        elec_path = os.path.join(self.config['ElecPath'], session_name) if elec_path is None else elec_path
+        virmen_path = os.path.join(self.config['VirmenFilePath'],
+                                   f"{session_name}.txt") if virmen_path is None else virmen_path
+
+        super().__init__(
+            session_name=session_name,
+            virmen_path=virmen_path,
+            threshold=threshold,
+            maze_type=maze_type,
+            virmen_data_length=virmen_data_length,
+            vm_rate=vm_rate,
+            velocity_height=velocity_height,
+            velocity_distance=velocity_distance,
+            session_duration=session_duration,
+            window_length=window_length,
+            polyorder=polyorder,
+            height=height)
 
         self.elec_path = elec_path
         self.session_duration = session_duration
@@ -202,7 +213,7 @@ class ElecTank(VirmenTank):
     def plot_time_frequency_spectrogram(self, freqs=None, tfr=None,
                                         freq_start=1, freq_stop=100, freq_step=0.1,
                                         time_start=0, time_end=None,
-                                        time_dec_factor=100, freq_dec_factor=10,
+                                        time_dec_factor=20, freq_dec_factor=10,
                                         palette="Turbo256",
                                         save_path=None, notebook=False, overwrite=False):
         import mne
@@ -213,10 +224,10 @@ class ElecTank(VirmenTank):
         if time_end is None:
             time_end = self.session_duration
 
-        time_elc = self.elc_t[time_start*self.fs: time_end*self.fs]
-        time_vm = self.t[time_start*self.vm_rate: time_end*self.vm_rate]
-        signal = self.signal[time_start*self.fs: time_end*self.fs]
-        velocity = self.smoothed_velocity[time_start*self.vm_rate: time_end*self.vm_rate]
+        time_elc = self.elc_t[time_start * self.fs: time_end * self.fs]
+        time_vm = self.t[time_start * self.vm_rate: time_end * self.vm_rate]
+        signal = self.signal[time_start * self.fs: time_end * self.fs]
+        velocity = self.smoothed_velocity[time_start * self.vm_rate: time_end * self.vm_rate]
 
         if (freqs is None) & (tfr is None):
             freqs = np.arange(start=freq_start, stop=freq_stop, step=freq_step)
@@ -236,11 +247,11 @@ class ElecTank(VirmenTank):
         dh = freqs_dec[-1] - freqs_dec[0]
 
         # Create the first plot (Time-Frequency Representation)
-        p1 = figure(width=1200, height=350, title="Time-Frequency Spectrogram",
+        p1 = figure(width=1000, height=350, title="Time-Frequency Spectrogram",
                     x_axis_label="Time (s)", y_axis_label="Frequency (Hz)",
                     x_range=(time_dec[0], time_dec[-1]), y_range=(freqs_dec[0], 40),
                     active_scroll="wheel_zoom")
-        color_mapper = LinearColorMapper(palette=palette, low=power.min(), high=power.max())
+        color_mapper = LinearColorMapper(palette=palette, low=np.percentile(power.ravel(), 1), high=np.percentile(power.ravel(), 99))
         p1.image(image=[power], x=time_dec[0], y=freqs_dec[0], dw=dw, dh=dh,
                  color_mapper=color_mapper)
 
