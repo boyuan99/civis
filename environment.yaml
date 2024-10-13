@@ -1,0 +1,27 @@
+# environment.yaml
+
+#CIVisServer Toolbox
+#
+# install: conda env create -f environment.yaml
+# update:  conda env update -f environment.yaml
+
+name: civis
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - python>=3.9
+  - bokeh=3.3.4
+  - flask=2.2.5
+  - h5py=3.9.0
+  - numpy=1.26.4
+  - pandas=1.5.3
+  - scipy=1.11.4
+  - tornado=6.3.3
+  - tqdm=4.66.2
+  - mne=1.7.1
+  - seaborn=0.13.2
+  - pip
+  - pip:
+    - tdt==0.6.6
+    - -e .

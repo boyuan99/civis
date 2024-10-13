@@ -5,37 +5,87 @@ import sys
 import pickle
 
 from bokeh.plotting import figure, curdoc
-from bokeh.models import ColumnDataSource, Slider, Button, BoxAnnotation, Span, TextInput, Spacer
+from bokeh.models import (ColumnDataSource, Slider, Button, TextInput, TabPanel, Tabs,
+                          Spacer, LinearColorMapper, ColorBar)
+from bokeh.palettes import Turbo256
 from bokeh.layouts import column, row
 
-current_dir = os.path.dirname(__file__)
-parent_dir = os.path.abspath(os.path.join(current_dir, '..'))
-sys.path.insert(0, parent_dir)
+current_dir = os.path.dirname(os.path.abspath(__file__))
+servers_dir = os.path.dirname(current_dir)
+project_root = os.path.dirname(servers_dir)
+sys.path.append(project_root)
 
 
-def place_cell_vis_bkapp_v1(doc):
-    from src import CITank
+def get_data(ciTank, peak_indices_par, neuron_id, normalization_method='percentile'):
+    from scipy.ndimage import gaussian_filter
+    import numpy as np
+
+    # Get x and y coordinates for all timepoints
+    x_all = ciTank.virmen_data['x']
+    y_all = ciTank.virmen_data['y']
+
+    # Create occupancy map
+    occupancy, xedges, yedges = np.histogram2d(x_all, y_all, bins=(20, 100), range=[[-10, 10], [-50, 50]])
+    occupancy = occupancy.T  # Transpose to match the orientation of our heatmap
+
+    # Get x and y coordinates for spike events
+    x_spikes = ciTank.virmen_data.iloc[peak_indices_par[neuron_id]]['x']
+    y_spikes = ciTank.virmen_data.iloc[peak_indices_par[neuron_id]]['y']
+
+    # Create spike count map
+    spike_counts, _, _ = np.histogram2d(x_spikes, y_spikes, bins=(20, 100), range=[[-10, 10], [-50, 50]])
+    spike_counts = spike_counts.T  # Transpose to match the orientation of our heatmap
+
+    # Calculate firing rate map (spikes per second)
+    time_spent = occupancy / ciTank.vm_rate  # Convert frame counts to time (assuming vm_rate is in Hz)
+    firing_rate = np.divide(spike_counts, time_spent, where=time_spent!=0)  # Avoid division by zero
+    firing_rate[time_spent == 0] = 0  # Set rate to 0 where no time was spent
+
+    # Apply Gaussian smoothing
+    smoothed_rate = gaussian_filter(firing_rate, sigma=1)
+
+    if normalization_method == 'percentile':
+        # Percentile-based normalization
+        p_low, p_high = np.percentile(smoothed_rate[smoothed_rate > 0], [2, 98])
+        normalized_rate = np.clip(smoothed_rate, p_low, p_high)
+        normalized_rate = (normalized_rate - p_low) / (p_high - p_low)
+    elif normalization_method == 'log':
+        # Logarithmic scaling
+        epsilon = 1e-10  # Small constant to avoid log(0)
+        log_rate = np.log(smoothed_rate + epsilon)
+        normalized_rate = (log_rate - np.min(log_rate)) / (np.max(log_rate) - np.min(log_rate))
+    else:
+        # Simple min-max normalization
+        normalized_rate = (smoothed_rate - np.min(smoothed_rate)) / (np.max(smoothed_rate) - np.min(smoothed_rate))
+
+    return normalized_rate
+
+def place_cell_vis_bkapp_v2(doc):
+    from civis.src.CITank import CITank
 
     global session_name, peak_indices, ci, remain_trial_indices, trials, data, \
-        peak_trial_source, peak_point_source, remain_trial_source
+        peak_trial_source, peak_point_source, remain_trial_source, heatmap_source
 
-    plot = figure(width=300, height=800, y_range=[-30, 30], x_range=[-10, 10], title="Firing Places")
+    plot_t1 = figure(width=300, height=800, y_range=[-51, 51], x_range=[-11, 11], title="Firing Places")
 
-    # ColumnDataSources for different parts of the plot
+    # ColumnDataSources for different parts of the plot_t1
     peak_trial_source = ColumnDataSource(data={'x': [], 'y': []})
     peak_point_source = ColumnDataSource(data={'px': [], 'py': []})
     remain_trial_source = ColumnDataSource(data={'rx': [], 'ry': []})
+    heatmap_source = ColumnDataSource(data={'image': []})
 
     # Drawing the lines and points
-    plot.multi_line(xs='x', ys='y', source=peak_trial_source, line_width=2, color='red', alpha=0.5)
-    plot.circle(x='px', y='py', source=peak_point_source, size=7, color='red', alpha=1)
-    plot.multi_line(xs='rx', ys='ry', source=remain_trial_source, line_width=2, color='blue', alpha=0.3)
+    plot_t1.multi_line(xs='x', ys='y', source=peak_trial_source, line_width=2, color='red', alpha=0.5)
+    plot_t1.circle(x='px', y='py', source=peak_point_source, size=7, color='red', alpha=1)
+    plot_t1.multi_line(xs='rx', ys='ry', source=remain_trial_source, line_width=2, color='blue', alpha=0.3)
+    image_tab1 = TabPanel(child=plot_t1, title="Trajectory")
 
-    # Annotations and spans
-    plot.add_layout(BoxAnnotation(bottom=25, fill_alpha=0.5, fill_color='blue'))
-    plot.add_layout(BoxAnnotation(top=-25, fill_alpha=0.5, fill_color='blue'))
-    plot.add_layout(Span(location=-9, dimension='height', line_color='black', line_width=2))
-    plot.add_layout(Span(location=9, dimension='height', line_color='black', line_width=2))
+    plot_t2 = figure(width=300, height=800, y_range=[-51, 51], x_range=[-11, 11], title="Firing Places")
+    color_mapper = LinearColorMapper(palette=Turbo256[16:], low=0, high=1)
+    plot_t2.image(image='image', x=-11, y=-51, dw=22, dh=102, color_mapper=color_mapper, source=heatmap_source)
+    color_bar = ColorBar(color_mapper=color_mapper, width=8, location=(0, 0))
+    plot_t2.add_layout(color_bar, 'right')
+    image_tab2 = TabPanel(child=plot_t2, title="Heatmap")
 
     # Widgets
     neuron_id_slider = Slider(start=0, end=100, value=0, step=1, width=600, title="Neuron ID", disabled=True)
@@ -50,14 +100,15 @@ def place_cell_vis_bkapp_v1(doc):
             peak_trial_source, peak_point_source, remain_trial_source
 
         session_name = session_input.value
-        with open('config.json', 'r') as file:
+        config_path = os.path.join(project_root, 'config.json')
+        with open(config_path, 'r') as file:
             config = json.load(file)
 
         # load in the DataTank
-        neuron_path = config['ProcessedFilePath'] + session_name + '/' + session_name + '_v7.mat'
-        virmen_path = config['VirmenFilePath'] + session_name + ".txt"
+        neuron_path = os.path.join(config['ProcessedFilePath'], session_name, f'{session_name}_v7.mat')
+        virmen_path = os.path.join(config['VirmenFilePath'], f'{session_name}.txt')
         print("Loading neuron data " + session_name + "...")
-        ci = CITank(neuron_path, virmen_path, maze_type="straight25", height=4)
+        ci = CITank(neuron_path, virmen_path, maze_type="straight50", height=4)
         print("Successfully loaded: " + neuron_path)
 
         neuron_id_slider.disabled = False
@@ -84,8 +135,9 @@ def place_cell_vis_bkapp_v1(doc):
         neuron_id_slider.value = 0
         neuron_index_input.value = "0"
 
-        [trials, data] = ci.read_and_process_data(ci.virmen_path, threshold=[25, -25],
-                                                  length=ci.session_duration * ci.ci_rate)
+        trials = ci.virmen_trials
+        data = ci.virmen_data
+
         trial_bounds = ci.compute_trial_bounds()
         trial_indices = []
         for indices in peak_indices:
@@ -118,13 +170,16 @@ def place_cell_vis_bkapp_v1(doc):
         peak_point_source.data = peak_points
         remain_trial_source.data = remain_trial_lines
 
+        heatmap_source.data['image'] = [get_data(ci, peak_indices, 0)]
+
         print("Visualization loaded!")
+        print("=================================================")
 
     load_button.on_click(load_data)
 
     def update_plot(attr, old, new):
         global session_name, peak_indices, ci, remain_trial_indices, trial_indices, trials, data, \
-            peak_trial_source, peak_point_source, remain_trial_source
+            peak_trial_source, peak_point_source, remain_trial_source, heatmap_source
 
         picked_neuron = neuron_id_slider.value
         neuron_index_input.value = str(picked_neuron)
@@ -144,6 +199,8 @@ def place_cell_vis_bkapp_v1(doc):
         for i in remain_trial_indices[picked_neuron]:
             remain_trial_lines['rx'].append(trials[i]['x'])
             remain_trial_lines['ry'].append(trials[i]['y'])
+
+        heatmap_source.data['image'] = [get_data(ci, peak_indices, picked_neuron)]
 
         peak_trial_source.data = trial_lines
         peak_point_source.data = peak_points
@@ -182,7 +239,9 @@ def place_cell_vis_bkapp_v1(doc):
     file_input_row = row(session_input, column(Spacer(height=20), load_button))
     trial_navigation_row = row(previous_button, next_button)
     tool_widgets = column(file_input_row, Spacer(height=30), neuron_index_input, neuron_id_slider, trial_navigation_row)
-    layout = row(plot, Spacer(width=30), tool_widgets)
+    images = Tabs(tabs=[image_tab1, image_tab2])
+    layout = row(images, Spacer(width=30), tool_widgets)
     doc.add_root(layout)
 
-# place_cell_vis_bkapp_v1(curdoc())
+
+place_cell_vis_bkapp_v2(curdoc())

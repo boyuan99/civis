@@ -1,5 +1,5 @@
 from bokeh.models import ColumnDataSource, TextInput, Button, BoxSelectTool, Spacer, Arrow, VeeHead, RangeSlider
-from bokeh.plotting import figure, curdoc
+from bokeh.plotting import figure
 from bokeh.layouts import column, row
 from bokeh.events import SelectionGeometry, Reset
 import pickle
@@ -15,7 +15,7 @@ sys.path.insert(0, parent_dir)
 
 
 def raster_bkapp_v1(doc):
-    from src import CITank
+    from civis.src.CITank import CITank
 
     # Create initial empty plot
     raster_source = ColumnDataSource({'x_starts': [], 'y_starts': [], 'x_ends': [], 'y_ends': []})

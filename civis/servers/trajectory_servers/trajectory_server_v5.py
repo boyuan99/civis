@@ -14,7 +14,7 @@ sys.path.append(project_root)
 
 
 def trajectory_bkapp_v5(doc):
-    from src import VirmenTank
+    from civis.src.VirmenTank import VirmenTank
     global source, trials
 
     trials = []

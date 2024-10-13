@@ -4,9 +4,12 @@ from threading import Thread
 from tornado.ioloop import IOLoop
 from bokeh.server.server import Server
 from bokeh.embed import server_document
-from servers import *
+from civis.servers import *
 
 app = Flask(__name__)
+
+# Global variable to store command-line arguments
+args = None
 
 @app.route('/')
 def home():
@@ -15,81 +18,97 @@ def home():
 # Flask routes for embedding Bokeh applications
 @app.route('/labeler/')
 def labeler_app():
+    global args
     script = server_document(f'http://localhost:{args.bokeh_port}/labeler_bkapp')
     return render_template("labeler.html", script=script, template="Flask", port=args.flask_port)
 
 @app.route('/trajectory/v1/')
 def trajectory_v1_app():
+    global args
     script = server_document(f'http://localhost:{args.bokeh_port}/trajectory_bkapp_v1')
     return render_template("trajectory/trajectory_v1.html", script=script, template="Flask", port=args.flask_port)
 
 @app.route('/connection/v1/')
 def connection_app_v1():
+    global args
     script = server_document(f'http://localhost:{args.bokeh_port}/connection_bkapp_v1')
     return render_template("connection_v1.html", script=script, template="Flask", port=args.flask_port)
 
 @app.route('/trajectory/v0/')
 def trajectory_v0_app():
+    global args
     script = server_document(f'http://localhost:{args.bokeh_port}/trajectory_bkapp_v0')
     return render_template("trajectory/trajectory_v0.html", script=script, template="Flask", port=args.flask_port)
 
 @app.route('/raster/v0/')
 def raster_app():
+    global args
     script = server_document(f'http://localhost:{args.bokeh_port}/raster_bkapp_v0')
     return render_template("raster/raster_v0.html", script=script, template="Flask", port=args.flask_port)
 
 @app.route('/trajectory/v2/')
 def trajectory_v2_app():
+    global args
     script = server_document(f'http://localhost:{args.bokeh_port}/trajectory_bkapp_v2')
     return render_template("trajectory/trajectory_v2.html", script=script, template="Flask", port=args.flask_port)
 
 @app.route('/trajectory/v3/')
 def trajectory_v3_app():
+    global args
     script = server_document(f'http://localhost:{args.bokeh_port}/trajectory_bkapp_v3')
     return render_template("trajectory/trajectory_v3.html", script=script, template='Flask', port=args.flask_port)
 
 @app.route('/raster/v1/')
 def raster_v1_app():
+    global args
     script = server_document(f'http://localhost:{args.bokeh_port}/raster_bkapp_v1')
     return render_template("raster/raster_v1.html", script=script, templates='Flask', port=args.flask_port)
 
 @app.route('/trajectory/v4/')
 def trajectory_v4_app():
+    global args
     script = server_document(f'http://localhost:{args.bokeh_port}/trajectory_bkapp_v4')
     return render_template("trajectory/trajectory_v4.html", script=script, template='Flask', port=args.flask_port)
 
 @app.route('/trajectory/v5/')
 def trajectory_v5_app():
+    global args
     script = server_document(f'http://localhost:{args.bokeh_port}/trajectory_bkapp_v5')
     return render_template("trajectory/trajectory_v5.html", script=script, template='Flask', port=args.flask_port)
 
 @app.route('/trajectory/v6/')
 def trajectory_v6_app():
+    global args
     script = server_document(f'http://localhost:{args.bokeh_port}/trajectory_bkapp_v6')
     return render_template("trajectory/trajectory_v6.html", script=script, template='Flask', port=args.flask_port)
 
 @app.route('/trajectory/v7/')
 def trajectory_v7_app():
+    global args
     script = server_document(f'http://localhost:{args.bokeh_port}/trajectory_bkapp_v7')
     return render_template("trajectory/trajectory_v7.html", script=script, template='Flask', port=args.flask_port)
 
 @app.route('/place/v0/')
 def place_v0_app():
+    global args
     script = server_document(f'http://localhost:{args.bokeh_port}/place_bkapp_v0')
     return render_template("place/place_v0.html", script=script, template='Flask', port=args.flask_port)
 
 @app.route('/place/v1/')
 def place_v1_app():
+    global args
     script = server_document(f'http://localhost:{args.bokeh_port}/place_bkapp_v1')
     return render_template("place/place_v1.html", script=script, templates='Flask', port=args.flask_port)
 
 @app.route('/place/v2/')
 def place_v2_app():
+    global args
     script = server_document(f'http://localhost:{args.bokeh_port}/place_bkapp_v2')
     return render_template("place/place_v2.html", script=script, templates='Flask', port=args.flask_port)
 
 @app.route('/place/v3/')
 def place_v3_app():
+    global args
     script = server_document(f'http://localhost:{args.bokeh_port}/place_bkapp_v3')
     return render_template("place/place_v3.html", script=script, templates='Flask', port=args.flask_port)
 
@@ -120,7 +139,8 @@ def bk_worker(bokeh_port, flask_port):
     server.start()
     server.io_loop.start()
 
-if __name__ == "__main__":
+def main():
+    global args
     parser = argparse.ArgumentParser()
     parser.add_argument('-p', '--flask-port', default=8000, type=int,
                         help='Select port for the Flask server to run on')
@@ -134,3 +154,5 @@ if __name__ == "__main__":
     # Use the specified Flask port when running the app
     app.run(port=args.flask_port, debug=True, use_reloader=False)
 
+if __name__ == "__main__":
+    main()
