@@ -51,7 +51,7 @@ class CITank(VirmenTank):
         self.session_duration = session_duration
 
         (self.C, self.C_raw, self.Cn, self.ids, self.Coor, self.centroids,
-         self.C_denoised, self.C_deconvolved, self.C_baseline, self.C_reraw) = self.load_data(ci_path)
+         self.C_denoised, self.C_deconvolved, self.C_baseline, self.C_reraw, self.A) = self.load_data(ci_path)
 
         self.C_raw = self.shift_signal(self.compute_deltaF_over_F(self.C_raw))
         self.ca_all = self.normalize_signal(self.shift_signal_single(np.mean(self.C_raw, axis=0)))
@@ -85,6 +85,7 @@ class CITank(VirmenTank):
             C_baseline = np.transpose(data['C_baseline'][()])
             C_reraw = np.transpose(data['C_reraw'][()])
             centroids = np.transpose(data['centroids'][()])
+            A = data['A'][()]
 
             for i in range(Coor_cell_array.shape[1]):
                 ref = Coor_cell_array[0, i]  # Get the reference
@@ -93,7 +94,7 @@ class CITank(VirmenTank):
 
                 Coor.append(np.transpose(coor_matrix))
 
-        return C, C_raw, Cn, ids, Coor, centroids, C_denoised, C_deconvolved, C_baseline, C_reraw
+        return C, C_raw, Cn, ids, Coor, centroids, C_denoised, C_deconvolved, C_baseline, C_reraw, A
 
     @staticmethod
     def compute_deltaF_over_F(fluorescence, baseline_indices=None):
