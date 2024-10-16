@@ -9,9 +9,10 @@ import pandas as pd
 import os
 import sys
 
-current_dir = os.path.dirname(__file__)
-parent_dir = os.path.abspath(os.path.join(current_dir, '..'))
-sys.path.insert(0, parent_dir)
+current_dir = os.path.dirname(os.path.abspath(__file__))
+servers_dir = os.path.dirname(current_dir)
+project_root = os.path.dirname(servers_dir)
+sys.path.append(project_root)
 
 
 def raster_bkapp_v1(doc):
@@ -93,14 +94,15 @@ def raster_bkapp_v1(doc):
     def load_data(session_name):
         global virmen_source, virmen_data, range_slider, ci
 
-        with open('config.json', 'r') as file:
+        config_path = os.path.join(project_root, 'config.json')
+        with open(config_path, 'r') as file:
             config = json.load(file)
 
         neuron_path = config['ProcessedFilePath'] + session_name + '/' + session_name + '_v7.mat'
         peak_indices_path = config['ProcessedFilePath'] + session_name + "/" + session_name + "_peak_indices.pkl"
         virmen_path = config['VirmenFilePath'] + session_name + ".txt"
 
-        ci = CITank(neuron_path, virmen_path)
+        ci = CITank(session_name)
         print("Successfully loaded: " + neuron_path)
 
         # load in the peak indices
