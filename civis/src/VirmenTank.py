@@ -22,9 +22,12 @@ class VirmenTank:
 
         self.session_name = session_name
         self.config = self.load_config()
-
-        virmen_path = os.path.join(self.config['VirmenFilePath'],
-                                   f"{session_name}.txt") if virmen_path is None else virmen_path
+        if ".txt" in session_name:
+            virmen_path = os.path.join(self.config['VirmenFilePath'],
+                                       session_name) if virmen_path is None else virmen_path
+        else:
+            virmen_path = os.path.join(self.config['VirmenFilePath'],
+                                       f"{session_name}.txt") if virmen_path is None else virmen_path
 
         self.extend_data = None
         self.virmen_path = virmen_path
@@ -728,6 +731,22 @@ class MazeV1Tank():
             return p
         else:
             raise ValueError("Unsupported backend. Use 'matplotlib' or 'bokeh'.")
+
+    def current_accuracy(self, save_path=None, title=None, notebook=False, overwrite=False):
+        """
+        Returns dictionary of trial as key and accurancy as item (as decimal) up to and including that trial
+        """
+
+        if len(self.correct_array) < 5:
+            trials = {0: int(self.correct_array[0])}
+            for i in range(1, len(self.correct_array)):
+                trials[i] = (trials[i - 1] * i + int(self.correct_array[i])) / (i + 1)
+        else:
+            trials = {4: sum(self.correct_array[0:4]) / len(self.correct_array[0:4])}
+            for i in range(5, len(self.correct_array)):
+                trials[i] = (trials[i - 1] * i + int(self.correct_array[i])) / (i + 1)
+
+        return trials
 
 
 if __name__ == "__main__":

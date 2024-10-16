@@ -57,6 +57,7 @@ def raster_bkapp_v0(doc):
     shared_x_range = figure().x_range
 
     # Raster plot
+
     p = figure(width=1000, height=1000, title="Raster Plot", x_axis_label='Time (s)', y_axis_label='Neuron',
                x_range=shared_x_range, active_scroll='wheel_zoom', min_border_left=100)
     p.segment(x0='x_starts', y0='y_starts', x1='x_ends', y1='y_ends', source=raster_source, color="black", alpha=1,
