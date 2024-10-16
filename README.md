@@ -42,7 +42,7 @@ Note: The environment.yaml file includes the command to install your package in 
 
 1. **Configuration File:**
    
-   Use the provided `config.example.json` as a template to create your local `config.json`. This file includes paths to necessary data directories.
+   Use the provided `civis/config.example.json` as a template to create your local `config.json`. This file includes paths to necessary data directories.
 
    ```bash
    cp civis/config.example.json civis/config.json

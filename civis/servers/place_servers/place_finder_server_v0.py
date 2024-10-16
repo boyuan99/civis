@@ -8,9 +8,10 @@ from bokeh.plotting import figure
 from bokeh.models import ColumnDataSource, Slider, Button, BoxAnnotation, Span, TextInput, Spacer
 from bokeh.layouts import column, row
 
-current_dir = os.path.dirname(__file__)
-parent_dir = os.path.abspath(os.path.join(current_dir, '..'))
-sys.path.insert(0, parent_dir)
+current_dir = os.path.dirname(os.path.abspath(__file__))
+servers_dir = os.path.dirname(current_dir)
+project_root = os.path.dirname(servers_dir)
+sys.path.append(project_root)
 
 
 def place_cell_vis_bkapp_v0(doc):
@@ -47,7 +48,8 @@ def place_cell_vis_bkapp_v0(doc):
         global session_name, x_pos_all, y_pos_all, peak_indices, source, ci
 
         session_name = session_input.value
-        with open('config.json', 'r') as file:
+        config_path = os.path.join(project_root, 'config.json')
+        with open(config_path, 'r') as file:
             config = json.load(file)
 
         # load in the DataTank

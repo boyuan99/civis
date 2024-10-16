@@ -5,7 +5,7 @@ import sys
 
 from bokeh.plotting import figure, curdoc
 from bokeh.models import ColumnDataSource, Slider, Button, Arrow, VeeHead, Div, TextInput, Spacer, LinearColorMapper, \
-    ColorBar, BasicTicker, Select
+    ColorBar, BasicTicker, Select, TabPanel, Tabs
 from bokeh.layouts import column, row
 from bokeh.palettes import Blues8
 
@@ -75,6 +75,11 @@ def trajectory_bkapp_v6(doc):
         'y': y_labels * len(x_labels),
         'value': default_matrix.flatten().tolist(),
     })
+    # Initialize accuracy vs time plot and velocty and lick plot with default data
+    accuracy_source = ColumnDataSource(data={'x': [], 'y': []})
+    velocity_source = ColumnDataSource(data={'x': [], 'y': []})
+    lick_source = ColumnDataSource(data={'x': [], 'y': []})
+    current_velocity_source = ColumnDataSource(data={'x': [], 'y': []})
 
     color_mapper = LinearColorMapper(palette=Blues8[::-1], low=-1, high=1)
 
@@ -94,8 +99,29 @@ def trajectory_bkapp_v6(doc):
     confusion_matrix_plot.text(x='x', y='y', text='value', source=confusion_matrix_source,
                                text_align="center", text_baseline="middle")
 
+    confusion_matrix_tab = TabPanel(child=confusion_matrix_plot, title="Confusion Matrix")
+
+    #Creates empty velocity and lick plot
+    velocity_and_lick_plot = figure(width=800, height=400,
+                     active_drag='pan', active_scroll='wheel_zoom', title="Velocity")
+    velocity_and_lick_plot.line(x='x', y='y', source = velocity_source, line_color='navy', legend_label='velocity',
+                                line_width=2)
+    velocity_and_lick_plot.line(x='x', y='y', source = current_velocity_source, line_color='red', legend_label='current_velocity',
+                                line_width=2)
+    velocity_and_lick_plot.multi_line(xs = 'x', ys = 'y', source = lick_source, line_color='green', legend_label='lick',)
+    velocity_and_lick_plot.legend.click_policy = "hide"
+
+    velocity_and_lick_tab = TabPanel(child=velocity_and_lick_plot, title="Velocity")
+
+    #Make accuracy vs trial graph
+
+    accuracy_plot = figure(title="Accuracy Plot", x_axis_label='Trial', y_axis_label='Accuracy(%)', height=300)
+    accuracy_plot.line(x='x', y='y', source=accuracy_source)
+
+    accuracy_tab = TabPanel(child=accuracy_plot, title="Accuracy")
+
     def load_data():
-        global source, trials, starts, confusion_matrix_source, correct_array
+        global source, trials, starts, confusion_matrix_source, correct_array, accuracy_trials, vm_rate
 
         try:
             config_path = os.path.join(project_root, 'config.json')
@@ -113,10 +139,11 @@ def trajectory_bkapp_v6(doc):
                 raise ValueError(
                     f"Invalid maze type. Expected 'TurnV1', but got '{VirmenTank.determine_maze_type(file)}'")
             else:
-                vm = VirmenTank(file, height=35)
+                vm = VirmenTank(session_name, height=35)
 
             trials = vm.virmen_trials
-            starts = [x / vm.vm_rate for x in vm.trials_start_indices]
+            vm_rate = vm.vm_rate
+            starts = [x / vm_rate for x in vm.trials_start_indices]
             correct_array = vm.extend_data.correct_array
 
             print("Successfully loaded: " + file)
@@ -137,6 +164,9 @@ def trajectory_bkapp_v6(doc):
                             'y': [initial_trial['y'][0]],
                             'face_angle': [initial_trial['face_angle'][0]]}
                 source.data = new_data
+
+                accuracy_trials = vm.extend_data.current_accuracy()
+                accuracy_source.data = {'x': list(accuracy_trials.keys()), 'y': list(accuracy_trials.values())}
 
                 trial_slider.end = len(trials) - 1
                 trial_slider.value = 0
@@ -222,6 +252,25 @@ def trajectory_bkapp_v6(doc):
         source.data = new_data
         starts_div.text = f"Start Time: {starts[trial_index]}"
 
+        #edits data source for velocity and lick graph using (1/vm_rate) to convert indicies to seconds
+        dx = np.array(trial_data['dx'])
+        dy = np.array(trial_data['dy'])
+        velocity = np.sqrt(dx ** 2 + dy ** 2)
+
+        velocity_source.data = {'x': (1/vm_rate) * np.arange(len(trial_data['x'])),
+                                         'y': velocity}
+
+        current_velocity_source.data = {"x": [(1/vm_rate) * max_index, (1/vm_rate) * max_index],
+                                        "y": [0, velocity.max()]}
+        x_pos_lick = []
+        y_pos_lick = []
+
+        for indices in trial_data["lick"]:
+            x_pos_lick.append([indices * (1/vm_rate), indices * (1/vm_rate)])
+            y_pos_lick.append([0 , velocity.max()])
+
+        lick_source.data= {"x": x_pos_lick, "y": y_pos_lick}
+
         if correct_array[trial_index]:
             correctness_div.text = f"Trial Correctness: Correct"
         else:
@@ -282,12 +331,14 @@ def trajectory_bkapp_v6(doc):
     correct_trials_dropdown.on_change('value', update_trial_from_dropdown)
     incorrect_trials_dropdown.on_change('value', update_trial_from_dropdown)
 
+    tab_buttons = Tabs(tabs=[confusion_matrix_tab, accuracy_tab, velocity_and_lick_tab])
+
     file_input_row = row(filename_input, column(Spacer(height=20), load_button))
     trial_navigation_row = row(previous_button, next_button)
     dropdown_row = row(correct_trials_dropdown, incorrect_trials_dropdown)
     tool_widgets = column(file_input_row, trial_slider, progress_slider, play_button,
                           trial_navigation_row, starts_div, correctness_div, dropdown_row, error_div)
-    layout = row(plot, Spacer(width=30), column(tool_widgets, confusion_matrix_plot))
+    layout = row(plot, Spacer(width=30), column(tool_widgets, tab_buttons))
     doc.add_root(layout)
 
 

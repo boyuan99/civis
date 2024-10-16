@@ -6,19 +6,26 @@ import pickle
 import numpy as np
 import json
 import os
+import sys
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+servers_dir = os.path.dirname(current_dir)
+project_root = os.path.dirname(servers_dir)
+sys.path.append(project_root)
 
 
 def raster_bkapp_v0(doc):
     from civis.src.CITank import CITank
     def load_data(session_name):
-        with open('config.json', 'r') as file:
+        config_path = os.path.join(project_root, 'config.json')
+        with open(config_path, 'r') as file:
             config = json.load(file)
 
         neuron_path = config['ProcessedFilePath'] + session_name + '/' + session_name + '_v7.mat'
         peak_indices_path = config['ProcessedFilePath'] + session_name + "/" + session_name + "_peak_indices.pkl"
         virmen_path = config['VirmenFilePath'] + session_name + ".txt"
 
-        ci = CITank(neuron_path, virmen_path)
+        ci = CITank(session_name)
         print("Successfully loaded: " + neuron_path)
 
         # load in the peak indices
@@ -57,6 +64,7 @@ def raster_bkapp_v0(doc):
     shared_x_range = figure().x_range
 
     # Raster plot
+
     p = figure(width=1000, height=1000, title="Raster Plot", x_axis_label='Time (s)', y_axis_label='Neuron',
                x_range=shared_x_range, active_scroll='wheel_zoom', min_border_left=100)
     p.segment(x0='x_starts', y0='y_starts', x1='x_ends', y1='y_ends', source=raster_source, color="black", alpha=1,

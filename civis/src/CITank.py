@@ -27,10 +27,8 @@ class CITank(VirmenTank):
         self.session_name = session_name
         self.config = self.load_config()
 
-        ci_path = os.path.join(self.config['ProcessedFilePath'], session_name,
-                               f"{session_name}_v7.mat") if ci_path is None else ci_path
-        virmen_path = os.path.join(self.config['VirmenFilePath'],
-                                   f"{session_name}.txt") if virmen_path is None else virmen_path
+        ci_path = ci_path or os.path.join(self.config['ProcessedFilePath'], session_name, f"{session_name}_v7.mat")
+        virmen_path = virmen_path or os.path.join(self.config['VirmenFilePath'], f"{session_name}.txt")
 
         super().__init__(
             session_name=session_name,
@@ -72,6 +70,7 @@ class CITank(VirmenTank):
         with open(config_path, 'r') as config_file:
             config = json.load(config_file)
 
+        print(f"Opening: {filename}...")
         with h5py.File(filename, 'r') as file:
             data = file['data']
             Cn = np.transpose(data['Cn'][()])
