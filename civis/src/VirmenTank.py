@@ -742,9 +742,9 @@ class MazeV1Tank():
             for i in range(1, len(self.correct_array)):
                 trials[i] = (trials[i - 1] * i + int(self.correct_array[i])) / (i + 1)
         else:
-            trials = {4: sum(self.correct_array[0:4]) / len(self.correct_array[0:4])}
+            trials = {}
             for i in range(5, len(self.correct_array)):
-                trials[i] = (trials[i - 1] * i + int(self.correct_array[i])) / (i + 1)
+                trials[i] = (sum(self.correct_array[i - 5:i])) / 5
 
         return trials
 
