@@ -27,10 +27,8 @@ class CITank(VirmenTank):
         self.session_name = session_name
         self.config = self.load_config()
 
-        ci_path = os.path.join(self.config['ProcessedFilePath'], session_name,
-                               f"{session_name}_v7.mat") if ci_path is None else ci_path
-        virmen_path = os.path.join(self.config['VirmenFilePath'],
-                                   f"{session_name}.txt") if virmen_path is None else virmen_path
+        ci_path = ci_path or os.path.join(self.config['ProcessedFilePath'], session_name, f"{session_name}_v7.mat")
+        virmen_path = virmen_path or os.path.join(self.config['VirmenFilePath'], f"{session_name}.txt")
 
         super().__init__(
             session_name=session_name,
@@ -51,7 +49,7 @@ class CITank(VirmenTank):
         self.session_duration = session_duration
 
         (self.C, self.C_raw, self.Cn, self.ids, self.Coor, self.centroids,
-         self.C_denoised, self.C_deconvolved, self.C_baseline, self.C_reraw) = self.load_data(ci_path)
+         self.C_denoised, self.C_deconvolved, self.C_baseline, self.C_reraw, self.A) = self.load_data(ci_path)
 
         self.C_raw = self.shift_signal(self.compute_deltaF_over_F(self.C_raw))
         self.ca_all = self.normalize_signal(self.shift_signal_single(np.mean(self.C_raw, axis=0)))
@@ -72,6 +70,7 @@ class CITank(VirmenTank):
         with open(config_path, 'r') as config_file:
             config = json.load(config_file)
 
+        print(f"Opening: {filename}...")
         with h5py.File(filename, 'r') as file:
             data = file['data']
             Cn = np.transpose(data['Cn'][()])
@@ -85,6 +84,7 @@ class CITank(VirmenTank):
             C_baseline = np.transpose(data['C_baseline'][()])
             C_reraw = np.transpose(data['C_reraw'][()])
             centroids = np.transpose(data['centroids'][()])
+            A = data['A'][()]
 
             for i in range(Coor_cell_array.shape[1]):
                 ref = Coor_cell_array[0, i]  # Get the reference
@@ -93,7 +93,7 @@ class CITank(VirmenTank):
 
                 Coor.append(np.transpose(coor_matrix))
 
-        return C, C_raw, Cn, ids, Coor, centroids, C_denoised, C_deconvolved, C_baseline, C_reraw
+        return C, C_raw, Cn, ids, Coor, centroids, C_denoised, C_deconvolved, C_baseline, C_reraw, A
 
     @staticmethod
     def compute_deltaF_over_F(fluorescence, baseline_indices=None):

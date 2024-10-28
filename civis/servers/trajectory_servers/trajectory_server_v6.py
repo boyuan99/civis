@@ -4,6 +4,7 @@ import os
 import sys
 
 from bokeh.plotting import figure, curdoc
+
 from bokeh.models import (ColumnDataSource, Slider, Button, Arrow, VeeHead, Div, TextInput, Spacer,
                           LinearColorMapper, ColorBar, BasicTicker, Select, TabPanel, Tabs)
 from bokeh.layouts import column, row
@@ -101,7 +102,7 @@ def trajectory_bkapp_v6(doc):
                                text_align="center", text_baseline="middle")
 
     confusion_matrix_tab = TabPanel(child=confusion_matrix_plot, title="Confusion Matrix")
-
+    
     # Creates empty velocity and lick plot
     velocity_and_lick_plot = figure(width=800, height=300,
                                     active_drag='pan', active_scroll='wheel_zoom', title="Velocity")
