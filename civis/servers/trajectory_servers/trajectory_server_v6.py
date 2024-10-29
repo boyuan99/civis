@@ -152,14 +152,15 @@ def trajectory_bkapp_v6(doc):
 
             data_array = np.array(vm.virmen_data)
             start_indicies = vm.trials_start_indices
-            end_indicies = vm.trials_end_indices
+
+            trial_length = sum(len(d['x']) for d in trials)
+            start_indicies = np.append(start_indicies, trial_length)
             pstcr = {}
 
             for i in range(len(vm.virmen_trials)):
-                dx = np.diff(data_array[start_indicies[i]: end_indicies[i], 0])
-                dy = np.diff(data_array[start_indicies[i]: end_indicies[i], 1])
+                dx = np.diff(data_array[start_indicies[i]: start_indicies[i+1], 0])
+                dy = np.diff(data_array[start_indicies[i]: start_indicies[i+1], 1])
                 pstcr[i] = np.sqrt(dx ** 2 + dy ** 2)
-                pstcr[i] = np.append(pstcr[i], pstcr[i][-1])
 
             vm_rate = vm.vm_rate
             starts = [x / vm_rate for x in vm.trials_start_indices]
@@ -279,7 +280,7 @@ def trajectory_bkapp_v6(doc):
         velocity = np.sqrt(dx ** 2 + dy ** 2)
 
         pstcr_array = np.array(pstcr[trial_index])
-        pstcr_array = np.append(pstcr_array, pstcr[trial_index][-1])
+        pstcr_array = np.append(pstcr_array, 0 )
 
         velocity_source.data = {'x': (1 / vm_rate) * np.arange(len(trial_data['x'])), 'y': velocity}
         pstcr_source.data = {'x': (1 / vm_rate) * np.arange(len(trial_data['x'])),
