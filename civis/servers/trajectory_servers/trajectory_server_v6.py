@@ -152,14 +152,16 @@ def trajectory_bkapp_v6(doc):
 
             data_array = np.array(vm.virmen_data)
             start_indicies = vm.trials_start_indices
+            end_indicies = vm.trials_end_indices_all
 
-            trial_length = sum(len(d['x']) for d in trials)
-            start_indicies = np.append(start_indicies, trial_length)
+
             pstcr = {}
 
             for i in range(len(vm.virmen_trials)):
-                dx = np.diff(data_array[start_indicies[i]: start_indicies[i+1], 0])
-                dy = np.diff(data_array[start_indicies[i]: start_indicies[i+1], 1])
+                dx = np.diff(data_array[start_indicies[i]: end_indicies[i] + 1, 0])
+                #dx = np.insert(dx, 0, dx[0])
+                dy = np.diff(data_array[start_indicies[i]: end_indicies[i] + 1, 1])
+                #dy = np.insert(dy, 0, dy[0])
                 pstcr[i] = np.sqrt(dx ** 2 + dy ** 2)
 
             vm_rate = vm.vm_rate
