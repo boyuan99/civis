@@ -159,9 +159,9 @@ def trajectory_bkapp_v6(doc):
 
             for i in range(len(vm.virmen_trials)):
                 dx = np.diff(data_array[start_indicies[i]: end_indicies[i] + 1, 0])
-                #dx = np.insert(dx, 0, dx[0])
+                dx = np.insert(dx, 0, dx[0])
                 dy = np.diff(data_array[start_indicies[i]: end_indicies[i] + 1, 1])
-                #dy = np.insert(dy, 0, dy[0])
+                dy = np.insert(dy, 0, dy[0])
                 pstcr[i] = np.sqrt(dx ** 2 + dy ** 2)
 
             vm_rate = vm.vm_rate
@@ -282,7 +282,6 @@ def trajectory_bkapp_v6(doc):
         velocity = np.sqrt(dx ** 2 + dy ** 2)
 
         pstcr_array = np.array(pstcr[trial_index])
-        pstcr_array = np.append(pstcr_array, 0 )
 
         velocity_source.data = {'x': (1 / vm_rate) * np.arange(len(trial_data['x'])), 'y': velocity}
         pstcr_source.data = {'x': (1 / vm_rate) * np.arange(len(trial_data['x'])),
