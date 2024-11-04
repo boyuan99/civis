@@ -16,34 +16,38 @@ sys.path.append(project_root)
 def connection_bkapp_v1(doc):
     from civis.src.CITank import CITank
     def load_data(neuron_path_input, category_select):
-        config_path = os.path.join(project_root, 'config.json')
-        with open(config_path, 'r') as file:
-            config = json.load(file)
+        try:
+            config_path = os.path.join(project_root, 'config.json')
+            with open(config_path, 'r') as file:
+                config = json.load(file)
 
-        session_name = neuron_path_input.value
-        # load in the DataTank
-        neuron_path = os.path.join(config['ProcessedFilePath'], session_name, f'{session_name}_v7.mat')
-        virmen_path = os.path.join(config['VirmenFilePath'], f'{session_name}.txt')
-        pairwise_path = os.path.join(config['ProcessedFilePath'], session_name, f'{session_name}_cor.npy')
-        neuron_categories_path = os.path.join(config['ProcessedFilePath'], session_name,
-                                              f'{session_name}_neuron_categories.pkl')
-        print(f"Loading neuron data {session_name}...")
-        ci = CITank(neuron_path, virmen_path, height=4)
-        print(f"Successfully loaded: {neuron_path}")
+            session_name = neuron_path_input.value
+            # load in the DataTank
+            pairwise_path = os.path.join(config['ProcessedFilePath'], session_name, f'{session_name}_cor.npy')
+            neuron_categories_path = os.path.join(config['ProcessedFilePath'], session_name,
+                                                  f'{session_name}_neuron_categories.pkl')
+            print(f"Loading neuron data {session_name}...")
+            ci = CITank(session_name, height=4)
+            print(f"Successfully loaded: {session_name}")
 
-        print(f"Loading neuronal categories data {session_name}...")
-        with open(neuron_categories_path, 'rb') as f:
-            neuron_categories_all = pickle.load(f)
-        print(f"Successfully loaded: {neuron_categories_path}")
+            print(f"Loading neuronal categories data {session_name}...")
+            with open(neuron_categories_path, 'rb') as f:
+                neuron_categories_all = pickle.load(f)
+            print(f"Successfully loaded: {neuron_categories_path}")
 
-        print(f"Loading pairwise correlation data {session_name}...")
-        correlation_matrix = np.load(pairwise_path)
-        print(f"Successfully loaded: {pairwise_path}")
+            print(f"Loading pairwise correlation data {session_name}...")
+            correlation_matrix = np.load(pairwise_path)
+            print(f"Successfully loaded: {pairwise_path}")
 
-        exclude_keys = ['velocity', 'lick', 'pstcr']
-        neuron_categories = {k: v for k, v in neuron_categories_all.items() if k not in exclude_keys}
-        category_select.options = ["All"] + sorted(list(neuron_categories.keys()))
-        return ci, neuron_categories, correlation_matrix
+            exclude_keys = ['velocity', 'lick', 'pstcr']
+            neuron_categories = {k: v for k, v in neuron_categories_all.items() if k not in exclude_keys}
+            category_select.options = ["All"] + sorted(list(neuron_categories.keys()))
+            return ci, neuron_categories, correlation_matrix
+        except FileNotFoundError:
+            print('loading failed')
+            return f"File Not Found."
+        except Exception as e:
+            return f"An unexpected error occurred: {str(e)}"
 
     #Create initial empty plot
     TOOLS = "pan, wheel_zoom, zoom_in, zoom_out, box_zoom, reset, save"
@@ -68,7 +72,12 @@ def connection_bkapp_v1(doc):
     #change this to update data
     def update_data():
         #loads data from file
-        [ci, neuron_categories,correlation_matrix] = load_data(neuron_path_input,category_select)
+        data = load_data(neuron_path_input,category_select)
+        if (type(data) != str):
+            [ci, neuron_categories,correlation_matrix] = load_data(neuron_path_input,category_select)
+        else:
+            details_div.text = data
+            return
 
         neuron_colors = [
             "#F44336",  # Red
