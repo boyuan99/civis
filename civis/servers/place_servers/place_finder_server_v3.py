@@ -118,7 +118,7 @@ def place_cell_vis_bkapp_v3(doc):
         neuron_path = os.path.join(config['ProcessedFilePath'], session_name, f'{session_name}_v7.mat')
         virmen_path = os.path.join(config['VirmenFilePath'], f'{session_name}.txt')
         print("Loading neuron data " + session_name + "...")
-        ci = CITank(neuron_path, virmen_path, height=4)
+        ci = CITank(session_name)
         print("Successfully loaded: " + neuron_path)
 
         neuron_id_slider.disabled = False

@@ -59,7 +59,7 @@ def place_cell_vis_bkapp_v1(doc):
         neuron_path = config['ProcessedFilePath'] + session_name + '/' + session_name + '_v7.mat'
         virmen_path = config['VirmenFilePath'] + session_name + ".txt"
         print("Loading neuron data " + session_name + "...")
-        ci = CITank(neuron_path, virmen_path, maze_type="straight25", height=4)
+        ci = CITank(session_name)
         print("Successfully loaded: " + neuron_path)
 
         neuron_id_slider.disabled = False
