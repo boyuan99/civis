@@ -21,6 +21,10 @@ dependencies:
   - tqdm=4.66.2
   - mne=1.7.1
   - seaborn=0.13.2
+  - tifffile=2023.4.12
+  - scikit-learn=1.5.1
+  - scikit-image=0.24.0
+  - opencv=4.10.0
   - pip
   - pip:
     - tdt==0.6.6
