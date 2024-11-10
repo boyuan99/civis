@@ -1093,6 +1093,237 @@ class CITank(VirmenTank):
 
         return p
 
+    @staticmethod
+    def extract_statistical_features(region, mask):
+        """
+        Extracts comprehensive statistical features from a masked region.
+
+        Args:
+            region (ndarray): The image region
+            mask (ndarray): Binary mask for the region
+
+        Returns:
+            list: Statistical features of the region
+        """
+        from scipy import stats
+        from skimage.measure import shannon_entropy
+
+        non_zero_pixels = region[mask > 0]
+
+        if len(non_zero_pixels) == 0:
+            return [0] * 12
+
+        features = []
+
+        # Basic statistics
+        features.extend([
+            np.mean(non_zero_pixels),
+            np.median(non_zero_pixels),
+            np.std(non_zero_pixels),
+            stats.skew(non_zero_pixels),
+            stats.kurtosis(non_zero_pixels)
+        ])
+
+        # Percentile-based features
+        percentiles = np.percentile(non_zero_pixels, [10, 25, 75, 90])
+        features.extend([
+            percentiles[0],
+            percentiles[1],
+            percentiles[2],
+            percentiles[3],
+            percentiles[2] - percentiles[1]
+        ])
+
+        # Additional features
+        features.extend([
+            shannon_entropy(non_zero_pixels),
+            np.sum(non_zero_pixels) / len(non_zero_pixels)
+        ])
+
+        return features
+
+    def extract_and_classify_regions(self, target_image_path):
+        """
+        Extracts masked regions and classifies them using statistical features.
+        Returns both the clustering results and separated masks.
+
+        Args:
+            target_image_path (str): Path to the source image
+
+        Returns:
+            tuple: (extracted_regions, labels, feature_matrix, feature_importance, cluster_masks)
+                - cluster_masks is a dictionary containing the masks for each cluster
+        """
+        from tifffile import imread
+        import cv2
+        from sklearn.preprocessing import StandardScaler
+        from sklearn.cluster import KMeans
+        from sklearn.decomposition import PCA
+
+        target_image = imread(target_image_path)
+        if len(target_image.shape) == 3:
+            target_image = cv2.cvtColor(target_image, cv2.COLOR_BGR2GRAY)
+
+        target_height, target_width = target_image.shape
+        original_masks = []
+        extracted_regions = []
+        features = []
+
+        for idx in range(self.A.shape[0]):
+            mask = self.A[idx]
+            mask_resized = cv2.resize(mask, (target_width, target_height),
+                                      interpolation=cv2.INTER_LINEAR)
+            binary_mask = (mask_resized != 0).astype(np.uint8)
+
+            masked_region = target_image * binary_mask
+            region_features = self.extract_statistical_features(masked_region, binary_mask)
+
+            original_masks.append(mask)
+            extracted_regions.append(masked_region)
+            features.append(region_features)
+
+        feature_matrix = np.array(features)
+        original_masks = np.array(original_masks)
+
+        scaler = StandardScaler()
+        normalized_features = scaler.fit_transform(feature_matrix)
+
+        pca = PCA()
+        pca.fit(normalized_features)
+
+        kmeans = KMeans(n_clusters=2, random_state=42)
+        labels = kmeans.fit_predict(normalized_features)
+
+        feature_importance = np.abs(pca.components_[0])
+
+        masks_cluster_1 = original_masks[labels == 0]
+        masks_cluster_2 = original_masks[labels == 1]
+
+        cluster_masks = {
+            'cluster1': masks_cluster_1,
+            'cluster2': masks_cluster_2
+        }
+
+        return extracted_regions, labels, feature_matrix, feature_importance, cluster_masks
+
+    @staticmethod
+    def visualize_clustering_results(extracted_regions, labels, feature_matrix, feature_importance, cluster_masks,
+                                     output_dir=None, show_plots=True):
+        """
+        Creates comprehensive visualizations of the clustering results.
+
+        Args:
+            extracted_regions (list): List of extracted region arrays
+            labels (array): Cluster assignments
+            feature_matrix (array): Matrix of features
+            feature_importance (array): Feature importance scores
+            cluster_masks (dict): Dictionary containing masks for each cluster
+            output_dir (str, optional): Directory to save visualizations. If None, plots won't be saved.
+            show_plots (bool): Whether to display the plots. Defaults to True.
+        """
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+
+        plt.figure(figsize=(20, 15))
+
+        # Sample regions from each cluster
+        for cluster_idx in range(2):
+            cluster_indices = np.where(labels == cluster_idx)[0]
+            if len(cluster_indices) > 0:
+                sample_indices = np.random.choice(cluster_indices,
+                                                  size=min(3, len(cluster_indices)),
+                                                  replace=False)
+
+                plt.subplot(3, 2, cluster_idx + 1)
+                plt.imshow(extracted_regions[sample_indices[0]], cmap='gray')
+                for idx in sample_indices[1:]:
+                    plt.imshow(extracted_regions[idx], cmap='gray', alpha=0.5)
+
+                plt.title(f'Cluster {cluster_idx + 1} Examples\n({len(cluster_indices)} regions)')
+                plt.axis('off')
+
+        # Feature importance plot
+        feature_names = [
+            'Mean', 'Median', 'Std Dev', 'Skewness', 'Kurtosis',
+            '10th Perc', '25th Perc', '75th Perc', '90th Perc', 'IQR',
+            'Entropy', 'Avg Signal'
+        ]
+
+        plt.subplot(3, 2, 3)
+        feature_importance_normalized = feature_importance / np.max(feature_importance)
+        sns.barplot(x=feature_names, y=feature_importance_normalized)
+        plt.xticks(rotation=45, ha='right')
+        plt.title('Feature Importance')
+
+        # Cluster distribution plot
+        plt.subplot(3, 2, 4)
+        for cluster_idx in range(2):
+            cluster_features = feature_matrix[labels == cluster_idx]
+            plt.hist(cluster_features[:, 0], bins=20, alpha=0.5,
+                     label=f'Cluster {cluster_idx + 1}')
+        plt.title('Distribution of Mean Intensity by Cluster')
+        plt.legend()
+
+        # Mask examples from each cluster
+        for cluster_idx, (cluster_name, masks) in enumerate(cluster_masks.items()):
+            plt.subplot(3, 2, 5 + cluster_idx)
+            if len(masks) > 0:
+                composite = np.zeros_like(masks[0])
+                for i in range(min(3, len(masks))):
+                    composite += masks[i]
+                plt.imshow(composite, cmap='gray')
+                plt.title(f'{cluster_name} Mask Examples\n({len(masks)} masks)')
+            plt.axis('off')
+
+        plt.tight_layout()
+
+        # Save plot if output directory is specified
+        if output_dir is not None:
+            os.makedirs(output_dir, exist_ok=True)
+            plt.savefig(os.path.join(output_dir, "clustering_analysis.png"))
+
+        # Show plot if requested
+        if show_plots:
+            plt.show()
+        else:
+            plt.close()
+
+        # Print summary statistics
+        print("\nCluster Summary:")
+        for cluster_idx in range(2):
+            cluster_size = np.sum(labels == cluster_idx)
+            cluster_features = feature_matrix[labels == cluster_idx]
+            print(f"\nCluster {cluster_idx + 1} Statistics:")
+            print(f"Size: {cluster_size}")
+            print(f"Mean intensity: {np.mean(cluster_features[:, 0]):.2f}")
+            print(f"Mean std dev: {np.mean(cluster_features[:, 2]):.2f}")
+            print(f"Mean entropy: {np.mean(cluster_features[:, -2]):.2f}")
+            print(f"Number of masks: {len(cluster_masks[f'cluster{cluster_idx + 1}'])}")
+
+    def analyze_regions(self, target_image_path, output_dir=None, show_plots=True):
+        """
+        Convenience method to perform region extraction, classification, and visualization in one step.
+
+        Args:
+            target_image_path (str): Path to the source image
+            output_dir (str, optional): Directory to save visualizations. If None, plots won't be saved.
+            show_plots (bool): Whether to display the plots. Defaults to True.
+
+        Returns:
+            tuple: (cluster_masks, labels) for further analysis if needed
+        """
+        regions, labels, features, importance, masks = self.extract_and_classify_regions(target_image_path)
+        self.visualize_clustering_results(
+            regions,
+            labels,
+            features,
+            importance,
+            masks,
+            output_dir=output_dir,
+            show_plots=show_plots
+        )
+        return masks, labels
+
 
 if __name__ == "__main__":
     print("Starting CivisServer")
