@@ -1,0 +1,15 @@
+bokeh>=3.3.4
+flask>=2.2.5
+h5py>=3.11.0
+numpy>=1.26.4
+pandas>=1.5.3
+scipy>=1.11.4
+tornado>=6.3.3
+tqdm>=4.66.2
+mne>=1.7.1
+seaborn>=0.13.2
+tifffile>=2023.4.12
+scikit-learn>=1.5.1
+scikit-image>=0.24.0
+opencv-python>=4.10.0
+tdt>=0.6.6
