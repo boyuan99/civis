@@ -134,7 +134,8 @@ def connection_bkapp_v1(doc):
         p.image(image=[np.flipud(ci.Cn)], x=0, y=0, dw=width, dh=height, palette="Greys256")
 
         # Add centroids
-        circle_renderer = p.circle(x='x', y='y', source=source, size=10, color='colors', view=view, alpha=0.7)
+        circle_renderer = p.scatter(x='x', y='y', source=source, size=10, fill_color='colors',
+                                    line_color='colors', alpha=0.7)
 
         circle_renderer.selection_glyph = circle_renderer.glyph.clone()
         circle_renderer.nonselection_glyph = circle_renderer.glyph.clone()
