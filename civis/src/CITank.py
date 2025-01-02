@@ -12,6 +12,8 @@ class CITank(VirmenTank):
                  session_name,
                  ci_path=None,
                  virmen_path=None,
+                 gcamp_path=None,
+                 tdt_path=None,
                  height=30,
                  maze_type=None,
                  threshold=None,
@@ -29,6 +31,11 @@ class CITank(VirmenTank):
 
         ci_path = ci_path or os.path.join(self.config['ProcessedFilePath'], session_name, f"{session_name}_v7.mat")
         virmen_path = virmen_path or os.path.join(self.config['VirmenFilePath'], f"{session_name}.txt")
+        gcamp_path = gcamp_path or os.path.join(self.config['ProcessedFilePath'], session_name,
+                                                f"{session_name}_tiff_projections", f"{session_name}_max.tif")
+        tdt_path = tdt_path or os.path.join(self.config['ProcessedFilePath'], session_name,
+                                                f"{session_name}_tdt_adjustment", f"{session_name}_tdt_adjusted_16bit.tif")
+
 
         super().__init__(
             session_name=session_name,
@@ -45,6 +52,8 @@ class CITank(VirmenTank):
             height=height)
 
         self.ci_path = ci_path
+        self.gcamp_path = gcamp_path
+        self.tdt_path = tdt_path
         self.ci_rate = ci_rate
         self.session_duration = session_duration
 
@@ -182,17 +191,24 @@ class CITank(VirmenTank):
 
         return correlations, lags
 
-    def average_across_indices(self, indices, cut_interval=50):
+    def average_across_indices(self, indices, signal=None, cut_interval=50):
         """
         Average the calcium signal across the specified indices.
         :param indices: indices to average across
+        :param signal: optional input signal to use instead of self.C_raw
         :param cut_interval: interval to cut around the indices
         :return: averaged calcium signal, normalized signal, sorted signal, mean signal, sorted indices
         """
-        C_avg = np.zeros([self.neuron_num, cut_interval * 2])
+        # Use provided signal if available, otherwise use self.C_raw
+        input_signal = signal if signal is not None else self.C_raw
+
+        # Get number of neurons from the input signal
+        neuron_num = len(input_signal) if signal is not None else self.neuron_num
+
+        C_avg = np.zeros([neuron_num, cut_interval * 2])
         time_points = len(self.t)
 
-        for neu in range(self.neuron_num):
+        for neu in range(neuron_num):
             C_tmp = np.zeros([len(indices), cut_interval * 2])
             for i, idx in enumerate(indices):
                 start_idx = max(idx - cut_interval, 0)
@@ -203,8 +219,8 @@ class CITank(VirmenTank):
                     # If the window exceeds, keep the row in C_tmp as zeros
                     continue
                 else:
-                    # Otherwise, assign the values from C_raw to the appropriate row in C_tmp
-                    C_tmp[i, (cut_interval - (idx - start_idx)):(cut_interval + (end_idx - idx))] = self.C_raw[neu,
+                    # Use input_signal instead of self.C_raw
+                    C_tmp[i, (cut_interval - (idx - start_idx)):(cut_interval + (end_idx - idx))] = input_signal[neu,
                                                                                                     start_idx:end_idx]
 
             C_avg[neu] = np.mean(self.shift_signal(C_tmp), axis=0)
