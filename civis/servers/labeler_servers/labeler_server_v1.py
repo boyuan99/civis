@@ -301,7 +301,7 @@ def labeler_bkapp_v1(doc):
 
     # Create a button for saving labels and a TextInput for the file path
     save_labels_button = Button(label="Save Labels", button_type="success", disabled=True)
-    file_path_input = TextInput(value="labels.json", title="File Path:", disabled=True)
+    file_path_input = TextInput(value="labels.json", title="File Path:", width=400, disabled=True)
 
     # Initialize labels dictionary
     labels = {}
@@ -322,29 +322,38 @@ def labeler_bkapp_v1(doc):
                 status_div.text = "<span style='color: red;'>Error: Session name is empty!</span>"
                 return
 
-            status_div.text = f"<span style='color: blue;'>Debug: Reading config from {CONFIG_PATH}</span>"
             with open(CONFIG_PATH, 'r') as file:
                 config = json.load(file)
             
             # Construct save path
             base_path = config['ProcessedFilePath']
             save_dir = os.path.join(base_path, session_name, f'{session_name}_neuron_labels')
-            
-            status_div.text = f"<span style='color: blue;'>Debug: Attempting to create directory: {save_dir}</span>"
-            # Create directory if it doesn't exist
             os.makedirs(save_dir, exist_ok=True)
             
-            # Save path for the labels
-            save_path = os.path.join(save_dir, f'{session_name}_neuron_labels.json')
+            # Base filename without extension
+            base_filename = f'{session_name}_neuron_labels'
             
-            status_div.text = f"<span style='color: blue;'>Debug: Attempting to save labels to: {save_path}</span>"
+            # Find the next available number
+            counter = 0
+            while True:
+                # For the first file, don't add a number
+                if counter == 0:
+                    filename = f'{base_filename}.json'
+                else:
+                    filename = f'{base_filename}({counter}).json'
+                
+                save_path = os.path.join(save_dir, filename)
+                if not os.path.exists(save_path):
+                    break
+                counter += 1
+            
+            # Update the label path input box with the new filename
+            file_path_input.value = filename
             
             # Check if labels dictionary is not empty
             if not labels:
                 status_div.text = "<span style='color: red;'>Error: No labels to save!</span>"
                 return
-            
-            status_div.text = f"<span style='color: blue;'>Debug: Labels content: {str(labels)[:100]}...</span>"
             
             # Save the labels
             with open(save_path, 'w') as f:
@@ -353,7 +362,7 @@ def labeler_bkapp_v1(doc):
             # Verify the file was created
             if os.path.exists(save_path):
                 file_size = os.path.getsize(save_path)
-                status_div.text = (f"<span style='color: green;'>Labels saved successfully to {save_path}! "
+                status_div.text = (f"<span style='color: green;'>Labels saved successfully to {os.path.basename(save_path)}! "
                                  f"File size: {file_size} bytes</span>")
             else:
                 status_div.text = f"<span style='color: red;'>Error: File was not created at {save_path}</span>"
@@ -541,6 +550,7 @@ def labeler_bkapp_v1(doc):
         spatial.title.text = "Neuronal Segmentation"
         temporal1.title.text = "Temporal Activity: Neuron 0"
         temporal2.title.text = "Temporal Activity: Neuron 0"
+        file_path_input.value = f"{session_name}_neuron_labels.json"
 
         # Update document title
         doc.title = f"Data Loaded: {filename}"
