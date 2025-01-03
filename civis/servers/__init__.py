@@ -1,5 +1,4 @@
-from .labeler_server import labeler_bkapp
-
+from .labeler_servers import *
 from .trajectory_servers import *
 from .place_servers import *
 from .raster_servers import *

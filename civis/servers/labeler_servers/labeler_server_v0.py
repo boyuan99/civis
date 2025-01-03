@@ -7,10 +7,16 @@ from bokeh.layouts import column, row
 import json
 import h5py
 import os
+import sys
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-CONFIG_PATH = os.path.join(BASE_DIR, 'config.json')
+# Set up paths similar to place finder server
+current_dir = os.path.dirname(os.path.abspath(__file__))
+servers_dir = os.path.dirname(current_dir)
+project_root = os.path.dirname(servers_dir)
+sys.path.append(project_root)
+
+CONFIG_PATH = os.path.join(project_root, 'config.json')
 
 
 def load_data(filename):
@@ -43,7 +49,7 @@ def load_data(filename):
     return C, C_raw, Cn, ids, Coor, centroids, virmenPath, C_denoised, C_deconvolved, C_reraw
 
 
-def labeler_bkapp(doc):
+def labeler_bkapp_v0(doc):
     global C, C_raw, ids, labels, image_source, session_name, C_denoised, C_deconvolved, C_reraw
     filename = ''
     labels = np.zeros((3, 3), dtype=bool)
@@ -438,9 +444,9 @@ def labeler_bkapp(doc):
         with open(CONFIG_PATH, 'r') as file:
             config = json.load(file)
         session_name = sessionname_input.value
-        neuron_path = config['ProcessedFilePath'] + session_name + '/' + session_name + '_v7.mat'
+        neuron_path = os.path.join(config['ProcessedFilePath'], session_name, f'{session_name}_v7.mat')
         load_and_update_data(neuron_path)
-        print(neuron_path + " loaded!")
+        print(f"{neuron_path} loaded!")
 
     load_data_button.on_click(update_data)
 

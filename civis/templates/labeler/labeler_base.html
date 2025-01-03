@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block title %}Labeler - Flask-Bokeh App{% endblock %}
+
+{% block content %}
+    <h1>Labeler Application - {{ version }}</h1>
+    <a href="/labeler/v0/" style="margin-right: 20px;">Base</a>
+    <a href="/labeler/v1/" style="margin-right: 20px;">D1/D2</a>
+
+    <div id="additional-content">
+        {% block additional_content %}
+        {% endblock %}
+    </div>
+
+    {{ script|safe }}
+{% endblock %} 

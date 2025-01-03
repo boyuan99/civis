@@ -16,11 +16,17 @@ def home():
     return render_template("index.html")
 
 # Flask routes for embedding Bokeh applications
-@app.route('/labeler/')
-def labeler_app():
+@app.route('/labeler/v0/')
+def labeler_v0_app():
     global args
-    script = server_document(f'http://localhost:{args.bokeh_port}/labeler_bkapp')
-    return render_template("labeler.html", script=script, template="Flask", port=args.flask_port)
+    script = server_document(f'http://localhost:{args.bokeh_port}/labeler_bkapp_v0')
+    return render_template("labeler/labeler_v0.html", script=script, template="Flask", port=args.flask_port)
+
+@app.route('/labeler/v1/')
+def labeler_v1_app():
+    global args
+    script = server_document(f'http://localhost:{args.bokeh_port}/labeler_bkapp_v1')
+    return render_template("labeler/labeler_v1.html", script=script, template="Flask", port=args.flask_port)
 
 @app.route('/trajectory/v1/')
 def trajectory_v1_app():
@@ -114,23 +120,25 @@ def place_v3_app():
 
 def bk_worker(bokeh_port, flask_port):
     # Configure the Bokeh server with applications
-    bokeh_apps = {'/labeler_bkapp': labeler_bkapp,
-                  '/trajectory_bkapp_v1': trajectory_bkapp_v1,
-                  '/connection_bkapp_v1': connection_bkapp_v1,
-                  '/trajectory_bkapp_v0': trajectory_bkapp_v0,
-                  '/raster_bkapp_v0': raster_bkapp_v0,
-                  '/trajectory_bkapp_v2': trajectory_bkapp_v2,
-                  '/trajectory_bkapp_v3': trajectory_bkapp_v3,
-                  '/raster_bkapp_v1': raster_bkapp_v1,
-                  '/trajectory_bkapp_v4': trajectory_bkapp_v4,
-                  '/place_bkapp_v0': place_cell_vis_bkapp_v0,
-                  '/place_bkapp_v1': place_cell_vis_bkapp_v1,
-                  '/trajectory_bkapp_v5': trajectory_bkapp_v5,
-                  '/trajectory_bkapp_v6': trajectory_bkapp_v6,
-                  '/trajectory_bkapp_v7': trajectory_bkapp_v7,
-                  '/place_bkapp_v2': place_cell_vis_bkapp_v2,
-                  '/place_bkapp_v3': place_cell_vis_bkapp_v3
-                  }
+    bokeh_apps = {
+        '/labeler_bkapp_v0': labeler_bkapp_v0,
+        '/labeler_bkapp_v1': labeler_bkapp_v1,
+        '/trajectory_bkapp_v1': trajectory_bkapp_v1,
+        '/connection_bkapp_v1': connection_bkapp_v1,
+        '/trajectory_bkapp_v0': trajectory_bkapp_v0,
+        '/raster_bkapp_v0': raster_bkapp_v0,
+        '/trajectory_bkapp_v2': trajectory_bkapp_v2,
+        '/trajectory_bkapp_v3': trajectory_bkapp_v3,
+        '/raster_bkapp_v1': raster_bkapp_v1,
+        '/trajectory_bkapp_v4': trajectory_bkapp_v4,
+        '/place_bkapp_v0': place_cell_vis_bkapp_v0,
+        '/place_bkapp_v1': place_cell_vis_bkapp_v1,
+        '/trajectory_bkapp_v5': trajectory_bkapp_v5,
+        '/trajectory_bkapp_v6': trajectory_bkapp_v6,
+        '/trajectory_bkapp_v7': trajectory_bkapp_v7,
+        '/place_bkapp_v2': place_cell_vis_bkapp_v2,
+        '/place_bkapp_v3': place_cell_vis_bkapp_v3
+    }
 
     server = Server(bokeh_apps,
                     io_loop=IOLoop(),
