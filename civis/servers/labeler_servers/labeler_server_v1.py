@@ -299,8 +299,9 @@ def labeler_bkapp_v1(doc):
     d2_button = Button(label="D2", button_type="default", disabled=True)
     unknown_button = Button(label="Unknown", button_type="default", disabled=True)
 
-    # Create a button for saving labels and a TextInput for the file path
+    # Create buttons for saving and loading labels and a TextInput for the file path
     save_labels_button = Button(label="Save Labels", button_type="success", disabled=True)
+    load_labels_button = Button(label="Load Labels", button_type="primary", disabled=True)
     file_path_input = TextInput(value="labels.json", title="File Path:", width=400, disabled=True)
 
     # Initialize labels dictionary
@@ -472,6 +473,7 @@ def labeler_bkapp_v1(doc):
         d2_button.disabled = False
         unknown_button.disabled = False
         save_labels_button.disabled = False
+        load_labels_button.disabled = False  # Enable load labels button
         
         # Enable select menus
         d1_neurons_select.disabled = False
@@ -542,9 +544,18 @@ def labeler_bkapp_v1(doc):
         spatial.y_range.start = 0
         spatial.y_range.end = height
         
-        # Update contour renderer
-        contour_renderer = spatial.patches(xs='xs', ys='ys', source=spatial_source,
-                                         fill_alpha=0.2, line_alpha=1, fill_color='colors', line_color='colors')
+        # Remove existing patch renderers before adding new ones
+        spatial.renderers = [r for r in spatial.renderers if not isinstance(r, GlyphRenderer) 
+                          or not isinstance(r.glyph, Patches)]
+
+        # Add the new patches
+        contour_renderer = spatial.patches(xs='xs', ys='ys', 
+                                         source=spatial_source,
+                                         fill_alpha=0.2, 
+                                         line_alpha=1,
+                                         fill_color='colors', 
+                                         line_color='colors',
+                                         level='overlay')
 
         # Update titles
         spatial.title.text = "Neuronal Segmentation"
@@ -629,16 +640,7 @@ def labeler_bkapp_v1(doc):
                 spatial.x_range.end = shape[1]
                 spatial.y_range.start = 0
                 spatial.y_range.end = shape[0]
-                
-                # Make sure patches (masks) are on top
-                contour_renderer = spatial.patches(xs='xs', ys='ys', 
-                                                source=spatial_source,
-                                                fill_alpha=0.2,
-                                                line_alpha=1,
-                                                fill_color='colors', 
-                                                line_color='colors',
-                                                level='overlay')
-                
+                                
                 status_div.text = f"<span style='color: green;'>{image_type.upper()} image loaded successfully!</span>"
             else:
                 status_div.text = f"<span style='color: red;'>Failed to load {image_type} image!</span>"
@@ -686,7 +688,7 @@ def labeler_bkapp_v1(doc):
 
     labelling = row(spacer3, column(
         row(d1_button, d2_button, unknown_button),
-        row(file_path_input, column(spacer2, save_labels_button)),
+        row(file_path_input, column(spacer2, row(save_labels_button, load_labels_button))),
         labeled_count_div))
 
     menus = row(spacer3, row(d1_neurons_select, d2_neurons_select, unknown_neurons_select))
@@ -711,6 +713,47 @@ def labeler_bkapp_v1(doc):
 
     # Add the callback
     toggle_masks.on_click(toggle_masks_visibility)
+
+    def load_labels(event):
+        """Load labels from a JSON file"""
+        try:
+            session_name = sessionname_input.value
+            if not session_name:
+                status_div.text = "<span style='color: red;'>Error: Session name is empty!</span>"
+                return
+
+            with open(CONFIG_PATH, 'r') as file:
+                config = json.load(file)
+            
+            # Construct path
+            label_filename = file_path_input.value
+            base_path = config['ProcessedFilePath']
+            labels_path = os.path.join(base_path, session_name, f'{session_name}_neuron_labels', label_filename)
+            
+            # Load the labels
+            if os.path.exists(labels_path):
+                with open(labels_path, 'r') as f:
+                    global labels
+                    labels = json.load(f)
+                
+                # Update all UI elements
+                update_button_styles()
+                update_labeled_count()
+                update_dropdowns()
+                
+                status_div.text = f"<span style='color: green;'>Labels loaded successfully from {label_filename}!</span>"
+            else:
+                status_div.text = f"<span style='color: red;'>Error: Label file not found at {labels_path}</span>"
+                
+        except FileNotFoundError as e:
+            status_div.text = f"<span style='color: red;'>Error: Could not find file: {str(e)}</span>"
+        except json.JSONDecodeError as e:
+            status_div.text = f"<span style='color: red;'>Error: Invalid JSON in labels file: {str(e)}</span>"
+        except Exception as e:
+            status_div.text = f"<span style='color: red;'>Unexpected error: {str(e)}</span>"
+
+    # Add callback for load button
+    load_labels_button.on_click(load_labels)
 
     layout = row(spatial, column(
         choose_file,
