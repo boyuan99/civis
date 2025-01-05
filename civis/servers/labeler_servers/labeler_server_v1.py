@@ -728,7 +728,7 @@ def labeler_bkapp_v1(doc):
             renderer.visible = toggle_masks.active
         
         # Update button appearance
-        toggle_masks.button_type = "success" if toggle_masks.active else "danger"
+        toggle_masks.button_type = "danger" if toggle_masks.active else "success"
         toggle_masks.label = "Hide Masks" if toggle_masks.active else "Show Masks"
 
     # Add the callback
