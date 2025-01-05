@@ -557,6 +557,15 @@ def labeler_bkapp_v1(doc):
                                          line_color='colors',
                                          level='overlay')
 
+        # Remove old hover tool and add new one
+        spatial.tools = [tool for tool in spatial.tools if not isinstance(tool, HoverTool)]
+        hover = HoverTool(tooltips=[("ID", "@id")], renderers=[contour_renderer])
+        spatial.add_tools(hover)
+
+        # Make sure tap tool is also properly connected
+        taptool = TapTool(renderers=[contour_renderer])
+        spatial.add_tools(taptool)
+
         # Update titles
         spatial.title.text = "Neuronal Segmentation"
         temporal1.title.text = "Temporal Activity: Neuron 0"
@@ -603,6 +612,10 @@ def labeler_bkapp_v1(doc):
         Load a specific image type (GCaMP, original TDT, or adjusted TDT)
         """
         try:
+            # Save current view state
+            current_x_range = (spatial.x_range.start, spatial.x_range.end)
+            current_y_range = (spatial.y_range.start, spatial.y_range.end)
+            
             with open(CONFIG_PATH, 'r') as file:
                 config = json.load(file)
             
@@ -635,12 +648,19 @@ def labeler_bkapp_v1(doc):
                 # Update image source with the new image
                 image_source.data = {'image': [img]}
                 
-                # Update the plot ranges
-                spatial.x_range.start = 0
-                spatial.x_range.end = shape[1]
-                spatial.y_range.start = 0
-                spatial.y_range.end = shape[0]
-                                
+                # Only update ranges if they're not already set (i.e., first load)
+                if current_x_range[0] is None or current_x_range[1] is None:
+                    spatial.x_range.start = 0
+                    spatial.x_range.end = shape[1]
+                    spatial.y_range.start = 0
+                    spatial.y_range.end = shape[0]
+                else:
+                    # Restore previous view state
+                    spatial.x_range.start = current_x_range[0]
+                    spatial.x_range.end = current_x_range[1]
+                    spatial.y_range.start = current_y_range[0]
+                    spatial.y_range.end = current_y_range[1]
+                
                 status_div.text = f"<span style='color: green;'>{image_type.upper()} image loaded successfully!</span>"
             else:
                 status_div.text = f"<span style='color: red;'>Failed to load {image_type} image!</span>"
