@@ -122,11 +122,14 @@ def labeler_bkapp_v1(doc):
         '#000075',  # Navy
     ]
 
+    # Our main spatial data source now includes fill_alpha and line_alpha so we can show/hide subsets.
     spatial_source = ColumnDataSource(data={
         'xs': [],
         'ys': [],
         'id': [],
         'colors': [],
+        'fill_alpha': [],
+        'line_alpha': []
     })
 
     temporal_source = ColumnDataSource(data={'x': [],
@@ -150,12 +153,17 @@ def labeler_bkapp_v1(doc):
     spatial.ygrid.visible = False
     spatial.image_rgba(image='image', x=0, y=0, dw=1, dh=1, source=image_source)
 
-    contour_renderer = spatial.patches(xs='xs', ys='ys', source=spatial_source,
-                                       fill_alpha=0.2, line_alpha=1, fill_color='colors', line_color='colors')
+    contour_renderer = spatial.patches(xs='xs',
+                                       ys='ys',
+                                       source=spatial_source,
+                                       fill_alpha='fill_alpha',
+                                       line_alpha='line_alpha',
+                                       fill_color='colors',
+                                       line_color='colors')
 
     hover = HoverTool(tooltips=[("ID", "@id")], renderers=[contour_renderer])
     spatial.add_tools(hover)
-    taptool = TapTool(mode='replace')
+    taptool = TapTool(mode='replace', renderers=[contour_renderer])
     spatial.add_tools(taptool)
 
     # temporal1 transient
@@ -289,6 +297,7 @@ def labeler_bkapp_v1(doc):
 
     # Attach the callback function to the TextInput widget
     neuron_index_input.on_change('value', update_index)
+
     """
     ========================================================================================================================
             Labeling Widgets
@@ -304,16 +313,72 @@ def labeler_bkapp_v1(doc):
     load_labels_button = Button(label="Load Labels", button_type="primary", disabled=True)
     file_path_input = TextInput(value="labels.json", title="File Path:", width=400, disabled=True)
 
-    # Initialize labels dictionary
+    # Initialize labels dictionary (string keys for each shape index)
     labels = {}
 
-    # Function to update labels based on button click
+    """
+    ========================================================================================================================
+             Toggles for D1, D2, Unknown
+    ========================================================================================================================
+    """
+    toggle_d1 = Toggle(label="Show D1", button_type="success", active=True)
+    toggle_d2 = Toggle(label="Show D2", button_type="success", active=True)
+    toggle_unknown = Toggle(label="Show Unknown", button_type="success", active=True)
+
+    def update_toggle_colors():
+        """Update toggle button colors and labels based on their state"""
+        for toggle, label_base in [(toggle_d1, "D1"), (toggle_d2, "D2"), (toggle_unknown, "Unknown")]:
+            toggle.button_type = "danger" if toggle.active else "success"
+            toggle.label = f"Hide {label_base}" if toggle.active else f"Show {label_base}"
+
+    def toggle_callback(toggle):
+        """Generic callback for all toggles"""
+        update_toggle_colors()
+        update_mask_visibility()
+
+    # Update toggle callbacks
+    toggle_d1.on_change('active', lambda attr, old, new: toggle_callback(toggle_d1))
+    toggle_d2.on_change('active', lambda attr, old, new: toggle_callback(toggle_d2))
+    toggle_unknown.on_change('active', lambda attr, old, new: toggle_callback(toggle_unknown))
+
+    def update_mask_visibility():
+        """Update visibility of masks based on their labels and toggle states"""
+        new_fill_alpha = []
+        new_line_alpha = []
+        
+        # Get current lists of neurons from dropdowns (excluding the default option)
+        d1_neurons = [int(x) for x in d1_neurons_select.options if x != "Click to see options..."]
+        d2_neurons = [int(x) for x in d2_neurons_select.options if x != "Click to see options..."]
+        unknown_neurons = [int(x) for x in unknown_neurons_select.options if x != "Click to see options..."]
+        
+        for i in range(len(spatial_source.data['xs'])):
+            # Check which list the neuron belongs to
+            if i in d1_neurons:
+                visible = toggle_d1.active
+            elif i in d2_neurons:
+                visible = toggle_d2.active
+            elif i in unknown_neurons:
+                visible = toggle_unknown.active
+            else:
+                visible = toggle_unknown.active  # Default to unknown if not found
+            
+            new_fill_alpha.append(0.2 if visible else 0)
+            new_line_alpha.append(1 if visible else 0)
+        
+        # Update the source data with new alpha values
+        spatial_source.data.update({
+            'fill_alpha': new_fill_alpha,
+            'line_alpha': new_line_alpha
+        })
+
+    # Make sure to call update_mask_visibility after loading data and after updating labels
     def update_labels(new_label):
-        selected_neuron = str(neuron_id_slider.value)  # Convert to string for JSON compatibility
+        selected_neuron = str(neuron_id_slider.value)
         labels[selected_neuron] = new_label
         update_button_styles()
         update_labeled_count()
         update_dropdowns()
+        update_mask_visibility()
 
     def save_labels(event):
         """Save the current labels to a JSON file"""
@@ -325,15 +390,15 @@ def labeler_bkapp_v1(doc):
 
             with open(CONFIG_PATH, 'r') as file:
                 config = json.load(file)
-            
+
             # Construct save path
             base_path = config['ProcessedFilePath']
             save_dir = os.path.join(base_path, session_name, f'{session_name}_neuron_labels')
             os.makedirs(save_dir, exist_ok=True)
-            
+
             # Base filename without extension
             base_filename = f'{session_name}_neuron_labels'
-            
+
             # Find the next available number
             counter = 0
             while True:
@@ -342,32 +407,32 @@ def labeler_bkapp_v1(doc):
                     filename = f'{base_filename}.json'
                 else:
                     filename = f'{base_filename}({counter}).json'
-                
+
                 save_path = os.path.join(save_dir, filename)
                 if not os.path.exists(save_path):
                     break
                 counter += 1
-            
+
             # Update the label path input box with the new filename
             file_path_input.value = filename
-            
+
             # Check if labels dictionary is not empty
             if not labels:
                 status_div.text = "<span style='color: red;'>Error: No labels to save!</span>"
                 return
-            
+
             # Save the labels
             with open(save_path, 'w') as f:
                 json.dump(labels, f)
-            
+
             # Verify the file was created
             if os.path.exists(save_path):
                 file_size = os.path.getsize(save_path)
                 status_div.text = (f"<span style='color: green;'>Labels saved successfully to {os.path.basename(save_path)}! "
-                                 f"File size: {file_size} bytes</span>")
+                                   f"File size: {file_size} bytes</span>")
             else:
                 status_div.text = f"<span style='color: red;'>Error: File was not created at {save_path}</span>"
-            
+
         except FileNotFoundError as e:
             status_div.text = f"<span style='color: red;'>Error: Could not find path: {str(e)}</span>"
         except PermissionError as e:
@@ -377,7 +442,7 @@ def labeler_bkapp_v1(doc):
         except Exception as e:
             status_div.text = f"<span style='color: red;'>Unexpected error: {str(e)}</span>"
 
-    # Callbacks for buttons
+    # Callbacks for label buttons
     d1_button.on_click(lambda: update_labels("D1"))
     d2_button.on_click(lambda: update_labels("D2"))
     unknown_button.on_click(lambda: update_labels("unknown"))
@@ -387,12 +452,12 @@ def labeler_bkapp_v1(doc):
     def update_button_styles():
         selected_neuron = str(neuron_id_slider.value)
         current_label = labels.get(selected_neuron, "unknown")
-        
+
         # Reset all buttons to default
         d1_button.button_type = "default"
         d2_button.button_type = "default"
         unknown_button.button_type = "default"
-        
+
         # Highlight the active label
         if current_label == "D1":
             d1_button.button_type = "success"
@@ -461,34 +526,39 @@ def labeler_bkapp_v1(doc):
     load_data_button = Button(label="Load Data", button_type="success")
 
     def load_and_update_data(filename):
+        """
+        Load the data from .mat and update global C, C_raw, etc.
+        Then re-populate the spatial_source with new shapes and
+        reset labels/data for all neurons to 'unknown' by default.
+        """
         global C, C_raw, ids, labels, image_source, C_denoised, C_deconvolved, C_reraw
         # Enable navigation controls
         neuron_id_slider.disabled = False
         neuron_index_input.disabled = False
         next_button.disabled = False
         previous_button.disabled = False
-        
+
         # Enable labeling buttons
         d1_button.disabled = False
         d2_button.disabled = False
         unknown_button.disabled = False
         save_labels_button.disabled = False
         load_labels_button.disabled = False  # Enable load labels button
-        
+
         # Enable select menus
         d1_neurons_select.disabled = False
         d2_neurons_select.disabled = False
         unknown_neurons_select.disabled = False
-        
+
         # Enable file input
         file_path_input.disabled = False
 
         # Load the data
         [C, C_raw, Cn, ids, Coor, centroids, virmenPath, C_denoised, C_deconvolved, C_reraw] = load_data(filename)
-        
+
         # Initialize labels as a dictionary with all neurons set to "unknown"
         labels = {str(i): "unknown" for i in range(len(C))}
-        
+
         num_shapes = len(Coor)
         height, width = Cn.shape[:2]
 
@@ -514,6 +584,8 @@ def labeler_bkapp_v1(doc):
             'ys': y_positions_all,
             'id': ids,
             'colors': [colors[i % len(colors)] for i in range(num_shapes)],
+            'fill_alpha': [0.2]*num_shapes,
+            'line_alpha': [1]*num_shapes,
         }
 
         # Update temporal_source with data from the first neuron
@@ -534,36 +606,41 @@ def labeler_bkapp_v1(doc):
         update_button_styles()
         update_labeled_count()
         update_dropdowns()
+        update_mask_visibility()  # Apply toggles if needed
 
         # Clear any existing image
         image_source.data = {'image': []}
-        
+
         # Update plot ranges
         spatial.x_range.start = 0
         spatial.x_range.end = width
         spatial.y_range.start = 0
         spatial.y_range.end = height
-        
+
         # Remove existing patch renderers before adding new ones
-        spatial.renderers = [r for r in spatial.renderers if not isinstance(r, GlyphRenderer) 
-                          or not isinstance(r.glyph, Patches)]
+        spatial.renderers = [
+            r for r in spatial.renderers
+            if not (isinstance(r, GlyphRenderer) and isinstance(r.glyph, Patches))
+        ]
 
         # Add the new patches
-        contour_renderer = spatial.patches(xs='xs', ys='ys', 
-                                         source=spatial_source,
-                                         fill_alpha=0.2, 
-                                         line_alpha=1,
-                                         fill_color='colors', 
-                                         line_color='colors',
-                                         level='overlay')
+        contour_renderer = spatial.patches(
+            xs='xs',
+            ys='ys',
+            source=spatial_source,
+            fill_alpha='fill_alpha',
+            line_alpha='line_alpha',
+            fill_color='colors',
+            line_color='colors',
+            level='overlay'
+        )
 
-        # Remove old hover tool and add new one
-        spatial.tools = [tool for tool in spatial.tools if not isinstance(tool, HoverTool)]
+        # Remove old hover and tap tools, add new ones
+        spatial.tools = [tool for tool in spatial.tools 
+                        if not isinstance(tool, (HoverTool, TapTool))]
         hover = HoverTool(tooltips=[("ID", "@id")], renderers=[contour_renderer])
         spatial.add_tools(hover)
-
-        # Make sure tap tool is also properly connected
-        taptool = TapTool(renderers=[contour_renderer])
+        taptool = TapTool(mode='replace', renderers=[contour_renderer])
         spatial.add_tools(taptool)
 
         # Update titles
@@ -575,10 +652,12 @@ def labeler_bkapp_v1(doc):
         # Update document title
         doc.title = f"Data Loaded: {filename}"
 
-    # Callback function for the "Load Data" button to reload and update the visualization
+        # Add these lines after initializing spatial_source:
+        spatial_source.data['fill_alpha'] = [0.2] * len(spatial_source.data['xs'])
+        spatial_source.data['line_alpha'] = [1] * len(spatial_source.data['xs'])
+
     def update_data():
         global session_name
-
         with open(CONFIG_PATH, 'r') as file:
             config = json.load(file)
         session_name = sessionname_input.value
@@ -615,13 +694,13 @@ def labeler_bkapp_v1(doc):
             # Save current view state
             current_x_range = (spatial.x_range.start, spatial.x_range.end)
             current_y_range = (spatial.y_range.start, spatial.y_range.end)
-            
+
             with open(CONFIG_PATH, 'r') as file:
                 config = json.load(file)
-            
+
             session_name = sessionname_input.value
             base_path = config['ProcessedFilePath']
-            
+
             # Construct the image path based on type
             if image_type == "gcamp":
                 image_path = os.path.join(base_path, session_name, f'{session_name}_tiff_projections', f'{session_name}_max.tif')
@@ -632,22 +711,23 @@ def labeler_bkapp_v1(doc):
             elif image_type == "adj_tdt":
                 image_path = os.path.join(base_path, session_name, f'{session_name}_tdt_adjustment', f'{session_name}_tdt_adjusted_16bit.tif')
                 color = "red"
-            
+
             # Load and process the image
             img, shape = load_tiff_image(image_path, color)
             if img is not None:
                 # Remove only the existing image renderers
                 spatial.renderers = [r for r in spatial.renderers if not isinstance(r, ImageRGBA)]
-                
+
                 # Add the image with a level between underlay and overlay
-                image_renderer = spatial.image_rgba(image='image', x=0, y=0, 
-                                                  dw=shape[1], dh=shape[0], 
-                                                  source=image_source, 
-                                                  level='glyph')
-                
+                image_renderer = spatial.image_rgba(image='image',
+                                                    x=0, y=0,
+                                                    dw=shape[1], dh=shape[0],
+                                                    source=image_source,
+                                                    level='glyph')
+
                 # Update image source with the new image
                 image_source.data = {'image': [img]}
-                
+
                 # Only update ranges if they're not already set (i.e., first load)
                 if current_x_range[0] is None or current_x_range[1] is None:
                     spatial.x_range.start = 0
@@ -660,7 +740,7 @@ def labeler_bkapp_v1(doc):
                     spatial.x_range.end = current_x_range[1]
                     spatial.y_range.start = current_y_range[0]
                     spatial.y_range.end = current_y_range[1]
-                
+
                 status_div.text = f"<span style='color: green;'>{image_type.upper()} image loaded successfully!</span>"
             else:
                 status_div.text = f"<span style='color: red;'>Failed to load {image_type} image!</span>"
@@ -695,47 +775,11 @@ def labeler_bkapp_v1(doc):
 
     """
     ========================================================================================================================
-            Setup Bokeh layout
+            Loading Labels from File
     ========================================================================================================================
     """
-    spacer1 = Spacer(height=50)
-    spacer2 = Spacer(height=20)
-    spacer3 = Spacer(width=20)
-
-    choose_file = row(spacer3, sessionname_input, column(spacer2, load_data_button))
-
-    controls = row(spacer3, column(spacer1, row(previous_button, next_button, neuron_index_input), neuron_id_slider))
-
-    labelling = row(spacer3, column(
-        row(d1_button, d2_button, unknown_button),
-        row(file_path_input, column(spacer2, row(save_labels_button, load_labels_button))),
-        labeled_count_div))
-
-    menus = row(spacer3, row(d1_neurons_select, d2_neurons_select, unknown_neurons_select))
-
-    temporal = Tabs(tabs=[temporal_tab1, temporal_tab2])
-
-    # Add this near the other button definitions
-    toggle_masks = Toggle(label="Show/Hide Masks", button_type="success", active=True)
-
-    def toggle_masks_visibility(event):
-        """Toggle the visibility of all masks"""
-        # Get all patch renderers
-        patch_renderers = [r for r in spatial.renderers if isinstance(r, GlyphRenderer) 
-                          and isinstance(r.glyph, Patches)]
-        
-        for renderer in patch_renderers:
-            renderer.visible = toggle_masks.active
-        
-        # Update button appearance
-        toggle_masks.button_type = "danger" if toggle_masks.active else "success"
-        toggle_masks.label = "Hide Masks" if toggle_masks.active else "Show Masks"
-
-    # Add the callback
-    toggle_masks.on_click(toggle_masks_visibility)
-
     def load_labels(event):
-        """Load labels from a JSON file"""
+        """Load labels from a JSON file and update the UI."""
         try:
             session_name = sessionname_input.value
             if not session_name:
@@ -744,27 +788,28 @@ def labeler_bkapp_v1(doc):
 
             with open(CONFIG_PATH, 'r') as file:
                 config = json.load(file)
-            
+
             # Construct path
             label_filename = file_path_input.value
             base_path = config['ProcessedFilePath']
             labels_path = os.path.join(base_path, session_name, f'{session_name}_neuron_labels', label_filename)
-            
+
             # Load the labels
             if os.path.exists(labels_path):
                 with open(labels_path, 'r') as f:
+                    # We replace the global labels dict
                     global labels
                     labels = json.load(f)
-                
+
                 # Update all UI elements
                 update_button_styles()
                 update_labeled_count()
                 update_dropdowns()
-                
+                update_mask_visibility()  # reflect loaded labels
                 status_div.text = f"<span style='color: green;'>Labels loaded successfully from {label_filename}!</span>"
             else:
                 status_div.text = f"<span style='color: red;'>Error: Label file not found at {labels_path}</span>"
-                
+
         except FileNotFoundError as e:
             status_div.text = f"<span style='color: red;'>Error: Could not find file: {str(e)}</span>"
         except json.JSONDecodeError as e:
@@ -775,22 +820,53 @@ def labeler_bkapp_v1(doc):
     # Add callback for load button
     load_labels_button.on_click(load_labels)
 
-    layout = row(spatial, column(
-        choose_file,
-        controls,
-        row(spacer3, toggle_masks),
-        image_controls,
-        temporal,
-        labelling,
-        menus
-    ))
+    """
+    ========================================================================================================================
+            Setup Bokeh layout
+    ========================================================================================================================
+    """
+    spacer1 = Spacer(height=50)
+    spacer2 = Spacer(height=20)
+    spacer3 = Spacer(width=20)
+
+    choose_file = row(spacer3, sessionname_input, column(spacer2, load_data_button))
+
+    controls = row(
+        spacer3,
+        column(
+            spacer1,
+            row(previous_button, next_button, neuron_index_input),
+            neuron_id_slider
+        )
+    )
+
+    labelling = row(
+        spacer3,
+        column(
+            row(d1_button, d2_button, unknown_button),
+            row(file_path_input, column(spacer2, row(save_labels_button, load_labels_button))),
+            labeled_count_div
+        )
+    )
+
+    menus = row(spacer3, row(d1_neurons_select, d2_neurons_select, unknown_neurons_select))
+
+    temporal = Tabs(tabs=[temporal_tab1, temporal_tab2])
+
+    # Our new row of toggles:
+    toggle_row = row(spacer3, toggle_d1, toggle_d2, toggle_unknown)
+
+    layout = row(
+        spatial,
+        column(
+            choose_file,
+            controls,
+            toggle_row,      # Replaced old single-mask toggle with three toggles
+            image_controls,
+            temporal,
+            labelling,
+            menus
+        )
+    )
 
     doc.add_root(layout)
-
-# bp = Blueprint("labeler", __name__, url_prefix='/labeler')
-#
-#
-# @bp.route("/", methods=['GET'])
-# def bkapp_page():
-#     script = server_document("http://localhost:5006/labeler_bkapp")
-#     return render_template("labeler.html", script=script, template="Flask", port=8000)
