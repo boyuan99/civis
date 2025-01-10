@@ -2,5 +2,6 @@
   "ProcessedFilePath": "($your path to ProcessedData)/ProcessedData/",
   "VirmenFilePath": "($your path to VirmenData)/VirmenData/",
   "LabelsPath": "($your path to the labeled data, typically the same with ProcessedData)/",
-  "ElecPath": "($your path to ElecData)/ElecData/"
+  "ElecPath": "($your path to ElecData)/ElecData/",
+  "SummaryPlotsPath": "($your path to SummaryPlots)/SummaryPlots/"
 }
