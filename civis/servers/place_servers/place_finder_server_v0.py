@@ -24,7 +24,7 @@ def place_cell_vis_bkapp_v0(doc):
 
 
     source = ColumnDataSource(data=dict(x=[], y=[]))
-    plot.circle(x="x", y="y", source=source, size=5, line_color=None)  # , fill_alpha='alpha')
+    plot.scatter(x="x", y="y", source=source, size=5, line_color=None)  # , fill_alpha='alpha')
 
     # Annotations
     high_box = BoxAnnotation(bottom=25, fill_alpha=0.5, fill_color='blue')

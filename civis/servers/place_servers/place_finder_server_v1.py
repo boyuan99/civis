@@ -29,7 +29,7 @@ def place_cell_vis_bkapp_v1(doc):
 
     # Drawing the lines and points
     plot.multi_line(xs='x', ys='y', source=peak_trial_source, line_width=2, color='red', alpha=0.5)
-    plot.circle(x='px', y='py', source=peak_point_source, size=7, color='red', alpha=1)
+    plot.scatter(x='px', y='py', source=peak_point_source, size=7, color='red', alpha=1)
     plot.multi_line(xs='rx', ys='ry', source=remain_trial_source, line_width=2, color='blue', alpha=0.3)
 
     # Annotations and spans

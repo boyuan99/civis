@@ -77,7 +77,7 @@ def place_cell_vis_bkapp_v3(doc):
 
     # Drawing the lines and points
     plot_t1.multi_line(xs='x', ys='y', source=peak_trial_source, line_width=2, color='red', alpha=0.5)
-    plot_t1.circle(x='px', y='py', source=peak_point_source, size=7, color='red', alpha=1)
+    plot_t1.scatter(x='px', y='py', source=peak_point_source, size=7, color='red', alpha=1)
     plot_t1.multi_line(xs='rx', ys='ry', source=remain_trial_source, line_width=2, color='blue', alpha=0.3)
 
     # Adding maze outline
