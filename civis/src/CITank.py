@@ -968,22 +968,29 @@ class CITank(VirmenTank):
                                                                          cut_interval=cut_interval)
         [_, _, _, C_avg_mean_movement_onset, _] = self.average_across_indices(self.movement_onset_indices,
                                                                               cut_interval=cut_interval)
+        [_, _, _, C_avg_mean_movement_offset, _] = self.average_across_indices(self.movement_offset_indices,
+                                                                              cut_interval=cut_interval)
 
         p = figure(width=800, height=400, active_scroll="wheel_zoom", title="Average Calcium Trace around Indices")
-        p.line((np.array(range(2 * cut_interval)) - cut_interval) / self.ci_rate, C_avg_mean_velocity_peak,
-               line_width=2,
+        
+        # Convert time points from samples to seconds
+        time_points = (np.array(range(2 * cut_interval)) - cut_interval) / self.ci_rate
+        
+        p.line(time_points, C_avg_mean_velocity_peak, line_width=2,
                legend_label='Velocity Peak', color='red')
-        p.line((np.array(range(2 * cut_interval)) - cut_interval) / self.ci_rate, C_avg_mean_lick_edge, line_width=2,
+        p.line(time_points, C_avg_mean_lick_edge, line_width=2,
                legend_label='Lick', color='navy')
-        p.line((np.array(range(2 * cut_interval)) - cut_interval) / self.ci_rate, C_avg_mean_movement_onset,
-               line_width=2,
-               legend_label='Movement Onset', color='purple')
+        p.line(time_points, C_avg_mean_movement_onset, line_width=2,
+               legend_label='Movement Onset', color='brown')
+        p.line(time_points, C_avg_mean_movement_offset, line_width=2,
+               legend_label='Movement Offset', color='purple')
 
+        # Configure legend to be outside the plot
         p.legend.click_policy = 'hide'
 
-        p.xaxis.formatter = CustomJSTickFormatter(code="""
-            return (tick / 20).toFixed(2);
-        """)
+        # p.xaxis.formatter = CustomJSTickFormatter(code="""
+        #     return (tick / 20).toFixed(2);
+        # """)
 
         self.output_bokeh_plot(p, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite)
 

@@ -59,11 +59,34 @@ class VirmenTank:
         self.smoothed_dr = self.butter_lowpass_filter(self.dr, 1, self.vm_rate)
         self.acceleration = self.find_acceleration()
 
-        # for analysis usage:
-        self.velocity_peak_indices = find_peaks(self.smoothed_velocity, height=height,
-                                                distance=self.velocity_distance)[0]
+        onset_params = {
+            'window_size': 20,
+            'baseline_window': 20,
+            'threshold': 2.0,
+            'min_distance': 100,
+            'steady_state_threshold': 0.25,
+            'baseline_max': 3
+        }
+        peak_params = {
+            'search_window': 200,
+            'min_peak_height': 10.0
+        }
+        offset_params = {
+            'search_window': 200,    
+            'offset_threshold': 1.0,  
+            'window_size': 10        
+        }
+
+        self.movement_onset_indices = self.detect_movement_onsets(onset_params)
+        self.velocity_peak_indices = self.detect_velocity_peaks(peak_params)
+        self.movement_offset_indices = self.detect_movement_offsets(offset_params)
+
+        self.velocity_peak_indices_legacy = find_peaks(self.smoothed_velocity, height=height,
+                                                     distance=self.velocity_distance)[0]
+        self.movement_onset_indices_legacy = self.find_movement_onset_legacy(self.smoothed_velocity, 
+                                                                           self.velocity_peak_indices_legacy)
+
         self.lick_edge_indices = np.where(np.diff(self.lick) > 0)[0]
-        self.movement_onset_indices = self.find_movement_onset(self.smoothed_velocity, self.velocity_peak_indices)
 
     def load_config(self):
         current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -375,9 +398,9 @@ class VirmenTank:
         return y
 
     @staticmethod
-    def find_movement_onset(velocity, velocity_peak_indices, threshold_ratio=0.1):
+    def find_movement_onset_legacy(velocity, velocity_peak_indices, threshold_ratio=0.1):
         """
-        Find the onset of movement based on the velocity peaks and a threshold ratio.
+        Legacy method: Find the onset of movement based on the velocity peaks and a threshold ratio.
         :param velocity: velocity data, can be position change rate or real velocity
         :param velocity_peak_indices: indices of the velocity peaks
         :param threshold_ratio: ratio of the peak value to be used as the threshold
@@ -393,7 +416,7 @@ class VirmenTank:
             below_threshold_indices = np.where(pre_peak_values < threshold)[0]
 
             if below_threshold_indices.size > 0:
-                onset_index = below_threshold_indices[-1] + 1  # Corrected to point to the first index above threshold
+                onset_index = below_threshold_indices[-1] + 1
 
                 # If the onset index is before the last peak (misidentification), find local minimum between peaks
                 if i > 0 and onset_index <= velocity_peak_indices[i - 1]:
@@ -407,6 +430,150 @@ class VirmenTank:
             onsets.append(onset_index)
 
         return onsets
+
+    def detect_movement_onsets(self, params=None):
+        """
+        Detect movement onsets in smoothed velocity data.
+        
+        Parameters:
+        -----------
+        params : dict, optional
+            Dictionary of detection parameters including:
+            - window_size: Size of forward-looking window
+            - baseline_window: Size of baseline window
+            - threshold: Minimum velocity change threshold
+            - min_distance: Minimum samples between onsets
+            - steady_state_threshold: Maximum allowed baseline variance
+            - baseline_max: Maximum allowed baseline value
+            
+        Returns:
+        --------
+        onsets : ndarray
+            Indices where movement onsets were detected
+        """
+        if params is None:
+            params = {
+                'window_size': 20,           # Size of forward-looking window
+                'baseline_window': 20,       # Size of baseline window
+                'threshold': 2.0,            # Minimum velocity change threshold
+                'min_distance': 150,         # Minimum samples between onsets
+                'steady_state_threshold': 0.25, # Maximum allowed baseline variance
+                'baseline_max': 3.0          # Maximum allowed baseline value
+            }
+        
+        data = np.array(self.smoothed_velocity)
+        onsets = []
+        
+        window_size = params['window_size']
+        baseline_window = params['baseline_window']
+        threshold = params['threshold']
+        min_distance = params['min_distance']
+        steady_thresh = params['steady_state_threshold']
+        baseline_max = params['baseline_max']
+        
+        for i in range(baseline_window, len(data) - window_size):
+            baseline = data[i - baseline_window:i]
+            baseline_mean = np.mean(baseline)
+            baseline_std = np.std(baseline)
+            
+            forward = data[i:i + window_size]
+            forward_mean = np.mean(forward)
+            
+            velocity_change = forward_mean - baseline_mean
+            is_baseline_steady = baseline_std < steady_thresh
+            is_significant_change = velocity_change > threshold
+            is_far_from_last = len(onsets) == 0 or (i - onsets[-1]) > min_distance
+            is_baseline_low = baseline_mean < baseline_max
+            
+            if (is_baseline_steady and is_significant_change and 
+                is_far_from_last and is_baseline_low):
+                next_window = data[i + window_size:i + window_size * 2]
+                if len(next_window) > 0:
+                    next_mean = np.mean(next_window)
+                    if next_mean > forward_mean:
+                        onsets.append(i)
+        
+        return np.array(onsets)
+
+    def detect_velocity_peaks(self, params=None):
+        """
+        Detect velocity peaks after each movement onset using self.movement_onset_indices.
+        
+        Parameters:
+        -----------
+        params : dict, optional
+            Dictionary of detection parameters including:
+            - search_window: How far to look for peak after onset
+            - min_peak_height: Minimum velocity for peak detection
+        
+        Returns:
+        --------
+        peaks : ndarray
+            Indices of detected velocity peaks
+        """
+        if params is None:
+            params = {
+                'search_window': 200,  # How far to look for peak after onset
+                'min_peak_height': 10.0  # Minimum velocity for peak detection
+            }
+        
+        data = np.array(self.smoothed_velocity)
+        peaks = []
+        
+        for onset in self.movement_onset_indices:
+            end_idx = min(onset + params['search_window'], len(data))
+            search_window = data[onset:end_idx]
+            
+            if len(search_window) > 0:
+                peak_idx = onset + np.argmax(search_window)
+                if data[peak_idx] >= params['min_peak_height']:
+                    peaks.append(peak_idx)
+        
+        return np.array(peaks)
+    
+
+    def detect_movement_offsets(self, params=None):
+        """
+        Detect movement offsets after velocity peaks using self.velocity_peak_indices.
+        
+        Parameters:
+        -----------
+        params : dict, optional
+            Dictionary of detection parameters including:
+            - search_window: How far to look for offset after peak
+            - offset_threshold: Velocity threshold for offset detection
+            - window_size: Window size for smoothing
+        
+        Returns:
+        --------
+        offsets : ndarray
+            Indices of movement offsets
+        """
+        if params is None:
+            params = {
+                'search_window': 200,    # How far to look for offset after peak
+                'offset_threshold': 1.0,  # Velocity threshold for offset detection
+                'window_size': 10        # Window size for smoothing
+            }
+        
+        data = np.array(self.smoothed_velocity)
+        offsets = []
+        
+        for peak in self.velocity_peak_indices:
+            # Define search window after peak
+            end_idx = min(peak + params['search_window'], len(data))
+            search_window = data[peak:end_idx]
+            
+            # Look for point where velocity drops below threshold
+            for i in range(len(search_window) - params['window_size']):
+                window_mean = np.mean(search_window[i:i + params['window_size']])
+                if window_mean < params['offset_threshold']:
+                    offsets.append(peak + i)
+                    break
+                    
+        return np.array(offsets)
+        
+
 
     @classmethod
     def output_bokeh_plot(cls, plot, save_path=None, title=None, notebook=False, overwrite=False):
@@ -466,106 +633,82 @@ class VirmenTank:
 
     def plot_lick_and_velocity(self, title="Lick And Velocity", notebook=False, save_path=None, overwrite=False):
         """
-        Plot the lick data and velocity data.
-        :param notebook: Flag to indicate if the plot is for a Jupyter notebook.
-        :param save_path:  Path to save the plot as an HTML file.
-        :param overwrite: Flag to indicate whether to overwrite the existing plot
-        :return: None
+        Plot the lick data and velocity data with vertical lines for events.
         """
         from bokeh.plotting import figure
-        from bokeh.models import Span, HoverTool, CheckboxGroup, CustomJS
-        from bokeh.layouts import column, row
+        from bokeh.models import HoverTool
+        from bokeh.layouts import column
 
-        p = figure(width=800, height=400, y_range=[0, 1.2], active_drag='pan', active_scroll='wheel_zoom', title='Lick')
+        # Prepare vertical lines data
+        def create_vertical_lines(indices, y_range):
+            """Helper function to create vertical line coordinates"""
+            xs = [[idx/self.vm_rate, idx/self.vm_rate] for idx in indices]
+            ys = [[y_range[0], y_range[1]] for _ in indices]
+            return xs, ys
+
+        # Create lick plot
+        lick_y_range = [0, 1.2]
+        p = figure(width=800, height=400, y_range=lick_y_range, 
+                  active_drag='pan', active_scroll='wheel_zoom', title='Lick')
+        
+        # Add main data lines
         p.line(self.t, self.lick_raw, line_color='navy', legend_label='raw', line_width=1)
         p.line(self.t, self.lick_raw_mask, line_color='palevioletred', legend_label='mask', line_width=2)
         p.line(self.t, self.lick, line_color='gold', legend_label='filtered', line_width=2)
 
-        # Different groups of spans
-        trials_end_spans = []
-        velocity_peak_spans = []
-        movement_onset_spans = []
+        # Add vertical lines for events
+        trials_xs, trials_ys = create_vertical_lines(self.trials_end_indices, lick_y_range)
+        velocity_xs, velocity_ys = create_vertical_lines(self.velocity_peak_indices, lick_y_range)
+        movement_onset_xs, movement_onset_ys = create_vertical_lines(self.movement_onset_indices, lick_y_range)
+        movement_offset_xs, movement_offset_ys = create_vertical_lines(self.movement_offset_indices, lick_y_range)
 
-        # Adding spans for trials end
-        for idx in self.trials_end_indices:
-            vline = Span(location=idx / self.vm_rate, dimension='height', line_color='green', line_width=2,
-                         visible=True)
-            trials_end_spans.append(vline)
-            p.add_layout(vline, 'below')
-
-        # Adding spans for velocity peaks
-        for idx in self.velocity_peak_indices:
-            vline = Span(location=idx / self.vm_rate, dimension='height', line_color='blue', line_width=2, visible=True)
-            velocity_peak_spans.append(vline)
-            p.add_layout(vline, 'below')
-
-        # Adding spans for movement onsets
-        for idx in self.movement_onset_indices:
-            vline = Span(location=idx / self.vm_rate, dimension='height', line_color='brown', line_width=2,
-                         visible=True)
-            movement_onset_spans.append(vline)
-            p.add_layout(vline, 'below')
+        p.multi_line(trials_xs, trials_ys, line_color='green', line_width=2, 
+                    legend_label='Trial Ends', level='underlay')
+        p.multi_line(velocity_xs, velocity_ys, line_color='blue', line_width=2, 
+                    legend_label='Velocity Peaks', level='underlay')
+        p.multi_line(movement_onset_xs, movement_onset_ys, line_color='brown', line_width=2, 
+                    legend_label='Movement Onsets', level='underlay')
+        p.multi_line(movement_offset_xs, movement_offset_ys, line_color='purple', line_width=2, 
+                    legend_label='Movement Offsets', level='underlay')
 
         p.legend.click_policy = "hide"
-        hover = HoverTool()
-        hover.tooltips = [
-            ("Index", "$index"),
-            ("(x, y)", "($x, $y)"),
-        ]
-        p.add_tools(hover)
+        p.add_tools(HoverTool(tooltips=[("Index", "$index"), ("(x, y)", "($x, $y)")]))
 
-        ################################################################
-
+        # Create velocity plot
         p_v = figure(width=800, height=400, x_range=p.x_range,
-                     active_drag='pan', active_scroll='wheel_zoom', title="Velocity")
-        p_v.line(self.t, self.smoothed_velocity, line_color='navy', legend_label='smoothed_velocity', line_width=2)
-        p_v.line(self.t, self.pstcr, line_color='red', legend_label='position change rate', line_width=2)
-        p_v.line(self.t, self.velocity, line_color='purple', legend_label='velocity', line_width=2)
+                    active_drag='pan', active_scroll='wheel_zoom', title="Velocity")
+        
+        # Add main velocity data lines
+        p_v.line(self.t, self.smoothed_velocity, line_color='navy', 
+                legend_label='smoothed_velocity', line_width=2)
+        p_v.line(self.t, self.pstcr, line_color='red', 
+                legend_label='position change rate', line_width=2)
+        p_v.line(self.t, self.velocity, line_color='purple', 
+                legend_label='velocity', line_width=2)
 
-        # Copy spans to velocity plot
-        for span in trials_end_spans + velocity_peak_spans + movement_onset_spans:
-            p_v.add_layout(span)
+        # Add vertical lines for events (using the plot's y range)
+        velocity_y_range = [min(self.velocity), max(self.velocity)]
+        trials_xs, trials_ys = create_vertical_lines(self.trials_end_indices, velocity_y_range)
+        velocity_xs, velocity_ys = create_vertical_lines(self.velocity_peak_indices, velocity_y_range)
+        movement_onset_xs, movement_onset_ys = create_vertical_lines(self.movement_onset_indices, velocity_y_range)
+        movement_offset_xs, movement_offset_ys = create_vertical_lines(self.movement_offset_indices, velocity_y_range)
 
-        hover_v = HoverTool()
-        hover_v.tooltips = [
-            ("Index", "$index"),
-            ("(x, y)", "($x, $y)"),
-        ]
-        p_v.add_tools(hover_v)
+        p_v.multi_line(trials_xs, trials_ys, line_color='green', line_width=2, 
+                      legend_label='Trial Ends', level='underlay')
+        p_v.multi_line(velocity_xs, velocity_ys, line_color='blue', line_width=2, 
+                      legend_label='Velocity Peaks', level='underlay')
+        p_v.multi_line(movement_onset_xs, movement_onset_ys, line_color='brown', line_width=2, 
+                      legend_label='Movement Onsets', level='underlay')
+        p_v.multi_line(movement_offset_xs, movement_offset_ys, line_color='purple', line_width=2, 
+                      legend_label='Movement Offsets', level='underlay')
+
         p_v.legend.click_policy = "hide"
+        p_v.add_tools(HoverTool(tooltips=[("Index", "$index"), ("(x, y)", "($x, $y)")]))
 
-        # Checkboxes for toggling span visibility
-        trials_checkbox = CheckboxGroup(labels=["Show Trial Ends"], active=[0], width=150)
-        velocity_checkbox = CheckboxGroup(labels=["Show Velocity Peaks"], active=[0], width=150)
-        movement_checkbox = CheckboxGroup(labels=["Show Movement Onsets"], active=[0], width=150)
-
-        # Custom JS callbacks for each checkbox
-        trials_callback = CustomJS(args={'spans': trials_end_spans, 'checkbox': trials_checkbox}, code="""
-            for (let span of spans) {
-                span.visible = checkbox.active.includes(0);
-            }
-        """)
-        trials_checkbox.js_on_change('active', trials_callback)
-
-        velocity_callback = CustomJS(args={'spans': velocity_peak_spans, 'checkbox': velocity_checkbox}, code="""
-            for (let span of spans) {
-                span.visible = checkbox.active.includes(0);
-            }
-        """)
-        velocity_checkbox.js_on_change('active', velocity_callback)
-
-        movement_callback = CustomJS(args={'spans': movement_onset_spans, 'checkbox': movement_checkbox}, code="""
-            for (let span of spans) {
-                span.visible = checkbox.active.includes(0);
-            }
-        """)
-        movement_checkbox.js_on_change('active', movement_callback)
-
-        # Layout the plot and the checkboxes
-        checkbox_row = row(trials_checkbox, velocity_checkbox, movement_checkbox)
-        layout = column(checkbox_row, p, p_v)
-
-        self.output_bokeh_plot(layout, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite)
+        # Create layout and output
+        layout = column(p, p_v)
+        self.output_bokeh_plot(layout, save_path=save_path, title=title, 
+                             notebook=notebook, overwrite=overwrite)
 
         return layout
 
