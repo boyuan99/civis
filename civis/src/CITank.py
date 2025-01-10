@@ -13,7 +13,8 @@ class CITank(VirmenTank):
                  ci_path=None,
                  virmen_path=None,
                  gcamp_path=None,
-                 tdt_path=None,
+                 tdt_org_path=None,
+                 tdt_adjusted_path=None,
                  height=30,
                  maze_type=None,
                  threshold=None,
@@ -33,7 +34,9 @@ class CITank(VirmenTank):
         virmen_path = virmen_path or os.path.join(self.config['VirmenFilePath'], f"{session_name}.txt")
         gcamp_path = gcamp_path or os.path.join(self.config['ProcessedFilePath'], session_name,
                                                 f"{session_name}_tiff_projections", f"{session_name}_max.tif")
-        tdt_path = tdt_path or os.path.join(self.config['ProcessedFilePath'], session_name,
+        tdt_org_path = tdt_org_path or os.path.join(self.config['ProcessedFilePath'], session_name,
+                                                f"{session_name}_alignment_check", f"{session_name}_tdt_original_16bit.tif")
+        tdt_adjusted_path = tdt_adjusted_path or os.path.join(self.config['ProcessedFilePath'], session_name,
                                                 f"{session_name}_tdt_adjustment", f"{session_name}_tdt_adjusted_16bit.tif")
 
 
@@ -53,7 +56,8 @@ class CITank(VirmenTank):
 
         self.ci_path = ci_path
         self.gcamp_path = gcamp_path
-        self.tdt_path = tdt_path
+        self.tdt_adjusted_path = tdt_adjusted_path
+        self.tdt_org_path = tdt_org_path
         self.ci_rate = ci_rate
         self.session_duration = session_duration
 
