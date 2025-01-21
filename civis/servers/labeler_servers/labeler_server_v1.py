@@ -553,6 +553,14 @@ def labeler_bkapp_v1(doc):
         # Enable file input
         file_path_input.disabled = False
 
+        gcamp_input.disabled = False
+        orig_tdt_input.disabled = False
+        adj_tdt_input.disabled = False
+
+        gcamp_input.value = f"{session_name}_max.tif"
+        orig_tdt_input.value = f"{session_name}_tdt_original_16bit.tif"
+        adj_tdt_input.value = f"{session_name}_tdt_adjusted_16bit.tif"
+
         # Load the data
         [C, C_raw, Cn, ids, Coor, centroids, virmenPath, C_denoised, C_deconvolved, C_reraw] = load_data(filename)
 
@@ -673,9 +681,13 @@ def labeler_bkapp_v1(doc):
     ========================================================================================================================
     """
     # Create input fields for different image types with default filenames
-    gcamp_input = TextInput(value="max.tif", title="GCaMP Max Projection", width=400)
-    orig_tdt_input = TextInput(value="tdt_original_16bit.tif", title="Original TDT", width=400)
-    adj_tdt_input = TextInput(value="tdt_adjusted_16bit.tif", title="Adjusted TDT", width=400)
+    gcamp_input = TextInput(value=f"max.tif", title="GCaMP Max Projection", width=400)
+    orig_tdt_input = TextInput(value=f"tdt_original_16bit.tif", title="Original TDT", width=400)
+    adj_tdt_input = TextInput(value=f"tdt_adjusted_16bit.tif", title="Adjusted TDT", width=400)
+
+    gcamp_input.disabled = True
+    orig_tdt_input.disabled = True
+    adj_tdt_input.disabled = True
 
     # Create load buttons for each image type
     load_gcamp_button = Button(label="Load GCaMP Image", button_type="success")
@@ -703,13 +715,19 @@ def labeler_bkapp_v1(doc):
 
             # Construct the image path based on type
             if image_type == "gcamp":
-                image_path = os.path.join(base_path, session_name, f'{session_name}_tiff_projections', f'{session_name}_max.tif')
+                folder_name = f'{session_name}_tiff_projections'
+                filename = image_input.value
+                image_path = os.path.join(base_path, session_name, folder_name, filename)
                 color = "green"
             elif image_type == "orig_tdt":
-                image_path = os.path.join(base_path, session_name, f'{session_name}_alignment_check', f'{session_name}_tdt_original_16bit.tif')
+                folder_name = f'{session_name}_alignment_check'
+                filename = image_input.value
+                image_path = os.path.join(base_path, session_name, folder_name, filename)
                 color = "red"
             elif image_type == "adj_tdt":
-                image_path = os.path.join(base_path, session_name, f'{session_name}_tdt_adjustment', f'{session_name}_tdt_adjusted_16bit.tif')
+                folder_name = f'{session_name}_tdt_adjustment'
+                filename = image_input.value
+                image_path = os.path.join(base_path, session_name, folder_name, filename)
                 color = "red"
 
             # Load and process the image
