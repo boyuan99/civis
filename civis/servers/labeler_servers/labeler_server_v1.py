@@ -307,6 +307,7 @@ def labeler_bkapp_v1(doc):
     d1_button = Button(label="D1", button_type="default", disabled=True)
     d2_button = Button(label="D2", button_type="default", disabled=True)
     unknown_button = Button(label="Unknown", button_type="default", disabled=True)
+    discard_button = Button(label="Discard", button_type="default", disabled=True)
 
     # Create buttons for saving and loading labels and a TextInput for the file path
     save_labels_button = Button(label="Save Labels", button_type="success", disabled=True)
@@ -318,16 +319,18 @@ def labeler_bkapp_v1(doc):
 
     """
     ========================================================================================================================
-             Toggles for D1, D2, Unknown
+             Toggles for D1, D2, Unknown, Discard
     ========================================================================================================================
     """
     toggle_d1 = Toggle(label="Show D1", button_type="success", active=True)
     toggle_d2 = Toggle(label="Show D2", button_type="success", active=True)
     toggle_unknown = Toggle(label="Show Unknown", button_type="success", active=True)
+    toggle_discard = Toggle(label="Show Discard", button_type="success", active=True)
 
     def update_toggle_colors():
         """Update toggle button colors and labels based on their state"""
-        for toggle, label_base in [(toggle_d1, "D1"), (toggle_d2, "D2"), (toggle_unknown, "Unknown")]:
+        for toggle, label_base in [(toggle_d1, "D1"), (toggle_d2, "D2"), 
+                                 (toggle_unknown, "Unknown"), (toggle_discard, "Discard")]:
             toggle.button_type = "danger" if toggle.active else "success"
             toggle.label = f"Hide {label_base}" if toggle.active else f"Show {label_base}"
 
@@ -340,6 +343,7 @@ def labeler_bkapp_v1(doc):
     toggle_d1.on_change('active', lambda attr, old, new: toggle_callback(toggle_d1))
     toggle_d2.on_change('active', lambda attr, old, new: toggle_callback(toggle_d2))
     toggle_unknown.on_change('active', lambda attr, old, new: toggle_callback(toggle_unknown))
+    toggle_discard.on_change('active', lambda attr, old, new: toggle_callback(toggle_discard))
 
     def update_mask_visibility():
         """Update visibility of masks based on their labels and toggle states"""
@@ -350,6 +354,7 @@ def labeler_bkapp_v1(doc):
         d1_neurons = [int(x) for x in d1_neurons_select.options if x != "Click to see options..."]
         d2_neurons = [int(x) for x in d2_neurons_select.options if x != "Click to see options..."]
         unknown_neurons = [int(x) for x in unknown_neurons_select.options if x != "Click to see options..."]
+        discard_neurons = [int(x) for x in discard_neurons_select.options if x != "Click to see options..."]
         
         for i in range(len(spatial_source.data['xs'])):
             # Check which list the neuron belongs to
@@ -357,6 +362,8 @@ def labeler_bkapp_v1(doc):
                 visible = toggle_d1.active
             elif i in d2_neurons:
                 visible = toggle_d2.active
+            elif i in discard_neurons:
+                visible = toggle_discard.active
             elif i in unknown_neurons:
                 visible = toggle_unknown.active
             else:
@@ -446,6 +453,7 @@ def labeler_bkapp_v1(doc):
     d1_button.on_click(lambda: update_labels("D1"))
     d2_button.on_click(lambda: update_labels("D2"))
     unknown_button.on_click(lambda: update_labels("unknown"))
+    discard_button.on_click(lambda: update_labels("discard"))
     save_labels_button.on_click(save_labels)
 
     # Function to update button styles based on current label
@@ -457,12 +465,15 @@ def labeler_bkapp_v1(doc):
         d1_button.button_type = "default"
         d2_button.button_type = "default"
         unknown_button.button_type = "default"
+        discard_button.button_type = "default"
 
         # Highlight the active label
         if current_label == "D1":
             d1_button.button_type = "success"
         elif current_label == "D2":
             d2_button.button_type = "success"
+        elif current_label == "discard":
+            discard_button.button_type = "success"
         else:  # unknown
             unknown_button.button_type = "success"
 
@@ -471,14 +482,15 @@ def labeler_bkapp_v1(doc):
             Div Plain Text Bokeh
     ========================================================================================================================
     """
-    labeled_count_div = Div(text="D1: 0 | D2: 0 | Unknown: 0", width=400, height=30)
+    labeled_count_div = Div(text="D1: 0 | D2: 0 | Unknown: 0 | Discard: 0", width=400, height=30)
 
     # Function to update the counts displayed in the Div
     def update_labeled_count():
         d1_count = sum(1 for label in labels.values() if label == "D1")
         d2_count = sum(1 for label in labels.values() if label == "D2")
         unknown_count = sum(1 for label in labels.values() if label == "unknown")
-        labeled_count_div.text = f"D1: {d1_count} | D2: {d2_count} | Unknown: {unknown_count}"
+        discard_count = sum(1 for label in labels.values() if label == "discard")
+        labeled_count_div.text = f"D1: {d1_count} | D2: {d2_count} | Unknown: {unknown_count} | Discard: {discard_count}"
 
     """
     ========================================================================================================================
@@ -488,6 +500,7 @@ def labeler_bkapp_v1(doc):
     d1_neurons_select = Select(title="D1 Neurons", options=[], disabled=True)
     d2_neurons_select = Select(title="D2 Neurons", options=[], disabled=True)
     unknown_neurons_select = Select(title="Unknown Neurons", options=[], disabled=True)
+    discard_neurons_select = Select(title="Discarded Neurons", options=[], disabled=True)
 
     def update_dropdowns():
         """Update dropdown menus with current labels"""
@@ -495,16 +508,19 @@ def labeler_bkapp_v1(doc):
         d1_ids = sorted([i for i, label in labels.items() if label == "D1"], key=int)
         d2_ids = sorted([i for i, label in labels.items() if label == "D2"], key=int)
         unknown_ids = sorted([i for i, label in labels.items() if label == "unknown"], key=int)
+        discard_ids = sorted([i for i, label in labels.items() if label == "discard"], key=int)
 
         # Update dropdown options
         d1_neurons_select.options = ["Click to see options..."] + d1_ids
         d2_neurons_select.options = ["Click to see options..."] + d2_ids
         unknown_neurons_select.options = ["Click to see options..."] + unknown_ids
+        discard_neurons_select.options = ["Click to see options..."] + discard_ids
 
         # Reset selections to default
         d1_neurons_select.value = "Click to see options..."
         d2_neurons_select.value = "Click to see options..."
         unknown_neurons_select.value = "Click to see options..."
+        discard_neurons_select.value = "Click to see options..."
 
     def neuron_selected(attr, old, new):
         if new and new != "Click to see options...":
@@ -514,6 +530,7 @@ def labeler_bkapp_v1(doc):
     d1_neurons_select.on_change('value', neuron_selected)
     d2_neurons_select.on_change('value', neuron_selected)
     unknown_neurons_select.on_change('value', neuron_selected)
+    discard_neurons_select.on_change('value', neuron_selected)
 
     """
     ========================================================================================================================
@@ -542,6 +559,7 @@ def labeler_bkapp_v1(doc):
         d1_button.disabled = False
         d2_button.disabled = False
         unknown_button.disabled = False
+        discard_button.disabled = False
         save_labels_button.disabled = False
         load_labels_button.disabled = False  # Enable load labels button
 
@@ -549,6 +567,7 @@ def labeler_bkapp_v1(doc):
         d1_neurons_select.disabled = False
         d2_neurons_select.disabled = False
         unknown_neurons_select.disabled = False
+        discard_neurons_select.disabled = False
 
         # Enable file input
         file_path_input.disabled = False
@@ -861,18 +880,18 @@ def labeler_bkapp_v1(doc):
     labelling = row(
         spacer3,
         column(
-            row(d1_button, d2_button, unknown_button),
+            row(d1_button, d2_button, unknown_button, discard_button),
             row(file_path_input, column(spacer2, row(save_labels_button, load_labels_button))),
             labeled_count_div
         )
     )
 
-    menus = row(spacer3, row(d1_neurons_select, d2_neurons_select, unknown_neurons_select))
+    menus = row(spacer3, row(d1_neurons_select, d2_neurons_select, unknown_neurons_select, discard_neurons_select))
 
     temporal = Tabs(tabs=[temporal_tab1, temporal_tab2])
 
     # Our new row of toggles:
-    toggle_row = row(spacer3, toggle_d1, toggle_d2, toggle_unknown)
+    toggle_row = row(spacer3, toggle_d1, toggle_d2, toggle_unknown, toggle_discard)
 
     layout = row(
         spatial,
