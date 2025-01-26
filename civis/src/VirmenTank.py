@@ -140,6 +140,13 @@ class VirmenTank:
                     starts.append(start)
                     start = i + 1
 
+        elif maze_type.lower() == 'straight70':
+            for i in range(len(data)):
+                if data.iloc[i]['y'] >= 70 or data.iloc[i]['y'] <= -70:
+                    trials.append(data[start:i + 1].to_dict(orient='list'))
+                    starts.append(start)
+                    start = i + 1
+
         elif maze_type.lower() in ['turnv0', 'turnv1']:
             for i in range(len(data)):
                 if abs(data.iloc[i]['y']) + abs(data.iloc[i]['x']) >= 175:
@@ -166,6 +173,8 @@ class VirmenTank:
             else:
                 return 'turnv0'
 
+        elif np.any(data['y'] > 60) or np.any(data['y'] < -60):
+            return "straight70"
         elif np.any(data['y'] > 30) or np.any(data['y'] < -30):
             return "straight50"
         return "short25"
@@ -182,6 +191,10 @@ class VirmenTank:
 
         elif maze_type.lower() == 'straight50':
             indices_all = np.array(self.virmen_data.index[self.virmen_data['y'].abs() > 50].tolist())
+            indices = indices_all[np.where(indices_all < self.vm_rate * self.session_duration)]
+
+        elif maze_type.lower() == 'straight70':
+            indices_all = np.array(self.virmen_data.index[self.virmen_data['y'].abs() > 70].tolist())
             indices = indices_all[np.where(indices_all < self.vm_rate * self.session_duration)]
 
         elif maze_type.lower() in ['turnv0', 'turnv1']:
