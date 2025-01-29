@@ -15,11 +15,16 @@ sys.path.append(project_root)
 
 def trajectory_bkapp_v8(doc):
     from civis.src.VirmenTank import VirmenTank
-    global source, trials
+    global source, trials, vm_rate, pstcr
 
     trials = []
     source = ColumnDataSource({'x': [], 'y': [], 'face_angle': []})
-    plot = figure(width=300, height=800, y_range=[-80, 80], x_range=[-10, 10],
+    # Initialize velocity sources
+    velocity_source = ColumnDataSource(data={'x': [], 'y': []})
+    current_velocity_source = ColumnDataSource(data={'x': [], 'y': []})
+    pstcr_source = ColumnDataSource(data={'x': [], 'y': []})
+    lick_source = ColumnDataSource(data={'x': [], 'y': []})
+    plot = figure(width=200, height=800, y_range=[-80, 80], x_range=[-10, 10],
                   title="Mouse Movement Trajectory")
     plot.line('x', 'y', source=source, line_width=2)
 
@@ -58,7 +63,7 @@ def trajectory_bkapp_v8(doc):
     next_button.disabled = True
 
     def load_data():
-        global source, trials, starts
+        global source, trials, starts, vm_rate, pstcr
 
         try:
             config_path = os.path.join(project_root, 'config.json')
@@ -80,6 +85,11 @@ def trajectory_bkapp_v8(doc):
 
             trials = vm.virmen_trials
             starts = [x / vm.vm_rate for x in vm.trials_start_indices]
+
+            # Get the data array and indices
+            data_array = np.array(vm.virmen_data)
+            start_indicies = vm.trials_start_indices
+            end_indicies = vm.trials_end_indices_all
 
             print("Successfully loaded: " + file)
             error_div.text = ""  # Clear any previous error messages
@@ -106,9 +116,21 @@ def trajectory_bkapp_v8(doc):
 
                 starts_div.text = f"Start Time: {starts[0]}"
 
+            vm_rate = vm.vm_rate
+            pstcr = {}
+
+            for i in range(len(vm.virmen_trials)-1):
+                dx = np.diff(data_array[start_indicies[i]:end_indicies[i] + 1, 0])
+                dx = np.append(dx, dx[-1])
+                dy = np.diff(data_array[start_indicies[i]:end_indicies[i] + 1, 1])
+                dy = np.append(dy, dy[-1])
+                pstcr[i] = np.sqrt(dx ** 2 + dy ** 2)
+
         except ValueError as e:
             error_div.text = f"Error: {str(e)}"
-            # Disable widgets if data loading fails
+            print(f"ValueError: {str(e)}", file=sys.stderr)
+            import traceback
+            traceback.print_exc()
             trial_slider.disabled = True
             progress_slider.disabled = True
             play_button.disabled = True
@@ -116,7 +138,9 @@ def trajectory_bkapp_v8(doc):
             next_button.disabled = True
         except Exception as e:
             error_div.text = f"An unexpected error occurred: {str(e)}"
-            # Disable widgets if data loading fails
+            print(f"Unexpected error: {str(e)}", file=sys.stderr)
+            import traceback
+            traceback.print_exc() 
             trial_slider.disabled = True
             progress_slider.disabled = True
             play_button.disabled = True
@@ -152,6 +176,28 @@ def trajectory_bkapp_v8(doc):
                     'face_angle': trial_data['face_angle'][:max_index]}
         source.data = new_data
         starts_div.text = f"Start Time: {starts[trial_index]}"
+
+        # Update velocity plot data
+        dx = np.array(trial_data['dx'])
+        dy = np.array(trial_data['dy'])
+        velocity = np.sqrt(dx ** 2 + dy ** 2)
+        
+        pstcr_array = np.array(pstcr[trial_index])
+
+        velocity_source.data = {'x': (1/vm_rate) * np.arange(len(trial_data['x'])), 'y': velocity}
+        pstcr_source.data = {'x': (1/vm_rate) * np.arange(len(trial_data['x'])),
+                           'y': pstcr_array * vm_rate}
+        current_velocity_source.data = {"x": [(1/vm_rate) * max_index, (1/vm_rate) * max_index],
+                                     "y": [0, velocity.max()]}
+        
+        x_pos_lick = []
+        y_pos_lick = []
+        
+        for indices in trial_data["lick"]:
+            x_pos_lick.append([indices * (1/vm_rate), indices * (1/vm_rate)])
+            y_pos_lick.append([0, velocity.max()])
+            
+        lick_source.data = {"x": x_pos_lick, "y": y_pos_lick}
 
     trial_slider.on_change('value', update_plot)
     progress_slider.on_change('value', update_plot)
@@ -200,11 +246,24 @@ def trajectory_bkapp_v8(doc):
     previous_button.on_click(previous_trial)
     next_button.on_click(next_trial)
 
+    # Add velocity plot
+    velocity_and_lick_plot = figure(width=800, height=300,
+                                  active_drag='pan', active_scroll='wheel_zoom', title="Velocity")
+    velocity_and_lick_plot.line(x='x', y='y', source=velocity_source, line_color='navy', legend_label='velocity',
+                              line_width=2)
+    velocity_and_lick_plot.line(x='x', y='y', source=current_velocity_source, line_color='red',
+                              legend_label='current_velocity', line_width=2)
+    velocity_and_lick_plot.line(x='x', y='y', source=pstcr_source,
+                              line_color='orange', legend_label='pstcr', line_width=2, alpha=0.7)
+    velocity_and_lick_plot.multi_line(xs='x', ys='y', source=lick_source,
+                                    line_color='green', legend_label='lick')
+    velocity_and_lick_plot.legend.click_policy = "hide"
+
     file_input_row = row(filename_input, column(Spacer(height=20), load_button))
     trial_navigation_row = row(previous_button, next_button)
     tool_widgets = column(file_input_row, trial_slider, progress_slider, play_button,
                           trial_navigation_row, starts_div, error_div)
-    layout = row(plot, Spacer(width=30), tool_widgets)
+    layout = row(plot, Spacer(width=30), column(tool_widgets, velocity_and_lick_plot))
     doc.add_root(layout)
 
 

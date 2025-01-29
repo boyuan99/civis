@@ -357,7 +357,7 @@ class VirmenTank:
             velocity = velocity_raw.copy()
             velocity[outliers] = 0
 
-        velocity_raw = velocity_raw[: self.session_duration * self.vm_rate]
+        # velocity_raw = velocity_raw[: self.session_duration * self.vm_rate]
         velocity = velocity[: self.session_duration * self.vm_rate]
 
         return velocity_raw, velocity
