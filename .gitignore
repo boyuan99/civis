@@ -5,3 +5,4 @@ test.py
 civis/config.json
 .DS_Store
 /civis.egg-info/
+test/

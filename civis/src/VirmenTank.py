@@ -147,6 +147,13 @@ class VirmenTank:
                     starts.append(start)
                     start = i + 1
 
+        elif maze_type.lower() == 'straight70v3':
+            for i in range(len(data)):
+                if data.iloc[i]['y'] >= 70 or data.iloc[i]['y'] <= -70:
+                    trials.append(data[start:i + 1].to_dict(orient='list'))
+                    starts.append(start)
+                    start = i + 1
+
         elif maze_type.lower() in ['turnv0', 'turnv1']:
             for i in range(len(data)):
                 if abs(data.iloc[i]['y']) + abs(data.iloc[i]['x']) >= 175:
@@ -166,12 +173,15 @@ class VirmenTank:
         data.columns = potential_names[:data.shape[1]]
 
         if 'maze_type' in data.columns:
-            arr = data['x']
-            mask = np.abs(arr) < 0.001
-            if np.any(np.convolve(mask, np.ones(40), mode='valid') == 40):
-                return 'turnv1'
+            if len(data['maze_type'].iloc[0]) < 3:
+                arr = data['x']
+                mask = np.abs(arr) < 0.001
+                if np.any(np.convolve(mask, np.ones(40), mode='valid') == 40):
+                    return 'turnv1'
+                else:
+                    return 'turnv0'
             else:
-                return 'turnv0'
+                return data['maze_type'].iloc[0]
 
         elif np.any(data['y'] > 60) or np.any(data['y'] < -60):
             return "straight70"
@@ -194,6 +204,10 @@ class VirmenTank:
             indices = indices_all[np.where(indices_all < self.vm_rate * self.session_duration)]
 
         elif maze_type.lower() == 'straight70':
+            indices_all = np.array(self.virmen_data.index[self.virmen_data['y'].abs() > 70].tolist())
+            indices = indices_all[np.where(indices_all < self.vm_rate * self.session_duration)]
+
+        elif maze_type.lower() == 'straight70v3':
             indices_all = np.array(self.virmen_data.index[self.virmen_data['y'].abs() > 70].tolist())
             indices = indices_all[np.where(indices_all < self.vm_rate * self.session_duration)]
 
@@ -344,6 +358,8 @@ class VirmenTank:
         data_array = np.array(self.virmen_data)
         dx = np.diff(data_array[:, 0])
         dy = np.diff(data_array[:, 1])
+        dx = np.array(dx, dtype=np.float64)
+        dy = np.array(dy, dtype=np.float64)
         velocity_raw = np.sqrt(dx ** 2 + dy ** 2)
         velocity = None
         if method == 'fixed':
