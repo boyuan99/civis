@@ -60,7 +60,7 @@ class VirmenTank:
         self.acceleration = self.find_acceleration()
 
         onset_params = {
-            'window_size': 20,
+            'window_size': 10,
             'baseline_window': 20,
             'threshold': 2.0,
             'min_distance': 100,
@@ -72,9 +72,9 @@ class VirmenTank:
             'min_peak_height': 10.0
         }
         offset_params = {
-            'search_window': 200,    
-            'offset_threshold': 1.0,  
-            'window_size': 10        
+            'search_window': 200,
+            'offset_threshold': 0.1,
+            'window_size': 10
         }
 
         self.movement_onset_indices = self.detect_movement_onsets(onset_params)

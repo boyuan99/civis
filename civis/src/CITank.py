@@ -205,6 +205,8 @@ class CITank(VirmenTank):
         """
         # Use provided signal if available, otherwise use self.C_raw
         input_signal = signal if signal is not None else self.C_raw
+        if len(input_signal.shape) == 1:
+            input_signal = np.expand_dims(input_signal, axis=0)
 
         # Get number of neurons from the input signal
         neuron_num = len(input_signal) if signal is not None else self.neuron_num
