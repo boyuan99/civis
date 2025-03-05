@@ -108,7 +108,7 @@ def trajectory_bkapp_v8(doc):
                             'face_angle': [initial_trial['face_angle'][0]]}
                 source.data = new_data
 
-                trial_slider.end = len(trials) - 1
+                trial_slider.end = vm.trial_num - 1
                 trial_slider.value = 0
 
                 progress_slider.end = 100

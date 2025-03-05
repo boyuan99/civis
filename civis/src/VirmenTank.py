@@ -153,6 +153,9 @@ class VirmenTank:
                     trials.append(data[start:i + 1].to_dict(orient='list'))
                     starts.append(start)
                     start = i + 1
+            
+            # Add extend_data for straight70v3 maze type to track falls
+            self.extend_data = MazeV3Tank(trials, data)
 
         elif maze_type.lower() in ['turnv0', 'turnv1']:
             for i in range(len(data)):
@@ -740,6 +743,150 @@ class VirmenTank:
                              notebook=notebook, overwrite=overwrite)
 
         return layout
+
+
+class MazeV3Tank():
+    def __init__(self, trials, data):
+        self.virmen_trials = trials
+        self.virmen_data = data
+        self.fall_indices = self.detect_falls()
+        self.fall_count = len(self.fall_indices)
+        
+    def detect_falls(self, edge_threshold=20, pause_threshold=0.5):
+        """
+        Detects instances where the animal falls off the edge in straight70v3 maze.
+        
+        Parameters:
+        -----------
+        edge_threshold : float
+            The position threshold (±) to consider as falling off the edge
+        pause_threshold : float
+            The threshold for position change rate to detect pauses in position updates
+            
+        Returns:
+        --------
+        fall_indices : list
+            Indices in the data where falls were detected
+        """
+        fall_indices = []
+        x_positions = np.array(self.virmen_data['x'])
+        y_positions = np.array(self.virmen_data['y'])
+        
+        # Calculate position changes
+        dx = np.diff(x_positions)
+        dy = np.diff(y_positions)
+        position_changes = np.sqrt(dx**2 + dy**2)
+        
+        # Pad the position_changes array to match the length of the positions
+        position_changes = np.append(position_changes, 0)
+        
+        # Flag to track if we've already detected a fall at the current position
+        in_fall_state = False
+        
+        for i in range(1, len(self.virmen_data)):
+            # Check if position is at edge (±edge_threshold)
+            at_edge = abs(abs(x_positions[i]) - edge_threshold) < 2 or abs(abs(y_positions[i]) - edge_threshold) < 2
+            
+            # Check if position update is paused (position change rate near zero)
+            paused = position_changes[i] < pause_threshold
+            
+            # Detect fall: at edge position and position updates paused
+            if at_edge and paused and not in_fall_state:
+                fall_indices.append(i)
+                in_fall_state = True
+            
+            # Reset fall state when animal starts moving again
+            elif in_fall_state and not paused:
+                in_fall_state = False
+                
+        return fall_indices
+    
+    def get_fall_summary(self):
+        """
+        Returns a summary of the falls detected in the session.
+        
+        Returns:
+        --------
+        dict
+            A dictionary containing fall statistics
+        """
+        return {
+            "total_falls": self.fall_count,
+            "fall_indices": self.fall_indices,
+            "average_trial_length": np.mean([len(trial['x']) for trial in self.virmen_trials]) if self.virmen_trials else 0,
+            "total_trials": len(self.virmen_trials)
+        }
+    
+    def plot_falls(self, save_path=None, title="Animal Falls in Maze", notebook=False, overwrite=False):
+        """
+        Creates a visualization of animal trajectory with fall locations highlighted.
+        
+        Parameters:
+        -----------
+        save_path : str, optional
+            Path to save the plot
+        title : str, optional
+            Title for the plot
+        notebook : bool, optional
+            Whether to display the plot in a notebook
+        overwrite : bool, optional
+            Whether to overwrite existing files
+            
+        Returns:
+        --------
+        bokeh plot
+            The generated visualization
+        """
+        from bokeh.plotting import figure
+        from bokeh.models import ColumnDataSource, HoverTool
+        
+        # Create position data source
+        source = ColumnDataSource(data={
+            'x': self.virmen_data['x'],
+            'y': self.virmen_data['y'],
+            'index': range(len(self.virmen_data))
+        })
+        
+        # Create fall data source
+        fall_x = [self.virmen_data['x'].iloc[idx] for idx in self.fall_indices]
+        fall_y = [self.virmen_data['y'].iloc[idx] for idx in self.fall_indices]
+        fall_source = ColumnDataSource(data={
+            'x': fall_x,
+            'y': fall_y,
+            'index': self.fall_indices
+        })
+        
+        # Create figure
+        p = figure(title=title, width=800, height=600, 
+                  active_drag='pan', active_scroll='wheel_zoom')
+        
+        # Plot trajectory
+        p.line('x', 'y', source=source, line_color='navy', line_width=1, alpha=0.6)
+        
+        # Highlight falls
+        p.circle('x', 'y', source=fall_source, color='red', size=10, 
+                alpha=0.8, legend_label=f'Falls ({self.fall_count})')
+        
+        # Add hover tool
+        hover = HoverTool(tooltips=[
+            ("Index", "@index"),
+            ("Position", "(@x, @y)")
+        ])
+        p.add_tools(hover)
+        
+        # Configure plot
+        p.legend.location = "top_left"
+        p.legend.click_policy = "hide"
+        p.grid.grid_line_color = "lightgray"
+        p.axis.axis_line_color = "black"
+        p.axis.major_tick_line_color = "black"
+        p.axis.minor_tick_line_color = "gray"
+        
+        # Output
+        VirmenTank.output_bokeh_plot(p, save_path=save_path, title=title, 
+                                   notebook=notebook, overwrite=overwrite)
+        
+        return p
 
 
 class MazeV1Tank():
