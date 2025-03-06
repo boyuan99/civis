@@ -577,7 +577,7 @@ def labeler_bkapp_v1(doc):
         adj_tdt_input.disabled = False
 
         gcamp_input.value = f"{session_name}_max.tif"
-        orig_tdt_input.value = f"{session_name}_tdt_original_16bit.tif"
+        orig_tdt_input.value = "m_f_n_001_max.tif"
         adj_tdt_input.value = f"{session_name}_tdt_adjusted_16bit.tif"
 
         # Load the data
