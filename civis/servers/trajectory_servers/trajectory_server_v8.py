@@ -124,6 +124,8 @@ def trajectory_bkapp_v8(doc):
                 dx = np.append(dx, dx[-1])
                 dy = np.diff(data_array[start_indicies[i]:end_indicies[i] + 1, 1])
                 dy = np.append(dy, dy[-1])
+                dx = dx.astype(np.float32)
+                dy = dy.astype(np.float32)
                 pstcr[i] = np.sqrt(dx ** 2 + dy ** 2)
 
         except ValueError as e:
