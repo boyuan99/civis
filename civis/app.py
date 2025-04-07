@@ -130,6 +130,12 @@ def place_v3_app():
     script = server_document(f'http://localhost:{args.bokeh_port}/place_bkapp_v3')
     return render_template("place/place_v3.html", script=script, templates='Flask', port=args.flask_port)
 
+@app.route('/place/v4/')
+def place_v4_app():
+    global args
+    script = server_document(f'http://localhost:{args.bokeh_port}/place_bkapp_v4')
+    return render_template("place/place_v4.html", script=script, templates='Flask', port=args.flask_port)
+
 def bk_worker(bokeh_port, flask_port):
     # Configure the Bokeh server with applications
     bokeh_apps = {
@@ -151,7 +157,8 @@ def bk_worker(bokeh_port, flask_port):
         '/trajectory_bkapp_v8': trajectory_bkapp_v8,
         '/trajectory_bkapp_v9': trajectory_bkapp_v9,
         '/place_bkapp_v2': place_cell_vis_bkapp_v2,
-        '/place_bkapp_v3': place_cell_vis_bkapp_v3
+        '/place_bkapp_v3': place_cell_vis_bkapp_v3,
+        '/place_bkapp_v4': place_cell_vis_bkapp_v4
     }
 
     server = Server(bokeh_apps,
