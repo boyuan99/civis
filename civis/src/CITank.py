@@ -1352,6 +1352,366 @@ class CITank(VirmenTank):
             show_plots=show_plots
         )
         return masks, labels
+    
+
+    def analyze_signal_around_spikes(self, d1_indices, d2_indices, signal, signal_name="Signal", time_window=4.0, height=0.0, 
+                                    save_path=None, title=None, notebook=False, overwrite=False):
+        """
+        Analyze any signal before and after spikes in D1 and D2 neurons.
+        
+        Parameters:
+        -----------
+        d1_indices : array-like
+            Indices of D1 neurons
+        d2_indices : array-like
+            Indices of D2 neurons
+        signal : numpy.ndarray
+            Signal array to analyze (e.g., self.smoothed_velocity, self.acceleration)
+        signal_name : str
+            Name of signal for plot labels (e.g., "Velocity", "Acceleration")
+        time_window : float
+            Time window in seconds before and after spike to analyze
+        height : float
+            Height threshold for peak detection
+        save_path : str, optional
+            Path to save the plot
+        title : str, optional
+            Title for the plot (if None, will be generated based on signal_name)
+        notebook : bool
+            Whether to display in notebook
+        overwrite : bool
+            Whether to overwrite existing file
+        
+        Returns:
+        --------
+        dict : Dictionary containing analysis results and plot objects
+        """
+        from bokeh.plotting import figure
+        from bokeh.layouts import gridplot
+        from bokeh.models import ColumnDataSource, Span
+        from scipy.signal import find_peaks
+        
+        # Set default title if not provided
+        if title is None:
+            title = f"{signal_name} around D1 and D2 Neuron Spikes"
+        
+        # Convert time window to samples
+        samples_window = int(time_window * self.ci_rate)
+        
+        # Find peaks for D1 and D2 neurons
+        d1_peak_indices = []
+        for i in d1_indices:
+            x, _ = find_peaks(self.C_denoised[i], height=height)
+            d1_peak_indices.append(x)
+        
+        d2_peak_indices = []
+        for i in d2_indices:
+            x, _ = find_peaks(self.C_denoised[i], height=height)
+            d2_peak_indices.append(x)
+        
+        # Initialize arrays to store signal profiles around spikes
+        d1_signals = []
+        d2_signals = []
+        
+        # Extract signal profiles for D1 neurons
+        for neuron_spikes in d1_peak_indices:
+            for spike_idx in neuron_spikes:
+                # Check if we have enough data before and after the spike
+                if spike_idx - samples_window >= 0 and spike_idx + samples_window < len(signal):
+                    signal_segment = signal[spike_idx - samples_window:spike_idx + samples_window + 1]
+                    d1_signals.append(signal_segment)
+        
+        # Extract signal profiles for D2 neurons
+        for neuron_spikes in d2_peak_indices:
+            for spike_idx in neuron_spikes:
+                # Check if we have enough data before and after the spike
+                if spike_idx - samples_window >= 0 and spike_idx + samples_window < len(signal):
+                    signal_segment = signal[spike_idx - samples_window:spike_idx + samples_window + 1]
+                    d2_signals.append(signal_segment)
+        
+        # Convert to numpy arrays
+        d1_signals = np.array(d1_signals)
+        d2_signals = np.array(d2_signals)
+        
+        # Calculate average signal profiles
+        d1_avg_signal = np.mean(d1_signals, axis=0)
+        d2_avg_signal = np.mean(d2_signals, axis=0)
+        
+        # Calculate standard error of the mean
+        d1_sem_signal = np.std(d1_signals, axis=0) / np.sqrt(len(d1_signals))
+        d2_sem_signal = np.std(d2_signals, axis=0) / np.sqrt(len(d2_signals))
+        
+        # Create time axis in seconds relative to spike
+        time_axis = np.linspace(-time_window, time_window, len(d1_avg_signal))
+        
+        # Create plots using Bokeh
+        p1 = figure(width=900, height=400, 
+                title=f"{signal_name} around D1 Neuron Spikes (n={len(d1_signals)})",
+                x_axis_label="Time relative to spike (s)",
+                y_axis_label=signal_name)
+        
+        # Add D1 line with confidence band
+        p1.line(time_axis, d1_avg_signal, line_width=3, color='red', legend_label="D1 Average")
+        p1.patch(
+            np.concatenate([time_axis, time_axis[::-1]]),
+            np.concatenate([
+                d1_avg_signal + d1_sem_signal,
+                (d1_avg_signal - d1_sem_signal)[::-1]
+            ]),
+            color='red', alpha=0.2
+        )
+        
+        # Add vertical line at spike time
+        p1.line([0, 0], [np.min(d1_avg_signal)-1, np.max(d1_avg_signal) * 1.2], line_width=2, color='black', line_dash='dashed')
+        
+        # Add horizontal line at y=0 for acceleration signals
+        if signal_name.lower() == "acceleration":
+            zero_line = Span(location=0, dimension='width', line_color='black', line_width=2, line_dash='dotted')
+            p1.add_layout(zero_line)
+        
+        # Remove grid
+        p1.xgrid.grid_line_color = None
+        p1.ygrid.grid_line_color = None
+        
+        p2 = figure(width=900, height=400, 
+                title=f"{signal_name} around D2 Neuron Spikes (n={len(d2_signals)})",
+                x_axis_label="Time relative to spike (s)",
+                y_axis_label=signal_name,
+                x_range=p1.x_range)
+        
+        # Add D2 line with confidence band
+        p2.line(time_axis, d2_avg_signal, line_width=3, color='blue', legend_label="D2 Average")
+        p2.patch(
+            np.concatenate([time_axis, time_axis[::-1]]),
+            np.concatenate([
+                d2_avg_signal + d2_sem_signal,
+                (d2_avg_signal - d2_sem_signal)[::-1]
+            ]),
+            color='blue', alpha=0.2
+        )
+        
+        # Add vertical line at spike time
+        p2.line([0, 0], [np.min(d2_avg_signal)-1, np.max(d2_avg_signal) * 1.2], line_width=2, color='black', line_dash='dashed')
+        
+        # Add horizontal line at y=0 for acceleration signals
+        if signal_name.lower() == "acceleration":
+            zero_line = Span(location=0, dimension='width', line_color='black', line_width=2, line_dash='dotted')
+            p2.add_layout(zero_line)
+        
+        # Remove grid
+        p2.xgrid.grid_line_color = None
+        p2.ygrid.grid_line_color = None
+        
+        # Create a comparison plot
+        p3 = figure(width=900, height=500, 
+                title=f"Comparison of {signal_name} around D1 vs D2 Neuron Spikes",
+                x_axis_label="Time relative to spike (s)",
+                y_axis_label=signal_name)
+        
+        # Add both lines to the comparison plot
+        p3.line(time_axis, d1_avg_signal, line_width=3, color='red', legend_label="D1 Average")
+        p3.line(time_axis, d2_avg_signal, line_width=3, color='blue', legend_label="D2 Average")
+        
+        # Add vertical line at spike time
+        p3.line([0, 0], [np.min(d1_avg_signal) -1, np.max(d1_avg_signal) * 1.2], 
+            line_width=2, color='black', line_dash='dashed')
+        
+        # Add horizontal line at y=0 for acceleration signals
+        if signal_name.lower() == "acceleration":
+            zero_line = Span(location=0, dimension='width', line_color='black', line_width=2, line_dash='dotted')
+            p3.add_layout(zero_line)
+        
+        # Remove grid
+        p3.xgrid.grid_line_color = None
+        p3.ygrid.grid_line_color = None
+        
+        # Customize all plots
+        for p in [p1, p2, p3]:
+            p.legend.location = "top_right"
+            p.legend.click_policy = "hide"
+        
+        # Create the layout
+        layout = gridplot([[p1], [p2], [p3]])
+        
+        # Output the plot
+        self.output_bokeh_plot(layout, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite)
+        
+        # Store results
+        results = {
+            'time_axis': time_axis,
+            'd1_avg_signal': d1_avg_signal,
+            'd2_avg_signal': d2_avg_signal,
+            'd1_sem_signal': d1_sem_signal,
+            'd2_sem_signal': d2_sem_signal,
+            'd1_sample_count': len(d1_signals),
+            'd2_sample_count': len(d2_signals),
+            'signal_name': signal_name,
+            'plot': layout
+        }
+        
+        return results
+
+    def analyze_d1_d2_spikes_signal(self, json_masks, signal, signal_name="Signal", time_window=4, height=0.0, 
+                               save_path=None, title=None, notebook=False, overwrite=False):
+        """
+        Wrapper function to analyze and plot any signal around D1 and D2 neuron spikes.
+        
+        Parameters:
+        -----------
+        json_masks : dict
+            Dictionary containing D1 and D2 neuron indices from create_mask_from_json
+        signal : numpy.ndarray
+            Signal array to analyze (e.g., self.smoothed_velocity, self.acceleration)
+        signal_name : str
+            Name of signal for plot labels (e.g., "Velocity", "Acceleration")
+        time_window : float
+            Time window in seconds before and after spike to analyze
+        height : float
+            Height threshold for peak detection
+        save_path : str, optional
+            Path to save the figure
+        title : str, optional
+            Title for the plot (if None, will be generated based on signal_name)
+        notebook : bool
+            Whether to display in notebook
+        overwrite : bool
+            Whether to overwrite existing file
+        
+        Returns:
+        --------
+        dict : Results dictionary
+        """
+        # Get D1 and D2 indices
+        d1_indices = json_masks["d1_indices"]
+        d2_indices = json_masks["d2_indices"][:len(d1_indices)]
+        
+        # Call the analysis function
+        results = self.analyze_signal_around_spikes(
+            d1_indices=d1_indices,
+            d2_indices=d2_indices,
+            signal=signal,
+            signal_name=signal_name,
+            time_window=time_window,
+            height=height,
+            save_path=save_path,
+            title=title,
+            notebook=notebook,
+            overwrite=overwrite
+        )
+        
+        return results
+
+    def plot_d1_d2_calcium_around_events(self, event_type='movement_onset', d1_signal=None, d2_signal=None, 
+                                     cut_interval=50, save_path=None, title=None, notebook=False, overwrite=False):
+        """
+        Plot average calcium traces for D1 and D2 neuron populations, along with velocity, around specific events.
+        Uses dual y-axes to separately scale calcium and velocity signals, with optimized scaling.
+        
+        Parameters:
+        -----------
+        event_type : str
+            Type of event to plot around. Options: 'movement_onset', 'velocity_peak', 'movement_offset'
+        d1_signal : numpy.ndarray, optional
+            Signal from D1 neurons. If None, will use self.C_raw
+        d2_signal : numpy.ndarray, optional
+            Signal from D2 neurons. If None, will use self.C_raw
+        cut_interval : int
+            Interval to cut around the indices (in samples)
+        save_path : str, optional
+            Path to save the plot as an HTML file
+        title : str, optional
+            Title for the plot. If None, will generate based on event_type
+        notebook : bool
+            Flag to indicate if the plot is for a Jupyter notebook
+        overwrite : bool
+            Flag to indicate whether to overwrite existing file
+        
+        Returns:
+        --------
+        bokeh.plotting.figure
+            The created plot
+        """
+        from bokeh.plotting import figure
+        from bokeh.models import LinearAxis, Range1d, Legend
+        
+        # Select indices based on event type
+        if event_type == 'movement_onset':
+            indices = self.movement_onset_indices
+            default_title = "Average Calcium Trace around Movement Onsets"
+        elif event_type == 'velocity_peak':
+            indices = self.velocity_peak_indices
+            default_title = "Average Calcium Trace around Velocity Peaks"
+        elif event_type == 'movement_offset':
+            indices = self.movement_offset_indices
+            default_title = "Average Calcium Trace around Movement Offsets"
+        else:
+            raise ValueError("event_type must be one of: 'movement_onset', 'velocity_peak', 'movement_offset'")
+        
+        # Use provided title or default
+        plot_title = title or default_title
+        
+        # Calculate average signals around the event
+        [_, _, _, C_avg_mean_d1, _] = self.average_across_indices(indices, signal=d1_signal, cut_interval=cut_interval)
+        [_, _, _, C_avg_mean_d2, _] = self.average_across_indices(indices, signal=d2_signal, cut_interval=cut_interval)
+        [_, _, _, velocity_mean, _] = self.average_across_indices(indices, signal=self.smoothed_velocity, cut_interval=cut_interval)
+        
+        # Create time axis in seconds
+        time_axis = (np.array(range(2 * cut_interval)) - cut_interval) / self.ci_rate
+        
+        # Calculate optimal y-axis ranges for calcium signals with padding
+        ca_min = min(C_avg_mean_d1.min(), C_avg_mean_d2.min())
+        ca_max = max(C_avg_mean_d1.max(), C_avg_mean_d2.max())
+        
+        # Add padding to ensure the signals are well-positioned in the plot (10% padding)
+        ca_range = ca_max - ca_min
+        ca_min = ca_min - (ca_range * 0.1)
+        ca_max = ca_max + (ca_range * 0.1)
+        
+        # Create plot with optimized y-axis for calcium signals
+        p = figure(width=800, height=400, active_scroll="wheel_zoom", title=plot_title,
+                   x_axis_label='Time (s)', y_axis_label='Calcium Signal (ΔF/F)',
+                   y_range=Range1d(ca_min, ca_max))
+        
+        # Add secondary y-axis for velocity with its own optimized range
+        vel_range = velocity_mean.max() - velocity_mean.min()
+        vel_min = velocity_mean.min() - (vel_range * 0.1)
+        vel_max = velocity_mean.max() + (vel_range * 0.1)
+        
+        p.extra_y_ranges = {"velocity_axis": Range1d(start=vel_min, end=vel_max)}
+        p.add_layout(LinearAxis(y_range_name="velocity_axis", axis_label="Velocity"), 'right')
+        
+        # Add calcium traces and velocity to plot (without adding to legend)
+        d1_line = p.line(time_axis, C_avg_mean_d1, line_width=3, color='navy', alpha=0.6)
+        d2_line = p.line(time_axis, C_avg_mean_d2, line_width=3, color='red', alpha=0.6)
+        vel_line = p.line(time_axis, velocity_mean, line_width=3, color='gray', 
+                         y_range_name="velocity_axis", alpha=0.6)
+        
+        # Create a legend outside the plot
+        legend = Legend(
+            items=[
+                ("D1", [d1_line]),
+                ("D2", [d2_line]),
+                ("Velocity", [vel_line])
+            ],
+            location="center",
+            orientation="horizontal",
+            click_policy="hide"
+        )
+        
+        # Add the legend to the top of the plot (outside the plot area)
+        p.add_layout(legend, 'above')
+        
+        # Style the plot
+        p.xgrid.grid_line_color = None
+        p.ygrid.grid_line_color = None
+        
+        # Add vertical line at time=0 (the event)
+        p.line([0, 0], [ca_min, ca_max], line_width=1, line_dash='dashed', color='black', alpha=0.7)
+        
+        # Output the plot
+        self.output_bokeh_plot(p, save_path=save_path, title=plot_title, notebook=notebook, overwrite=overwrite)
+        
+        return p
 
 
 if __name__ == "__main__":
