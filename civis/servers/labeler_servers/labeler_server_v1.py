@@ -159,7 +159,8 @@ def labeler_bkapp_v1(doc):
                                        fill_alpha='fill_alpha',
                                        line_alpha='line_alpha',
                                        fill_color='colors',
-                                       line_color='colors')
+                                       line_color='colors',
+                                       line_width=2)
 
     hover = HoverTool(tooltips=[("ID", "@id")], renderers=[contour_renderer])
     spatial.add_tools(hover)
@@ -659,6 +660,7 @@ def labeler_bkapp_v1(doc):
             line_alpha='line_alpha',
             fill_color='colors',
             line_color='colors',
+            line_width=2,
             level='overlay'
         )
 

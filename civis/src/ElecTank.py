@@ -479,7 +479,7 @@ class ElecTank(VirmenTank):
                                notebook=notebook, overwrite=overwrite)
 
         return layout
-
+    
 
     def plot_event_centered_spectrogram(self, event_indices, window_sec=5,
                                     analysis_padding=5,
@@ -488,6 +488,7 @@ class ElecTank(VirmenTank):
                                     palette="turbo",
                                     title="Event-centered Spectrogram", notebook=False,
                                     plot_signal=True, plot_velocity=True, plot_lick=True,
+                                    show_legend=True,
                                     save_path=None, overwrite=False):
         """
         Improved version that uses z-score normalization and baseline correction rather than min-max normalization.
@@ -517,6 +518,8 @@ class ElecTank(VirmenTank):
             Whether to plot the average velocity
         plot_lick : bool
             Whether to plot the average lick data
+        show_legend : bool
+            Whether to display legends on the plots (default: True)
         save_path : str
             Path to save the plot
         overwrite : bool
@@ -692,9 +695,9 @@ class ElecTank(VirmenTank):
             x_axis_label='Time relative to event (s)',
             y_axis_label='Frequency (Hz)',
             tools="pan,wheel_zoom,box_zoom,reset,save",
-            width=1000, height=350,
+            width=1000, height=700,
             x_range=(-window_sec, window_sec),
-            y_range=(freqs[0], min(40, freq_stop))
+            y_range=(freqs[0], min(80, freq_stop))
         )
         
         # Remove grid
@@ -804,6 +807,469 @@ class ElecTank(VirmenTank):
                     velocity_times,
                     avg_velocity_norm,
                     line_width=2,
+                    color="black",
+                    legend_label="Avg. Velocity",
+                    alpha=0.7
+                )
+                
+            # Plot lick if available
+            if plot_lick and valid_lick_events > 0:
+                avg_lick /= valid_lick_events
+                if np.max(avg_lick) > np.min(avg_lick):
+                    avg_lick_norm = (avg_lick - np.min(avg_lick)) / (np.max(avg_lick) - np.min(avg_lick))
+                else:
+                    avg_lick_norm = avg_lick
+                    
+                p2.line(
+                    velocity_times,
+                    avg_lick_norm,
+                    line_width=3,
+                    color="green",
+                    legend_label="Avg. Lick",
+                    alpha=0.7
+                )
+
+            # Add vertical line at event time (t=0)
+            p2.line([0, 0], [0, 1], line_width=2, color="red", line_dash="dashed")
+            
+            # Set legend location to a valid position only if show_legend is True
+            if show_legend:
+                p2.legend.location = "top_right"
+                p2.legend.click_policy = 'hide'
+            else:
+                p2.legend.visible = False  # Hide the legend completely
+            
+            # Add the signal plot to the layout
+            layout.append(p2)
+
+        # Combine plots
+        final_layout = column(*layout)
+
+        # Use the class's output method
+        self.output_bokeh_plot(final_layout, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite)
+
+        return final_layout
+    
+
+
+    def plot_event_centered_spectrogram_log_axis(self, event_indices, window_sec=5,
+                                analysis_padding=5,
+                                freq_bands=None, freq_scale='log',
+                                time_dec_factor=5, freq_dec_factor=1,
+                                palette="turbo",
+                                title="Event-Centered Spectrogram", notebook=False,
+                                plot_signal=True, plot_velocity=True, plot_lick=True,
+                                save_path=None, overwrite=False):
+        """
+        Improved version that uses z-score normalization, baseline correction,
+        and custom frequency band representation with proper log-scale alignment.
+        
+        Parameters:
+        -----------
+        event_indices : list or array
+            Indices of events to center analysis around
+        window_sec : float
+            Half-width of the window in seconds
+        analysis_padding : float
+            Extra padding in seconds for analysis window
+        freq_bands : dict or None
+            Custom frequency bands as dict with format {'band_name': (min_freq, max_freq, step)}
+            If None, will use default bands (delta, theta, alpha, beta, gamma)
+        freq_scale : str
+            'log' for logarithmic frequency spacing, 'linear' for linear spacing
+        time_dec_factor, freq_dec_factor : int
+            Decimation factors for plotting
+        palette : str
+            Color palette for spectrogram
+        title : str
+            Title for the plot
+        notebook : bool
+            Whether to display in notebook
+        plot_signal : bool
+            Whether to plot the average signal
+        plot_velocity : bool
+            Whether to plot the average velocity
+        plot_lick : bool
+            Whether to plot the average lick data
+        save_path : str
+            Path to save the plot
+        overwrite : bool
+            Whether to overwrite existing file
+        """
+        import numpy as np
+        import mne
+        from bokeh.plotting import figure
+        from bokeh.models import ColorBar, LinearColorMapper, LogTicker, FixedTicker
+        from bokeh.layouts import column
+        from bokeh.palettes import viridis, plasma, inferno, magma, Turbo256, Viridis256, Plasma256, Inferno256
+
+        # Map palette string to actual Bokeh palette
+        palette_map = {
+            "viridis": Viridis256,
+            "plasma": Plasma256,
+            "inferno": Inferno256,
+            "magma": magma(256),
+            "turbo": Turbo256
+        }
+        
+        # Get the actual palette or default to Viridis256
+        actual_palette = palette_map.get(palette.lower(), Viridis256)
+
+        # Check for valid events
+        if len(event_indices) == 0:
+            print("No valid events provided.")
+            return None
+            
+        # Convert window lengths to sample counts
+        window_samples = int(window_sec * self.fs)
+        analysis_window_samples = int((window_sec + analysis_padding) * self.fs) 
+        window_samples_vm = int(window_sec * self.vm_rate)
+
+        # Ensure frequency upper limit doesn't exceed Nyquist frequency
+        nyquist_freq = self.fs / 2
+        
+        # Define frequency bands if not provided
+        if freq_bands is None:
+            freq_bands = {
+                'delta': (1, 4, 0.5),      # 1-4 Hz, 0.5 Hz steps
+                'theta': (4, 8, 0.5),      # 4-8 Hz, 0.5 Hz steps
+                'alpha': (8, 13, 0.5),     # 8-13 Hz, 0.5 Hz steps
+                'beta': (13, 30, 1),       # 13-30 Hz, 1 Hz steps
+                'gamma': (30, min(100, nyquist_freq - 1), 2)  # 30-100 Hz, 2 Hz steps (or below Nyquist)
+            }
+        
+        # Create frequency array based on bands and scale
+        freqs = []
+        band_boundaries = []
+        band_labels = []
+        
+        for band_name, (fmin, fmax, fstep) in freq_bands.items():
+            # Adjust max freq to stay below Nyquist
+            if fmax >= nyquist_freq:
+                fmax = nyquist_freq - fstep
+                print(f"Warning: Maximum frequency for {band_name} adjusted to {fmax} Hz to stay below Nyquist")
+            
+            # Create frequencies for this band
+            if freq_scale == 'log':
+                # Logarithmic spacing within each band
+                # Use enough points to make the steps visually smooth
+                num_points = max(10, int((np.log10(fmax) - np.log10(fmin)) / 0.05))
+                band_freqs = np.logspace(np.log10(fmin), np.log10(fmax), num_points)
+            else:
+                # Linear spacing
+                band_freqs = np.arange(fmin, fmax + fstep/2, fstep)
+            
+            # Store band boundaries for later plotting
+            band_boundaries.append((fmin, fmax))
+            band_labels.append(band_name)
+            
+            # Add these frequencies to the master list
+            freqs.extend(band_freqs)
+        
+        # Convert to numpy array and remove duplicates
+        freqs = np.array(sorted(set([round(f, 3) for f in freqs])))
+        
+        # Adjust analysis window size for low frequency wavelets
+        min_wave_cycles = 3  # Minimum wavelet cycles
+        # For 1Hz, need at least 3 seconds to accommodate 3 cycles
+        min_window_for_lowest_freq = min_wave_cycles / freqs[0]
+        
+        if window_sec + analysis_padding < min_window_for_lowest_freq:
+            print(f"Warning: Window may be too short ({window_sec + analysis_padding} s) for lowest frequency of {freqs[0]} Hz.")
+            print(f"Recommended window length of at least {min_window_for_lowest_freq} s to capture complete waveforms.")
+            print("Proceeding, but low frequency results may be inaccurate.")
+        
+        # Collect all valid event segments, processing individual events rather than global signal
+        all_tfrs = []
+        valid_events = []
+        
+        # Adjust wavelet cycles for each frequency (adaptive)
+        # Lower frequencies get fewer cycles, higher frequencies get more
+        n_cycles = freqs / 2  # Adaptive cycle count
+        n_cycles = np.clip(n_cycles, 3, 10)  # Min 3 cycles, max 10 cycles
+        
+        for event_idx in event_indices:
+            event_sample = int(event_idx / self.vm_rate * self.fs)
+            
+            # Check if we have sufficient data
+            if (event_sample - analysis_window_samples >= 0 and 
+                event_sample + analysis_window_samples < len(self.signal)):
+                
+                # Extract signal segment around event
+                signal_segment = self.signal[event_sample - analysis_window_samples:
+                                            event_sample + analysis_window_samples]
+                
+                # Reshape for MNE format
+                signal_segment = signal_segment.reshape(1, 1, -1)
+                
+                try:
+                    # Calculate time-frequency representation
+                    tfr = mne.time_frequency.tfr_array_morlet(
+                        signal_segment,
+                        sfreq=self.fs,
+                        freqs=freqs,
+                        n_cycles=n_cycles,
+                        zero_mean=True,
+                        output='power'
+                    )
+                    
+                    # Convert to dB
+                    tfr_db = 10 * np.log10(tfr.squeeze())
+                    
+                    # Store this TFR
+                    all_tfrs.append(tfr_db)
+                    valid_events.append(event_idx)
+                    
+                except ValueError as e:
+                    print(f"Warning: Error processing event {event_idx}: {e}")
+                    continue
+        
+        if not all_tfrs:
+            print("No valid events found.")
+            return None
+        
+        # Stack all TFRs into one large array for global normalization
+        # Shape will be [n_events, n_freqs, n_times]
+        stacked_tfrs = np.stack(all_tfrs)
+        
+        # 1. Z-score normalization instead of min-max
+        normalized_tfrs = np.zeros_like(stacked_tfrs)
+        for freq_idx in range(stacked_tfrs.shape[1]):
+            # Extract this frequency row for all events
+            all_events_this_freq = stacked_tfrs[:, freq_idx, :]
+            
+            # Calculate mean and std for this frequency
+            freq_mean = np.mean(all_events_this_freq)
+            freq_std = np.std(all_events_this_freq)
+            
+            if freq_std > 0:  # Avoid division by zero
+                # Apply z-score normalization to this frequency for all events
+                normalized_tfrs[:, freq_idx, :] = (stacked_tfrs[:, freq_idx, :] - freq_mean) / freq_std
+            else:
+                normalized_tfrs[:, freq_idx, :] = 0  # Default value if no variation
+        
+        # Create time axis for baseline correction
+        full_times = np.linspace(-window_sec-analysis_padding, window_sec+analysis_padding, 
+                            normalized_tfrs.shape[2])
+        
+        # 2. Apply baseline correction
+        # Define baseline period (e.g., -5 to -3 seconds)
+        baseline_start = np.where(full_times >= -5)[0][0]
+        baseline_end = np.where(full_times >= -3)[0][0]
+        
+        baseline_corrected_tfrs = np.zeros_like(normalized_tfrs)
+        for event_idx in range(normalized_tfrs.shape[0]):
+            for freq_idx in range(normalized_tfrs.shape[1]):
+                # Get baseline period for this event and frequency
+                baseline = normalized_tfrs[event_idx, freq_idx, baseline_start:baseline_end]
+                baseline_mean = np.mean(baseline)
+                
+                # Subtract baseline mean
+                baseline_corrected_tfrs[event_idx, freq_idx, :] = normalized_tfrs[event_idx, freq_idx, :] - baseline_mean
+        
+        # 3. Average the baseline-corrected TFRs
+        avg_normalized_tfr = np.mean(baseline_corrected_tfrs, axis=0)
+        
+        # Determine how many samples to crop from analysis window to get display window
+        padding_samples = int(analysis_padding * self.fs / 2)  # Crop half padding from each side
+        
+        # Get the central portion of the time-frequency data (crop padding)
+        central_start = padding_samples
+        central_end = avg_normalized_tfr.shape[1] - padding_samples
+        
+        # Crop the average TFR to desired display window
+        avg_normalized_tfr_cropped = avg_normalized_tfr[:, central_start:central_end]
+        
+        # Create time axis centered around events (in seconds)
+        times = np.linspace(-window_sec, window_sec, avg_normalized_tfr_cropped.shape[1])
+        
+        # Decimate for plotting if needed
+        if freq_dec_factor > 1:
+            # Ensure we preserve the frequency indices correctly
+            freq_indices = list(range(0, len(freqs), freq_dec_factor))
+            freqs_dec = freqs[freq_indices]
+            avg_normalized_tfr_decimated = avg_normalized_tfr_cropped[freq_indices, :]
+        else:
+            freqs_dec = freqs
+            avg_normalized_tfr_decimated = avg_normalized_tfr_cropped
+        
+        if time_dec_factor > 1:
+            # Ensure we preserve the time indices correctly
+            time_indices = list(range(0, len(times), time_dec_factor))
+            times_dec = times[time_indices]
+            avg_normalized_tfr_dec = avg_normalized_tfr_decimated[:, time_indices]
+        else:
+            times_dec = times
+            avg_normalized_tfr_dec = avg_normalized_tfr_decimated
+        
+        # Create Bokeh figure with appropriate scaling for y-axis
+        p1 = figure(
+            title=f"{title} (n={len(valid_events)}) - Z-score & Baseline Corrected",
+            x_axis_label='Time relative to event (s)',
+            y_axis_label='Frequency (Hz)',
+            tools="pan,wheel_zoom,box_zoom,reset,save",
+            width=1000, height=500,  # Taller to accommodate better frequency axis
+            x_range=(-window_sec, window_sec),
+            y_axis_type="log" if freq_scale == 'log' else "linear"
+        )
+        
+        # Make sure minimum frequency is not zero for log scale
+        if freq_scale == 'log' and freqs_dec[0] <= 0:
+            print("Warning: Adjusting minimum frequency to 0.1 Hz for log scale")
+            p1.y_range.start = 0.1
+        else:
+            p1.y_range.start = freqs_dec[0]
+        
+        # Set the y-range end
+        p1.y_range.end = freqs_dec[-1]
+        
+        # Remove grid
+        p1.grid.grid_line_color = None
+        
+        # Define color mapper with improved settings - use percentile clipping for better contrast
+        color_mapper = LinearColorMapper(
+            palette=actual_palette,
+            low=np.percentile(avg_normalized_tfr_dec.ravel(), 5),
+            high=np.percentile(avg_normalized_tfr_dec.ravel(), 95)
+        )
+        
+        # For proper image alignment, we need to use the correct coordinates
+        # The key is understanding that in Bokeh's image method:
+        # - x, y specify the BOTTOM-LEFT corner of the image
+        # - dw, dh specify the width and height of the image in data coordinates
+        
+        # When using log scale for frequencies, the mapping is more complex
+        # For correct alignment, we create the image with proper frequency boundaries
+        
+        # Reshape the TFR data for image rendering
+        # Important: image shape must be [nrows, ncols] where
+        # nrows = number of frequencies
+        # ncols = number of time points
+        
+        # For log scale, we need to handle the image differently to ensure alignment
+        if freq_scale == 'log':
+            # For log scale, y = frequencies array values
+            y_bottom = freqs_dec[0]  # Bottom edge (minimum frequency)
+            y_top = freqs_dec[-1]    # Top edge (maximum frequency)
+            
+            # Use Bokeh's image method to render the spectrogram
+            img = p1.image(
+                image=[avg_normalized_tfr_dec],
+                x=times_dec[0],         # Left edge (minimum time)
+                y=y_bottom,             # Bottom edge (minimum frequency)
+                dw=times_dec[-1] - times_dec[0],  # Width (time range)
+                dh=y_top - y_bottom,    # Height (frequency range)
+                color_mapper=color_mapper
+            )
+        else:
+            # For linear scale, standard approach
+            img = p1.image(
+                image=[avg_normalized_tfr_dec],
+                x=times_dec[0],         # Left edge
+                y=freqs_dec[0],         # Bottom edge
+                dw=times_dec[-1] - times_dec[0],  # Width
+                dh=freqs_dec[-1] - freqs_dec[0],  # Height
+                color_mapper=color_mapper
+            )
+        
+        # Add color bar
+        color_bar = ColorBar(
+            color_mapper=color_mapper,
+            label_standoff=12,
+            border_line_color=None,
+            location=(0, 0),
+            title="Z-score Power"
+        )
+        p1.add_layout(color_bar, 'right')
+        
+        # Add horizontal lines to mark frequency band boundaries
+        for fmin, fmax in band_boundaries:
+            p1.line([-window_sec, window_sec], [fmin, fmin], line_color='white', line_width=1, line_alpha=0.5, line_dash='dashed')
+            p1.line([-window_sec, window_sec], [fmax, fmax], line_color='white', line_width=1, line_alpha=0.5, line_dash='dashed')
+        
+        # Add band labels
+        for i, (label, (fmin, fmax)) in enumerate(zip(band_labels, band_boundaries)):
+            # Place text in the middle of each band
+            mid_freq = (fmin + fmax) / 2 if freq_scale == 'linear' else np.sqrt(fmin * fmax)
+            p1.text([-window_sec * 0.95], [mid_freq], [label], text_color='white', text_font_size='9pt')
+        
+        layout = [p1]
+        
+        # Only perform signal analysis and create second plot if needed
+        if plot_signal or plot_velocity or plot_lick:
+            # Calculate average LFP and velocity around events
+            avg_signal = np.zeros(2 * window_samples)
+            avg_velocity = np.zeros(2 * window_samples_vm)
+            avg_lick = np.zeros(2 * window_samples_vm)
+            valid_velocity_events = 0
+            valid_lick_events = 0 
+
+            for event_idx in valid_events:
+                event_sample = int(event_idx / self.vm_rate * self.fs)
+
+                # LFP segment
+                if plot_signal and (event_sample - window_samples >= 0 and
+                        event_sample + window_samples < len(self.signal)):
+                    signal_segment = self.signal[event_sample - window_samples:
+                                                event_sample + window_samples]
+                    avg_signal += signal_segment
+
+                # Velocity segment
+                if plot_velocity and (event_idx - window_samples_vm >= 0 and
+                        event_idx + window_samples_vm < len(self.smoothed_velocity)):
+                    velocity_segment = self.smoothed_velocity[event_idx - window_samples_vm:
+                                                            event_idx + window_samples_vm]
+                    avg_velocity += velocity_segment
+                    valid_velocity_events += 1
+                    
+                # Lick segment
+                if plot_lick and (event_idx - window_samples_vm >= 0 and
+                        event_idx + window_samples_vm < len(self.lick_raw)):
+                    lick_segment = self.lick[event_idx - window_samples_vm:
+                                                event_idx + window_samples_vm]
+                    avg_lick += lick_segment
+                    valid_lick_events += 1
+
+            # Create a second figure for signals
+            p2 = figure(
+                title="Normalized Signals",
+                x_axis_label="Time relative to event (s)",
+                y_axis_label="Amplitude",
+                width=1000,
+                height=300,
+                x_range=p1.x_range,
+            )
+            
+            # Remove grid
+            p2.grid.grid_line_color = None
+
+            # Plot the average LFP
+            if plot_signal:
+                # Average and normalize
+                avg_signal /= len(valid_events)
+                avg_signal_norm = (avg_signal - np.min(avg_signal)) / (np.max(avg_signal) - np.min(avg_signal))
+                
+                p2.line(
+                    np.linspace(-window_sec, window_sec, len(avg_signal)),
+                    avg_signal_norm,
+                    line_width=2,
+                    color="lightblue",
+                    legend_label="Avg. Signal"
+                )
+
+            # Plot velocity if available
+            if plot_velocity and valid_velocity_events > 0:
+                avg_velocity /= valid_velocity_events
+                avg_velocity_norm = (avg_velocity - np.min(avg_velocity)) / (np.max(avg_velocity) - np.min(avg_velocity))
+
+                # Create velocity time axis
+                velocity_times = np.linspace(-window_sec, window_sec, len(avg_velocity))
+
+                # Plot velocity
+                p2.line(
+                    velocity_times,
+                    avg_velocity_norm,
+                    line_width=2,
                     color="orange",
                     legend_label="Avg. Velocity",
                     alpha=0.7
@@ -829,9 +1295,12 @@ class ElecTank(VirmenTank):
             # Add vertical line at event time (t=0)
             p2.line([0, 0], [0, 1], line_width=2, color="red", line_dash="dashed")
             
-            # Set legend location to a valid position
-            p2.legend.location = "top_right"
-            p2.legend.click_policy = 'hide'
+            # Set legend location to a valid position only if show_legend is True
+            if show_legend:
+                p2.legend.location = "top_right"
+                p2.legend.click_policy = 'hide'
+            else:
+                p2.legend.visible = False  # Hide the legend completely
             
             # Add the signal plot to the layout
             layout.append(p2)
@@ -843,7 +1312,6 @@ class ElecTank(VirmenTank):
         self.output_bokeh_plot(final_layout, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite)
 
         return final_layout
-    
     
     def calculate_band_powers(self, event_indices, window_sec=5, notebook=False, title=None,
                               save_path=None, overwrite=False):
