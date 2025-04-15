@@ -127,7 +127,7 @@ class CITank(VirmenTank):
         outliers = np.where(np.abs(z_scores) > threshold)[0]
         return outliers
 
-    def find_peaks_in_traces(self, notebook=False, use_tqdm=True):
+    def find_peaks_in_traces(self, height=0.5, notebook=False, use_tqdm=True):
         """
         Finds peaks in each calcium trace in C_raw.
         Applies baseline correction using Savitzky-Golay filter before finding peaks.
@@ -147,7 +147,7 @@ class CITank(VirmenTank):
         iterator = tqdm(self.C_denoised, desc="Finds peaks in each calcium trace") if use_tqdm else self.C_denoised
 
         for i, C_pick in enumerate(iterator):
-            peak_calciums, _ = find_peaks(C_pick)
+            peak_calciums, _ = find_peaks(C_pick, height=height)
 
             peak_indices_all.append(peak_calciums)
 
@@ -1354,7 +1354,7 @@ class CITank(VirmenTank):
         return masks, labels
     
 
-    def analyze_signal_around_spikes(self, d1_indices, d2_indices, signal, signal_name="Signal", time_window=4.0, height=0.0, 
+    def analyze_signal_around_spikes(self, d1_indices, d2_indices, signal, signal_name="Signal", time_window=4.0, height=0.5, 
                                     save_path=None, title=None, notebook=False, overwrite=False):
         """
         Analyze any signal before and after spikes in D1 and D2 neurons.
@@ -1712,6 +1712,231 @@ class CITank(VirmenTank):
         self.output_bokeh_plot(p, save_path=save_path, title=plot_title, notebook=notebook, overwrite=overwrite)
         
         return p
+
+    def create_d1_d2_spike_visualizations(self, d1_peaks, d2_peaks, save_path=None, title="D1D2SpikePlots", notebook=False, overwrite=False):
+        """
+        Create comprehensive visualizations of D1 and D2 neural spike data.
+        
+        Parameters:
+        -----------
+        d1_peaks : list of arrays
+            List of peak indices for each D1 neuron
+        d2_peaks : list of arrays
+            List of peak indices for each D2 neuron
+        save_path : str, optional
+            Path to save the visualization
+        title : str
+            Title for the visualization
+        notebook : bool
+            Flag to indicate if the visualization is for a Jupyter notebook
+        overwrite : bool
+            Flag to indicate whether to overwrite existing file
+        
+        Returns:
+        --------
+        bokeh.layouts.layout
+            The created visualization layout
+        """
+        from bokeh.plotting import figure
+        from bokeh.layouts import column, row
+        from bokeh.models import ColumnDataSource, HoverTool, Legend, LegendItem
+        
+        def convert_to_seconds(indices):
+            """Convert sample indices to seconds"""
+            return np.array(indices) / self.ci_rate
+        
+        # Create figure for firing rate histogram
+        p1 = figure(width=400, height=300, title='Distribution of Spike Counts')
+        
+        # Remove grid
+        p1.grid.grid_line_color = None
+        
+        # Calculate spike counts per neuron
+        d1_counts = [len(peaks) for peaks in d1_peaks]
+        d2_counts = [len(peaks) for peaks in d2_peaks]
+        
+        # Create histograms with shared bins
+        # Find the overall min and max for both datasets
+        min_count = min(min(d1_counts), min(d2_counts))
+        max_count = max(max(d1_counts), max(d2_counts))
+        shared_edges = np.linspace(min_count, max_count, 21)  # 20 bins
+        
+        # Create histograms using shared edges
+        hist1, _ = np.histogram(d1_counts, bins=shared_edges)
+        hist2, _ = np.histogram(d2_counts, bins=shared_edges)
+        
+        # Plot histograms (without specifying legend_label in the glyph)
+        d1_hist_plot = p1.quad(top=hist1, bottom=0, left=shared_edges[:-1], right=shared_edges[1:],
+                fill_color='navy', alpha=0.5, line_color='navy')
+        d2_hist_plot = p1.quad(top=hist2, bottom=0, left=shared_edges[:-1], right=shared_edges[1:],
+                fill_color='crimson', alpha=0.5, line_color='crimson')
+        
+        # Create legend items
+        legend_items1 = [
+            LegendItem(label="D1", renderers=[d1_hist_plot]),
+            LegendItem(label="D2", renderers=[d2_hist_plot])
+        ]
+        
+        # Create legend and place it outside the plot
+        legend1 = Legend(items=legend_items1, location="center")
+        p1.add_layout(legend1, 'right')
+        
+        # Customize first histogram
+        p1.xaxis.axis_label = 'Number of Spikes per Neuron'
+        p1.yaxis.axis_label = 'Count'
+        
+        # Create figure for inter-spike interval histogram
+        p2 = figure(width=400, height=300, title='Distribution of Inter-spike Intervals')
+        
+        # Remove grid
+        p2.grid.grid_line_color = None
+        
+        # Calculate inter-spike intervals in seconds
+        d1_isis = []
+        d2_isis = []
+        
+        for peaks in d1_peaks:
+            if len(peaks) > 1:
+                isis = np.diff(np.sort(peaks)) / self.ci_rate  # Convert to seconds
+                d1_isis.extend(isis)
+                
+        for peaks in d2_peaks:
+            if len(peaks) > 1:
+                isis = np.diff(np.sort(peaks)) / self.ci_rate  # Convert to seconds
+                d2_isis.extend(isis)
+        
+        # Create histograms for ISIs with shared bins
+        # Find the overall min and max for ISIs
+        min_isi = min(min(d1_isis), min(d2_isis)) if d1_isis and d2_isis else 0
+        max_isi = max(max(d1_isis), max(d2_isis)) if d1_isis and d2_isis else 1
+        shared_isi_edges = np.linspace(min_isi, max_isi, 31)  # 30 bins
+        
+        # Create histograms using shared edges
+        hist3, _ = np.histogram(d1_isis, bins=shared_isi_edges)
+        hist4, _ = np.histogram(d2_isis, bins=shared_isi_edges)
+        
+        # Plot ISI histograms (without specifying legend_label in the glyph)
+        d1_isi_plot = p2.quad(top=hist3, bottom=0, left=shared_isi_edges[:-1], right=shared_isi_edges[1:],
+                fill_color='navy', alpha=0.5, line_color='navy')
+        d2_isi_plot = p2.quad(top=hist4, bottom=0, left=shared_isi_edges[:-1], right=shared_isi_edges[1:],
+                fill_color='crimson', alpha=0.5, line_color='crimson')
+        
+        # Create legend items
+        legend_items2 = [
+            LegendItem(label="D1", renderers=[d1_isi_plot]),
+            LegendItem(label="D2", renderers=[d2_isi_plot])
+        ]
+        
+        # Create legend and place it outside the plot
+        legend2 = Legend(items=legend_items2, location="center")
+        p2.add_layout(legend2, 'right')
+        
+        # Customize second histogram
+        p2.xaxis.axis_label = 'Inter-spike Interval (seconds)'
+        p2.yaxis.axis_label = 'Count'
+        
+        # Create raster plot
+        p3 = figure(width=800, height=400, title='Neural Activity Patterns')
+        
+        # Remove grid
+        p3.grid.grid_line_color = None
+        
+        # Create data for D1 neurons with time in seconds
+        d1_data = []
+        for i, peaks in enumerate(d1_peaks):
+            times = convert_to_seconds(peaks)
+            y_values = [i for _ in peaks]
+            d1_data.extend(list(zip(times, y_values, [i+1]*len(peaks))))
+        
+        # Create data for D2 neurons with time in seconds
+        d2_data = []
+        max_d1 = len(d1_peaks)
+        for i, peaks in enumerate(d2_peaks):
+            times = convert_to_seconds(peaks)
+            y_values = [i + max_d1 + 2 for _ in peaks]
+            d2_data.extend(list(zip(times, y_values, [i+1]*len(peaks))))
+        
+        # Create ColumnDataSource for both types
+        d1_source = ColumnDataSource(data=dict(
+            x=[d[0] for d in d1_data],
+            y=[d[1] for d in d1_data],
+            neuron=[d[2] for d in d1_data]
+        ))
+        
+        d2_source = ColumnDataSource(data=dict(
+            x=[d[0] for d in d2_data],
+            y=[d[1] for d in d2_data],
+            neuron=[d[2] for d in d2_data]
+        ))
+        
+        # Add scatter plots (without specifying legend_label in the glyph)
+        d1_scatter = p3.scatter('x', 'y', source=d1_source, color='navy', alpha=0.6, size=3)
+        d2_scatter = p3.scatter('x', 'y', source=d2_source, color='crimson', alpha=0.6, size=3)
+        
+        # Create legend items
+        legend_items3 = [
+            LegendItem(label="D1 Neurons", renderers=[d1_scatter]),
+            LegendItem(label="D2 Neurons", renderers=[d2_scatter])
+        ]
+        
+        # Create legend and place it outside the plot
+        legend3 = Legend(items=legend_items3, location="center")
+        p3.add_layout(legend3, 'right')
+        legend3.click_policy = "hide"
+        
+        # Customize raster plot
+        p3.xaxis.axis_label = 'Time (seconds)'
+        p3.yaxis.axis_label = 'Neuron ID'
+        
+        # Add hover tool
+        hover = HoverTool(tooltips=[
+            ('Time', '@x{0.00} s'),
+            ('Neuron', '@neuron')
+        ])
+        p3.add_tools(hover)
+
+        p4 = figure(width=800, height=200, x_range=p3.x_range, 
+                    title='Velocity')
+        
+        # Remove grid
+        p4.grid.grid_line_color = None
+
+        velocity_line = p4.line(self.t, self.smoothed_velocity, color="black", line_width=2)
+        
+        # Create legend items for velocity plot
+        legend_items4 = [
+            LegendItem(label="Velocity", renderers=[velocity_line])
+        ]
+        
+        # Create legend and place it outside the plot
+        legend4 = Legend(items=legend_items4, location="center")
+        p4.add_layout(legend4, 'right')
+        
+        # Calculate and print summary statistics
+        d1_mean_count = np.mean(d1_counts)
+        d2_mean_count = np.mean(d2_counts)
+        d1_mean_isi = np.mean(d1_isis) if d1_isis else 0
+        d2_mean_isi = np.mean(d2_isis) if d2_isis else 0
+        
+        print(f"\nSummary Statistics:")
+        print(f"D1 Neurons:")
+        print(f"- Average spikes per neuron: {d1_mean_count:.2f}")
+        print(f"- Average inter-spike interval: {d1_mean_isi:.2f} seconds")
+        print(f"D2 Neurons:")
+        print(f"- Average spikes per neuron: {d2_mean_count:.2f}")
+        print(f"- Average inter-spike interval: {d2_mean_isi:.2f} seconds")
+        
+        # Combine the plots into a layout
+        layout = column(
+            row(p1, p2),
+            p3,
+            p4
+        )
+        
+        # Output the plot
+        self.output_bokeh_plot(layout, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite)
+        
+        return layout
 
 
 if __name__ == "__main__":

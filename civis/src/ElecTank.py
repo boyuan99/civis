@@ -859,7 +859,7 @@ class ElecTank(VirmenTank):
                                 palette="turbo",
                                 title="Event-Centered Spectrogram", notebook=False,
                                 plot_signal=True, plot_velocity=True, plot_lick=True,
-                                save_path=None, overwrite=False):
+                                show_legend=True, save_path=None, overwrite=False):
         """
         Improved version that uses z-score normalization, baseline correction,
         and custom frequency band representation with proper log-scale alignment.
