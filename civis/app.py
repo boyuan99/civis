@@ -28,6 +28,12 @@ def labeler_v1_app():
     script = server_document(f'http://localhost:{args.bokeh_port}/labeler_bkapp_v1')
     return render_template("labeler/labeler_v1.html", script=script, template="Flask", port=args.flask_port)
 
+@app.route('/labeler/v2/')
+def labeler_v2_app():
+    global args
+    script = server_document(f'http://localhost:{args.bokeh_port}/labeler_bkapp_v2')
+    return render_template("labeler/labeler_v2.html", script=script, template="Flask", port=args.flask_port)
+
 @app.route('/trajectory/v1/')
 def trajectory_v1_app():
     global args
@@ -141,6 +147,7 @@ def bk_worker(bokeh_port, flask_port):
     bokeh_apps = {
         '/labeler_bkapp_v0': labeler_bkapp_v0,
         '/labeler_bkapp_v1': labeler_bkapp_v1,
+        '/labeler_bkapp_v2': labeler_bkapp_v2,
         '/trajectory_bkapp_v1': trajectory_bkapp_v1,
         '/connection_bkapp_v1': connection_bkapp_v1,
         '/trajectory_bkapp_v0': trajectory_bkapp_v0,
