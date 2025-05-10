@@ -4,21 +4,37 @@ import os
 import json
 from scipy.signal import find_peaks, savgol_filter
 
+# Default parameters for movement detection
+DEFAULT_ONSET_PARAMS = {
+    'window_size': 10,
+    'baseline_window': 20,
+    'threshold': 2.0,
+    'min_distance': 100,
+    'steady_state_threshold': 0.25,
+    'baseline_max': 3
+}
+
+DEFAULT_PEAK_PARAMS = {
+    'search_window': 200,
+    'min_peak_height': 10.0
+}
+
+DEFAULT_OFFSET_PARAMS = {
+    'search_window': 200,
+    'offset_threshold': 0.1,
+    'window_size': 10
+}
 
 class VirmenTank:
     def __init__(self,
                  session_name,
                  virmen_path=None,
                  maze_type=None,
-                 threshold=None,
-                 virmen_data_length=None,
                  vm_rate=20,
-                 velocity_height=0.7,
-                 velocity_distance=100,
                  session_duration=30 * 60,
-                 window_length=31,
-                 polyorder=3,
-                 height=8):
+                 onset_params=DEFAULT_ONSET_PARAMS,
+                 peak_params=DEFAULT_PEAK_PARAMS,
+                 offset_params=DEFAULT_OFFSET_PARAMS):
 
         self.session_name = session_name
         self.config = self.load_config()
@@ -33,17 +49,10 @@ class VirmenTank:
         self.virmen_path = virmen_path
         self.vm_rate = vm_rate
         self.session_duration = session_duration
-        self.threshold = threshold
-        self.window_length = window_length  # Window length: number of coefficients (odd number)
-        self.polyorder = polyorder  # Polynomial order
-        self.velocity_height = velocity_height
-        self.velocity_distance = velocity_distance
         self.maze_type = self.determine_maze_type(self.virmen_path) if maze_type is None else maze_type
         self.t = np.arange(0, self.session_duration, 1 / self.vm_rate)
 
         self.virmen_trials, self.virmen_data, self.trials_start_indices = self.read_and_process_data(self.virmen_path,
-                                                                                                     threshold=self.threshold,
-                                                                                                     length=virmen_data_length,
                                                                                                      maze_type=maze_type)
         self.trials_end_indices, self.trials_end_indices_all = self.calculate_virmen_trials_end_indices(self.maze_type)
         self.trial_num = len(self.trials_end_indices)
@@ -59,33 +68,9 @@ class VirmenTank:
         self.smoothed_dr = self.butter_lowpass_filter(self.dr, 1, self.vm_rate)
         self.acceleration = self.find_acceleration()
 
-        onset_params = {
-            'window_size': 10,
-            'baseline_window': 20,
-            'threshold': 2.0,
-            'min_distance': 100,
-            'steady_state_threshold': 0.25,
-            'baseline_max': 3
-        }
-        peak_params = {
-            'search_window': 200,
-            'min_peak_height': 10.0
-        }
-        offset_params = {
-            'search_window': 200,
-            'offset_threshold': 0.1,
-            'window_size': 10
-        }
-
         self.movement_onset_indices = self.detect_movement_onsets(onset_params)
         self.velocity_peak_indices = self.detect_velocity_peaks(peak_params)
         self.movement_offset_indices = self.detect_movement_offsets(offset_params)
-
-        self.velocity_peak_indices_legacy = find_peaks(self.smoothed_velocity, height=height,
-                                                     distance=self.velocity_distance)[0]
-        self.movement_onset_indices_legacy = self.find_movement_onset_legacy(self.smoothed_velocity, 
-                                                                           self.velocity_peak_indices_legacy)
-
         self.lick_edge_indices = np.where(np.diff(self.lick) > 0)[0]
 
     def load_config(self):
@@ -100,9 +85,7 @@ class VirmenTank:
             print(f"Config file not found at {config_path}. Using default configuration.")
             return {}
 
-    def read_and_process_data(self, file_path, threshold=None, length=None, maze_type=None):
-        if threshold is None:
-            threshold = [70.0, -70.0]
+    def read_and_process_data(self, file_path, length=None, maze_type=None):
 
         if maze_type is None:
             maze_type = self.determine_maze_type(file_path)
@@ -428,40 +411,6 @@ class VirmenTank:
         [b, a] = butter(order, normal_cutoff, btype='low', analog=False)
         y = filtfilt(b, a, data)
         return y
-
-    @staticmethod
-    def find_movement_onset_legacy(velocity, velocity_peak_indices, threshold_ratio=0.1):
-        """
-        Legacy method: Find the onset of movement based on the velocity peaks and a threshold ratio.
-        :param velocity: velocity data, can be position change rate or real velocity
-        :param velocity_peak_indices: indices of the velocity peaks
-        :param threshold_ratio: ratio of the peak value to be used as the threshold
-        :return: list of onset indices
-        """
-        onsets = []
-        for i, peak_index in enumerate(velocity_peak_indices):
-            peak_value = velocity[peak_index]
-            threshold = peak_value * threshold_ratio
-
-            # Search backwards from the peak to find when the velocity first rises above the threshold
-            pre_peak_values = velocity[:peak_index]
-            below_threshold_indices = np.where(pre_peak_values < threshold)[0]
-
-            if below_threshold_indices.size > 0:
-                onset_index = below_threshold_indices[-1] + 1
-
-                # If the onset index is before the last peak (misidentification), find local minimum between peaks
-                if i > 0 and onset_index <= velocity_peak_indices[i - 1]:
-                    segment = velocity[velocity_peak_indices[i - 1]:peak_index]
-                    local_min_index = np.argmin(segment) + velocity_peak_indices[i - 1]
-                    onset_index = local_min_index
-            else:
-                # If no below-threshold value is found, default to start of the data
-                onset_index = 0
-
-            onsets.append(onset_index)
-
-        return onsets
 
     def detect_movement_onsets(self, params=None):
         """

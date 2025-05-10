@@ -13,15 +13,9 @@ class ElecTank(VirmenTank):
                  vm_rate=20,
                  resample_fs=200,
                  session_duration=30 * 60,
-                 virmen_data_length=None,
-                 velocity_height=0.7,
-                 velocity_distance=100,
-                 window_length=51,
-                 polyorder=3,
-                 height=6,
                  notch_fs=[60],
-                 notch_Q=30,
-                 threshold=None):
+                 notch_Q=30
+                 ):
 
         self.session_name = session_name
         self.config = self.load_config()
@@ -33,16 +27,9 @@ class ElecTank(VirmenTank):
         super().__init__(
             session_name=session_name,
             virmen_path=virmen_path,
-            threshold=threshold,
             maze_type=maze_type,
-            virmen_data_length=virmen_data_length,
             vm_rate=vm_rate,
-            velocity_height=velocity_height,
-            velocity_distance=velocity_distance,
-            session_duration=session_duration,
-            window_length=window_length,
-            polyorder=polyorder,
-            height=height)
+            session_duration=session_duration)
 
         self.elec_path = elec_path
         self.session_duration = session_duration

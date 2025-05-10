@@ -15,17 +15,10 @@ class CITank(VirmenTank):
                  gcamp_path=None,
                  tdt_org_path=None,
                  tdt_adjusted_path=None,
-                 height=30,
                  maze_type=None,
-                 threshold=None,
-                 virmen_data_length=None,
                  ci_rate=20,
                  vm_rate=20,
-                 session_duration=30 * 60,
-                 velocity_height=0.7,
-                 velocity_distance=100,
-                 window_length=51,
-                 polyorder=3):
+                 session_duration=30 * 60):
 
         self.session_name = session_name
         self.config = self.load_config()
@@ -43,16 +36,9 @@ class CITank(VirmenTank):
         super().__init__(
             session_name=session_name,
             virmen_path=virmen_path,
-            threshold=threshold,
             maze_type=maze_type,
-            virmen_data_length=virmen_data_length,
             vm_rate=vm_rate,
-            velocity_height=velocity_height,
-            velocity_distance=velocity_distance,
-            session_duration=session_duration,
-            window_length=window_length,
-            polyorder=polyorder,
-            height=height)
+            session_duration=session_duration)
 
         self.ci_path = ci_path
         self.gcamp_path = gcamp_path
