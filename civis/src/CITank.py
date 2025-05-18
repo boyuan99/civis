@@ -48,14 +48,17 @@ class CITank(VirmenTank):
         self.session_duration = session_duration
 
         (self.C, self.C_raw, self.Cn, self.ids, self.Coor, self.centroids,
-         self.C_denoised, self.C_deconvolved, self.C_baseline, self.C_reraw, self.A) = self.load_data(ci_path)
+         self.C_denoised, self.C_deconvolved, self.C_baseline, self.C_reraw, self.A) = self._load_data(ci_path)
 
-        self.C_raw = self.shift_signal(self.compute_deltaF_over_F(self.C_raw))
-        self.ca_all = self.normalize_signal(self.shift_signal_single(np.mean(self.C_raw, axis=0)))
         self.neuron_num = self.C_raw.shape[0]
+        self.C_raw_deltaF_over_F = self._compute_deltaF_over_F()
+        self.C_zsc = self._z_score_normalize_all()
+        self.ca_all = self.normalize_signal(self.shift_signal_single(np.mean(self.C_zsc, axis=0)))
+        self.peak_indices = self._find_peaks_in_traces()
+        
 
     @staticmethod
-    def load_data(filename):
+    def _load_data(filename):
         """
         Load all data
         :param filename: .mat file containing config, spatial, Cn, Coor, ids, etc...
@@ -95,15 +98,37 @@ class CITank(VirmenTank):
         return C, C_raw, Cn, ids, Coor, centroids, C_denoised, C_deconvolved, C_baseline, C_reraw, A
 
     @staticmethod
-    def compute_deltaF_over_F(fluorescence, baseline_indices=None):
-        if baseline_indices is None:
-            F0 = np.mean(fluorescence, axis=1)
-        else:
-            F0 = np.mean(fluorescence[baseline_indices[0]:baseline_indices[1]], axis=1)
+    def calculate_delta_f_over_f(signal, baseline_percentile=10):
+        """计算ΔF/F"""
+        F0 = np.percentile(signal, baseline_percentile)
+        delta_f_over_f = (signal - F0) / F0
 
-        F0 = F0[:, np.newaxis]
-        deltaF_F = (fluorescence - F0) / F0
-        return deltaF_F
+        return delta_f_over_f, F0
+
+    def _compute_deltaF_over_F(self):
+
+        signals = np.zeros_like(self.C_raw)
+        for i in range(self.neuron_num):
+            delta_f_over_f, _ = self.calculate_delta_f_over_f(self.C_raw[i])
+            signals[i] = delta_f_over_f
+
+        return signals
+    
+    @staticmethod
+    def z_score_normalize(signal):
+        """Z-score normalization"""
+        mean_val = np.mean(signal)
+        std_val = np.std(signal)
+        if std_val == 0:
+            return np.zeros_like(signal)
+        return (signal - mean_val) / std_val
+    
+    def _z_score_normalize_all(self):
+        signals = np.zeros_like(self.C_raw)
+        for i in range(self.neuron_num):
+            signals[i] = self.z_score_normalize(self.C_raw[i])
+
+        return signals
 
     @staticmethod
     def find_outliers_indices(data, threshold=3.0):
@@ -113,30 +138,47 @@ class CITank(VirmenTank):
         outliers = np.where(np.abs(z_scores) > threshold)[0]
         return outliers
 
-    def find_peaks_in_traces(self, height=0.5, notebook=False, use_tqdm=True):
+    def _find_peaks_in_traces(self, prominence=0.5, min_width=3, wlen=None):
         """
-        Finds peaks in each calcium trace in C_raw.
-        Applies baseline correction using Savitzky-Golay filter before finding peaks.
-
+        Improved peak detection function, using prominence and width as main parameters
+        
+        Parameters:
+        prominence : float or None
+            Prominence factor relative to signal noise level, if None then calculated for each neuron
+        min_width : int
+            Minimum peak width (samples)
+        wlen : int or None
+            Window length for calculating prominence
+            
         Returns:
-        - peak_indices_filtered_all: List of arrays, each containing peak indices for the filtered signal of corresponding trace.
+        list of arrays
+            List of peak indices for each neuron
         """
         from scipy.signal import find_peaks
 
-        if notebook:
-            from tqdm.notebook import tqdm
-        else:
-            from tqdm import tqdm
-
         peak_indices_all = []
-
-        iterator = tqdm(self.C_denoised, desc="Finds peaks in each calcium trace") if use_tqdm else self.C_denoised
-
-        for i, C_pick in enumerate(iterator):
-            peak_calciums, _ = find_peaks(C_pick, height=height)
-
-            peak_indices_all.append(peak_calciums)
-
+        
+        for i in range(len(self.C_denoised)):
+            signal = self.C_denoised[i]
+            
+            # adaptive calculation of prominence threshold
+            if prominence is None:
+                # use median absolute deviation (MAD) as noise estimator, more robust
+                noise_level = np.median(np.abs(signal - np.median(signal))) * 1.4826
+                min_prominence = 2.0 * noise_level  # 2 times MAD as default threshold
+            else:
+                # use user-specified prominence factor
+                noise_level = np.std(signal)
+                min_prominence = prominence * noise_level
+            
+            # find peaks, mainly rely on prominence and width
+            peaks, _ = find_peaks(signal, 
+                                 prominence=min_prominence,
+                                 width=min_width,
+                                 wlen=wlen)
+            
+            peak_indices_all.append(peaks)
+        
         return peak_indices_all
 
     def compute_correlation_ca_instance(self, instance):
@@ -190,7 +232,7 @@ class CITank(VirmenTank):
         :return: averaged calcium signal, normalized signal, sorted signal, mean signal, sorted indices
         """
         # Use provided signal if available, otherwise use self.C_raw
-        input_signal = signal if signal is not None else self.C_raw
+        input_signal = signal if signal is not None else self.C_zsc
         if len(input_signal.shape) == 1:
             input_signal = np.expand_dims(input_signal, axis=0)
 
@@ -222,7 +264,7 @@ class CITank(VirmenTank):
         peak_times = np.argmax(C_avg_normalized, axis=1)
         sorted_indices = np.argsort(peak_times)
         C_avg_normalized_sorted = C_avg_normalized[sorted_indices]
-        C_avg_mean = np.mean(C_avg_normalized_sorted, axis=0)
+        C_avg_mean = np.mean(C_avg, axis=0)
 
         return C_avg, C_avg_normalized, C_avg_normalized_sorted, C_avg_mean, sorted_indices
 
@@ -267,7 +309,7 @@ class CITank(VirmenTank):
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # Check if inputs are tensors; if not, convert them
-        C_raw_tensor = self.ensure_tensor(self.C_raw, device)
+        C_raw_tensor = self.ensure_tensor(self.C_zsc, device)
         trace_tensor = self.ensure_tensor(trace, device)
 
         # Compute the correlation coefficients and shifts using batch processing
@@ -888,9 +930,15 @@ class CITank(VirmenTank):
         from bokeh.models import LinearColorMapper, ColorBar, CustomJSTickFormatter
         from bokeh.layouts import column
 
-        map_data = self.C_raw[sorted_indices, :cutoff_index]
-
-        mapper = LinearColorMapper(palette="Viridis256", low=-0.2, high=0.2)
+        map_data = self.normalize_signal_per_row(self.C_zsc[sorted_indices, :cutoff_index])
+        
+        data_min = np.min(map_data)
+        data_max = np.max(map_data)
+        
+        low_value = np.min(map_data)*0.6
+        high_value = np.max(map_data)*0.6
+        
+        mapper = LinearColorMapper(palette="Viridis256", low=low_value, high=high_value)
 
         p = figure(width=800, height=800, title=title,
                    x_axis_label='Time', y_axis_label='Neuron Number', active_scroll='wheel_zoom',
@@ -984,14 +1032,14 @@ class CITank(VirmenTank):
 
         return p
 
-    def generate_raster_plot(self, peak_indices, save_path=None, title="Raster Plot", notebook=False, overwrite=False):
+    def generate_raster_plot(self, save_path=None, title="Raster Plot", notebook=False, overwrite=False):
 
         from bokeh.models import ColumnDataSource
         from bokeh.plotting import figure
         from bokeh.layouts import column
 
         num_neurons = self.neuron_num
-        spike_times = peak_indices
+        spike_times = self.peak_indices
 
         # Prepare data for Bokeh
         data = {'x_starts': [], 'y_starts': [], 'x_ends': [], 'y_ends': []}
@@ -1587,6 +1635,8 @@ class CITank(VirmenTank):
         
         return results
 
+
+    # Going to remove this function
     def plot_d1_d2_calcium_around_events(self, event_type='movement_onset', d1_signal=None, d2_signal=None, 
                                      cut_interval=50, save_path=None, title=None, notebook=False, overwrite=False):
         """
@@ -1904,7 +1954,7 @@ class CITank(VirmenTank):
         d1_mean_isi = np.mean(d1_isis) if d1_isis else 0
         d2_mean_isi = np.mean(d2_isis) if d2_isis else 0
         
-        print(f"\nSummary Statistics:")
+        print(f"\nSummary Statistics:") 
         print(f"D1 Neurons:")
         print(f"- Average spikes per neuron: {d1_mean_count:.2f}")
         print(f"- Average inter-spike interval: {d1_mean_isi:.2f} seconds")
