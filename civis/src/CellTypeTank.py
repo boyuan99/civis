@@ -555,14 +555,11 @@ class CellTypeTank(CITank):
             return p
 
     def _compare_neuron_peaks_with_signal(self, signal=None, signal_name="velocity", 
-                                   d1_peak_indices=None, d2_peak_indices=None, chi_peak_indices=None,
-                                   show_d1=True, show_d2=True, show_chi=True,
-                                   d1_color='navy', d2_color='crimson', chi_color='green',
-                                   add_kde_contours=True, add_population_means=True,
-                                   show_histogram=True, show_lineplot=True, show_boxplot=True, 
-                                   show_statistics=True, split_scatter_plots=True,
-                                   chi_kde_bandwidth=0.5,
-                                   save_path=None, title=None, notebook=False, overwrite=False):
+                                     d1_peak_indices=None, d2_peak_indices=None, chi_peak_indices=None,
+                                     show_d1=True, show_d2=True, show_chi=True,
+                                     add_kde_contours=True, add_population_means=True,
+                                     split_scatter_plots=True,
+                                     save_path=None, title=None, notebook=False, overwrite=False):
         """
         Compare peak activity of different neuron types (D1, D2, CHI) with a specified signal.
         Creates visualizations including histograms of signal values at neural peaks,
@@ -590,28 +587,12 @@ class CellTypeTank(CITank):
             Whether to include D2 neurons in the analysis
         show_chi : bool
             Whether to include CHI neurons in the analysis
-        d1_color : str
-            Color for D1 neurons visualization (default: 'navy')
-        d2_color : str 
-            Color for D2 neurons visualization (default: 'crimson')
-        chi_color : str
-            Color for CHI neurons visualization (default: 'green')
         add_kde_contours : bool
             Whether to add KDE contours to show population clusters
         add_population_means : bool
             Whether to add population mean markers with crosshairs
-        show_histogram : bool
-            Whether to show histogram plots
-        show_lineplot : bool
-            Whether to show line plot version of histograms
-        show_boxplot : bool
-            Whether to show boxplot of distributions
-        show_statistics : bool
-            Whether to display statistical information in console output
         split_scatter_plots : bool
             Whether to create separate side-by-side scatter plots for each cell type
-        chi_kde_bandwidth : float
-            Bandwidth parameter for CHI neuron KDE plots (larger values create smoother contours)
         save_path : str, optional
             Path to save the plot as an HTML file
         title : str, optional
@@ -684,21 +665,21 @@ class CellTypeTank(CITank):
             chi_firing_rates = [len(peaks)/total_time for peaks in chi_peak_indices]  # Hz
         
         # Calculate mean firing rates and SEM
-        if d1_firing_rates and show_statistics:
+        if d1_firing_rates:
             d1_mean_rate = np.mean(d1_firing_rates)
             d1_rate_sem = np.std(d1_firing_rates) / np.sqrt(len(d1_firing_rates))
             print(f"\nD1 Neurons (n={len(d1_peak_indices)}):")
             print(f"- Mean firing rate: {d1_mean_rate:.2f} ± {d1_rate_sem:.2f} Hz")
             print(f"- Range: {np.min(d1_firing_rates):.2f} to {np.max(d1_firing_rates):.2f} Hz")
         
-        if d2_firing_rates and show_statistics:
+        if d2_firing_rates:
             d2_mean_rate = np.mean(d2_firing_rates)
             d2_rate_sem = np.std(d2_firing_rates) / np.sqrt(len(d2_firing_rates))
             print(f"\nD2 Neurons (n={len(d2_peak_indices)}):")
             print(f"- Mean firing rate: {d2_mean_rate:.2f} ± {d2_rate_sem:.2f} Hz")
             print(f"- Range: {np.min(d2_firing_rates):.2f} to {np.max(d2_firing_rates):.2f} Hz")
 
-        if chi_firing_rates and show_statistics:
+        if chi_firing_rates:
             chi_mean_rate = np.mean(chi_firing_rates)
             chi_rate_sem = np.std(chi_firing_rates) / np.sqrt(len(chi_firing_rates))
             print(f"\nCHI Neurons (n={len(chi_peak_indices)}):")
@@ -734,19 +715,19 @@ class CellTypeTank(CITank):
             hist1, edges1 = np.histogram(np.concatenate(d1_peak_signals), bins=10, 
                                         range=signal_range, density=True)
             p1.quad(top=hist1, bottom=0, left=edges1[:-1], right=edges1[1:],
-                    fill_color=d1_color, alpha=0.5, line_color=d1_color, legend_label='D1')
+                    fill_color='navy', alpha=0.5, line_color='navy', legend_label='D1')
         
         if show_d2 and len(d2_peak_signals) > 0:
             hist2, edges2 = np.histogram(np.concatenate(d2_peak_signals), bins=10,
                                         range=signal_range, density=True)
             p1.quad(top=hist2, bottom=0, left=edges2[:-1], right=edges2[1:],
-                    fill_color=d2_color, alpha=0.5, line_color=d2_color, legend_label='D2')
+                    fill_color='crimson', alpha=0.5, line_color='crimson', legend_label='D2')
         
         if show_chi and len(chi_peak_signals) > 0:
             hist3, edges3 = np.histogram(np.concatenate(chi_peak_signals), bins=10,
                                         range=signal_range, density=True)
             p1.quad(top=hist3, bottom=0, left=edges3[:-1], right=edges3[1:],
-                    fill_color=chi_color, alpha=0.5, line_color=chi_color, legend_label='CHI')
+                    fill_color='green', alpha=0.5, line_color='green', legend_label='CHI')
         
         # Customize histogram plot
         p1.xaxis.axis_label = signal_name.capitalize()
@@ -769,25 +750,25 @@ class CellTypeTank(CITank):
                                                  range=signal_range, density=True)
             # Convert bin edges to centers for line plot
             centers1 = (edges1_line[:-1] + edges1_line[1:]) / 2
-            p1_line.line(centers1, hist1_line, line_width=3, color=d1_color, 
+            p1_line.line(centers1, hist1_line, line_width=3, color='navy', 
                         alpha=0.8, legend_label='D1')
-            p1_line.circle(centers1, hist1_line, size=5, color=d1_color, alpha=0.6)
+            p1_line.scatter(centers1, hist1_line, size=5, color='navy', alpha=0.6)
         
         if show_d2 and len(d2_peak_signals) > 0:
             hist2_line, edges2_line = np.histogram(np.concatenate(d2_peak_signals), bins=30, 
                                                  range=signal_range, density=True)
             centers2 = (edges2_line[:-1] + edges2_line[1:]) / 2
-            p1_line.line(centers2, hist2_line, line_width=3, color=d2_color, 
+            p1_line.line(centers2, hist2_line, line_width=3, color='crimson', 
                         alpha=0.8, legend_label='D2')
-            p1_line.circle(centers2, hist2_line, size=5, color=d2_color, alpha=0.6)
+            p1_line.scatter(centers2, hist2_line, size=5, color='crimson', alpha=0.6)
         
         if show_chi and len(chi_peak_signals) > 0:
             hist3_line, edges3_line = np.histogram(np.concatenate(chi_peak_signals), bins=30, 
                                                  range=signal_range, density=True)
             centers3 = (edges3_line[:-1] + edges3_line[1:]) / 2
-            p1_line.line(centers3, hist3_line, line_width=3, color=chi_color, 
+            p1_line.line(centers3, hist3_line, line_width=3, color='green', 
                         alpha=0.8, legend_label='CHI')
-            p1_line.circle(centers3, hist3_line, size=5, color=chi_color, alpha=0.6)
+            p1_line.scatter(centers3, hist3_line, size=5, color='green', alpha=0.6)
         
         # Configure legend
         p1_line.legend.location = "top_right"
@@ -824,24 +805,24 @@ class CellTypeTank(CITank):
                 hist, edges = np.histogram(d1_counts, bins=bins)
                 # Convert bin edges to centers for line plot
                 centers = (edges[:-1] + edges[1:]) / 2
-                peak_counts_fig.line(centers, hist, line_width=3, color=d1_color, 
+                peak_counts_fig.line(centers, hist, line_width=3, color='navy', 
                                     alpha=0.7, legend_label='D1')
                 # Add scatter points for more visibility
-                peak_counts_fig.circle(centers, hist, size=6, color=d1_color, alpha=0.7)
+                peak_counts_fig.scatter(centers, hist, size=6, color='navy', alpha=0.7)
             
             if d2_counts:
                 hist, edges = np.histogram(d2_counts, bins=bins)
                 centers = (edges[:-1] + edges[1:]) / 2
-                peak_counts_fig.line(centers, hist, line_width=3, color=d2_color, 
+                peak_counts_fig.line(centers, hist, line_width=3, color='crimson', 
                                    alpha=0.7, legend_label='D2')
-                peak_counts_fig.circle(centers, hist, size=6, color=d2_color, alpha=0.7)
+                peak_counts_fig.scatter(centers, hist, size=6, color='crimson', alpha=0.7)
             
             if chi_counts:
                 hist, edges = np.histogram(chi_counts, bins=bins)
                 centers = (edges[:-1] + edges[1:]) / 2
-                peak_counts_fig.line(centers, hist, line_width=3, color=chi_color, 
+                peak_counts_fig.line(centers, hist, line_width=3, color='green', 
                                    alpha=0.7, legend_label='CHI')
-                peak_counts_fig.circle(centers, hist, size=6, color=chi_color, alpha=0.7)
+                peak_counts_fig.scatter(centers, hist, size=6, color='green', alpha=0.7)
             
             # Configure legend
             peak_counts_fig.legend.location = "top_right"
@@ -931,16 +912,16 @@ class CellTypeTank(CITank):
             # Determine which types to show
             types_to_show = []
             if show_d1 and len(d1_mean_signals) > 0:
-                types_to_show.append(('D1', d1_firing_rates, d1_mean_signals))
+                types_to_show.append(('D1', 'navy', d1_firing_rates, d1_mean_signals))
             if show_d2 and len(d2_mean_signals) > 0:
-                types_to_show.append(('D2', d2_firing_rates, d2_mean_signals))
+                types_to_show.append(('D2', 'crimson', d2_firing_rates, d2_mean_signals))
             if show_chi and len(chi_mean_signals) > 0:
-                types_to_show.append(('CHI', chi_firing_rates, chi_mean_signals))
+                types_to_show.append(('CHI', 'green', chi_firing_rates, chi_mean_signals))
             
             # Calculate common x and y ranges for all plots
             all_rates = []
             all_means = []
-            for _, rates, means in types_to_show:
+            for _, _, rates, means in types_to_show:
                 all_rates.extend(rates)
                 all_means.extend(means)
                 
@@ -958,7 +939,7 @@ class CellTypeTank(CITank):
                 y_max = max_mean + (mean_range * 0.1)
             
             # Create a plot for each type that needs to be shown
-            for i, (label, rates, means) in enumerate(types_to_show):
+            for i, (label, color, rates, means) in enumerate(types_to_show):
                 # Create figure
                 title_label = f"{label} Neurons"
                 p_scatter = figure(width=width, height=height, 
@@ -986,11 +967,11 @@ class CellTypeTank(CITank):
                 ))
                 
                 # Plot scatter points
-                p_scatter.scatter('x', 'y', source=source, color=d1_color, size=8, alpha=0.6)
+                p_scatter.scatter('x', 'y', source=source, color=color, size=8, alpha=0.6)
                 
                 # Add KDE contours if requested
                 if add_kde_contours and len(rates) > 5:
-                    add_kde_contours(p_scatter, rates, means, d1_color, cell_type=label)
+                    add_kde_contours(p_scatter, rates, means, color, cell_type=label)
                 
                 # Add population mean markers with crosshairs if requested
                 if add_population_means:
@@ -998,18 +979,18 @@ class CellTypeTank(CITank):
                     mean_y = np.mean(means)
                     
                     # Add mean marker
-                    p_scatter.scatter([mean_x], [mean_y], color=d1_color, size=15, alpha=1.0, 
+                    p_scatter.scatter([mean_x], [mean_y], color=color, size=15, alpha=1.0, 
                                   marker='diamond', line_width=2, line_color='white')
                     
                     # Add crosshair lines
                     p_scatter.line([mean_x, mean_x], [p_scatter.y_range.start, p_scatter.y_range.end], 
-                               line_color=d1_color, line_width=1, line_dash='dashed', alpha=0.5)
+                               line_color=color, line_width=1, line_dash='dashed', alpha=0.5)
                     p_scatter.line([p_scatter.x_range.start, p_scatter.x_range.end], [mean_y, mean_y], 
-                               line_color=d1_color, line_width=1, line_dash='dashed', alpha=0.5)
+                               line_color=color, line_width=1, line_dash='dashed', alpha=0.5)
                     
                     # Add text annotation
                     p_scatter.text([mean_x], [mean_y], [f"{label} Mean"], text_font_size='8pt',
-                               text_color=d1_color, x_offset=10, y_offset=10)
+                               text_color=color, x_offset=10, y_offset=10)
                 
                 # Add correlation coefficient
                 if len(rates) > 1:
@@ -1017,7 +998,7 @@ class CellTypeTank(CITank):
                     p_scatter.text([p_scatter.x_range.start + (p_scatter.x_range.end - p_scatter.x_range.start)*0.05], 
                                [p_scatter.y_range.start + (p_scatter.y_range.end - p_scatter.y_range.start)*0.95],
                                [f"r = {corr:.3f}"],
-                               text_font_size='8pt', text_font_style='bold', text_color=d1_color)
+                               text_font_size='8pt', text_font_style='bold', text_color=color)
                 
                 # Customize plot
                 p_scatter.xaxis.axis_label = 'Firing Rate (Hz)'
@@ -1046,27 +1027,27 @@ class CellTypeTank(CITank):
                     y=d1_mean_signals
                 ))
                 d1_scatter = p2.scatter('x', 'y', source=d1_source, 
-                                      color=d1_color, size=8, alpha=0.6, legend_label='D1 Neurons')
+                                      color='navy', size=8, alpha=0.6, legend_label='D1 Neurons')
                 
                 # Add KDE contours if requested
                 if add_kde_contours and len(d1_firing_rates) > 5:
-                    add_kde_contours(p2, d1_firing_rates, d1_mean_signals, d1_color, cell_type='D1')
+                    add_kde_contours(p2, d1_firing_rates, d1_mean_signals, 'navy', cell_type='D1')
                 
                 # Add mean marker and crosshairs if requested
                 if add_population_means:
                     d1_mean_x = np.mean(d1_firing_rates)
                     d1_mean_y = np.mean(d1_mean_signals)
                     
-                    p2.scatter([d1_mean_x], [d1_mean_y], color=d1_color, size=15, alpha=1.0, 
+                    p2.scatter([d1_mean_x], [d1_mean_y], color='navy', size=15, alpha=1.0, 
                               marker='diamond', line_width=2, line_color='white')
                     
                     p2.line([d1_mean_x, d1_mean_x], [p2.y_range.start, p2.y_range.end], 
-                           line_color=d1_color, line_width=1, line_dash='dashed', alpha=0.5)
+                           line_color='navy', line_width=1, line_dash='dashed', alpha=0.5)
                     p2.line([p2.x_range.start, p2.x_range.end], [d1_mean_y, d1_mean_y], 
-                           line_color=d1_color, line_width=1, line_dash='dashed', alpha=0.5)
+                           line_color='navy', line_width=1, line_dash='dashed', alpha=0.5)
                     
                     p2.text([d1_mean_x], [d1_mean_y], ['D1 Mean'], text_font_size='8pt',
-                           text_color=d1_color, x_offset=10, y_offset=10)
+                           text_color='navy', x_offset=10, y_offset=10)
             
             if show_d2 and len(d2_mean_signals) > 0:
                 d2_source = ColumnDataSource(data=dict(
@@ -1074,27 +1055,27 @@ class CellTypeTank(CITank):
                     y=d2_mean_signals
                 ))
                 d2_scatter = p2.scatter('x', 'y', source=d2_source, 
-                                      color=d2_color, size=8, alpha=0.6, legend_label='D2 Neurons')
+                                      color='crimson', size=8, alpha=0.6, legend_label='D2 Neurons')
                 
                 # Add KDE contours if requested
                 if add_kde_contours and len(d2_firing_rates) > 5:
-                    add_kde_contours(p2, d2_firing_rates, d2_mean_signals, d2_color, cell_type='D2')
+                    add_kde_contours(p2, d2_firing_rates, d2_mean_signals, 'crimson', cell_type='D2')
                 
                 # Add mean marker and crosshairs if requested
                 if add_population_means:
                     d2_mean_x = np.mean(d2_firing_rates)
                     d2_mean_y = np.mean(d2_mean_signals)
                     
-                    p2.scatter([d2_mean_x], [d2_mean_y], color=d2_color, size=15, alpha=1.0, 
+                    p2.scatter([d2_mean_x], [d2_mean_y], color='crimson', size=15, alpha=1.0, 
                               marker='diamond', line_width=2, line_color='white')
                     
                     p2.line([d2_mean_x, d2_mean_x], [p2.y_range.start, p2.y_range.end], 
-                           line_color=d2_color, line_width=1, line_dash='dashed', alpha=0.5)
+                           line_color='crimson', line_width=1, line_dash='dashed', alpha=0.5)
                     p2.line([p2.x_range.start, p2.x_range.end], [d2_mean_y, d2_mean_y], 
-                           line_color=d2_color, line_width=1, line_dash='dashed', alpha=0.5)
+                           line_color='crimson', line_width=1, line_dash='dashed', alpha=0.5)
                     
                     p2.text([d2_mean_x], [d2_mean_y], ['D2 Mean'], text_font_size='8pt',
-                           text_color=d2_color, x_offset=10, y_offset=10)
+                           text_color='crimson', x_offset=10, y_offset=10)
             
             if show_chi and len(chi_mean_signals) > 0:
                 chi_source = ColumnDataSource(data=dict(
@@ -1102,27 +1083,27 @@ class CellTypeTank(CITank):
                     y=chi_mean_signals
                 ))
                 chi_scatter = p2.scatter('x', 'y', source=chi_source, 
-                                       color=chi_color, size=8, alpha=0.6, legend_label='CHI Neurons')
+                                       color='green', size=8, alpha=0.6, legend_label='CHI Neurons')
                 
                 # Add KDE contours if requested
                 if add_kde_contours and len(chi_firing_rates) > 5:
-                    add_kde_contours(p2, chi_firing_rates, chi_mean_signals, chi_color, cell_type='CHI')
+                    add_kde_contours(p2, chi_firing_rates, chi_mean_signals, 'green', cell_type='CHI')
                 
                 # Add mean marker and crosshairs if requested
                 if add_population_means:
                     chi_mean_x = np.mean(chi_firing_rates)
                     chi_mean_y = np.mean(chi_mean_signals)
                     
-                    p2.scatter([chi_mean_x], [chi_mean_y], color=chi_color, size=15, alpha=1.0, 
+                    p2.scatter([chi_mean_x], [chi_mean_y], color='green', size=15, alpha=1.0, 
                               marker='diamond', line_width=2, line_color='white')
                     
                     p2.line([chi_mean_x, chi_mean_x], [p2.y_range.start, p2.y_range.end], 
-                           line_color=chi_color, line_width=1, line_dash='dashed', alpha=0.5)
+                           line_color='green', line_width=1, line_dash='dashed', alpha=0.5)
                     p2.line([p2.x_range.start, p2.x_range.end], [chi_mean_y, chi_mean_y], 
-                           line_color=chi_color, line_width=1, line_dash='dashed', alpha=0.5)
+                           line_color='green', line_width=1, line_dash='dashed', alpha=0.5)
                     
                     p2.text([chi_mean_x], [chi_mean_y], ['CHI Mean'], text_font_size='8pt',
-                           text_color=chi_color, x_offset=10, y_offset=10)
+                           text_color='green', x_offset=10, y_offset=10)
             
             # Add statistical comparison (t-test) between D1 and D2 if both are shown
             if show_d1 and show_d2 and d1_mean_signals and d2_mean_signals:
