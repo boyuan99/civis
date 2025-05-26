@@ -914,12 +914,14 @@ def labeler_bkapp_v2(doc):
     toggle_row = row(spacer3, toggle_d1, toggle_d2, toggle_cholinergic, toggle_unknown, toggle_discard)
 
     layout = row(
-        spatial,
+        column(
+            spatial,
+            row(Spacer(width=40), image_controls)
+        ),
         column(
             choose_file,
             controls,
-            toggle_row,      # Replaced old single-mask toggle with three toggles
-            image_controls,
+            toggle_row,
             temporal,
             labelling,
             menus
