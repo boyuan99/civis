@@ -1279,7 +1279,7 @@ class CellTypeTank(CITank):
             chi_peak_indices=chi_peak_indices,
             show_d1=show_d1,
             show_d2=show_d2,
-            show_chi=show_chi,
+            show_chi=show_chi, 
             split_scatter_plots=split_scatter_plots,
             save_path=save_path,
             title=title,
@@ -1669,3 +1669,848 @@ class CellTypeTank(CITank):
         self.output_bokeh_plot(layout, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite)
         
         return layout
+
+
+    def movement_related_activity_analysis(self, event_indices=None, event_type='movement_onset',
+                                        d1_peak_indices=None, d2_peak_indices=None, chi_peak_indices=None,
+                                        show_d1=True, show_d2=True, show_chi=True,
+                                        pre_window=-3, post_window=3, bin_width=0.1,
+                                        max_neurons_to_plot=20,
+                                        save_path=None, title=None, notebook=False, overwrite=False):
+        """
+        Analyze neural activity in relation to any specified event indices. Creates multiple visualizations
+        showing how different neuron types (D1, D2, CHI) activate around these events.
+
+        Parameters:
+        -----------
+        event_indices : array-like, optional
+            Indices of events to analyze around. If None, will use predefined indices based on event_type.
+        event_type : str, optional
+            Type of event to use if event_indices is None. Options: 'movement_onset', 'velocity_peak', 'movement_offset'
+            Only used when event_indices is None.
+        d1_peak_indices : list of arrays, optional
+            List of peak indices for each D1 neuron. If None and show_d1 is True, will use self.peak_indices for D1 neurons.
+        d2_peak_indices : list of arrays, optional
+            List of peak indices for each D2 neuron. If None and show_d2 is True, will use self.peak_indices for D2 neurons.
+        chi_peak_indices : list of arrays, optional
+            List of peak indices for each CHI neuron. If None and show_chi is True, will use self.peak_indices for CHI neurons.
+        show_d1 : bool
+            Whether to include D1 neurons in the analysis
+        show_d2 : bool
+            Whether to include D2 neurons in the analysis
+        show_chi : bool
+            Whether to include CHI neurons in the analysis
+        pre_window : float
+            Time window before event (in seconds, negative value)
+        post_window : float
+            Time window after event (in seconds, positive value)
+        bin_width : float
+            Width of time bins for PSTH histogram (in seconds)
+        max_neurons_to_plot : int
+            Maximum number of neurons to include in the raster plot
+        save_path : str, optional
+            Path to save the visualization
+        title : str, optional
+            Title for the visualization. If None, will generate based on event_type.
+        notebook : bool
+            Flag to indicate if the visualization is for a Jupyter notebook
+        overwrite : bool
+            Flag to indicate whether to overwrite existing file
+
+        Returns:
+        --------
+        bokeh.layouts.layout
+            The created visualization layout
+        """
+        import numpy as np
+        from scipy import stats
+        from bokeh.plotting import figure
+        from bokeh.layouts import column, row
+        from bokeh.models import ColumnDataSource, Span, Legend, LegendItem, BoxAnnotation
+
+        # Determine event indices to use
+        if event_indices is None:
+            # Use indices based on event_type if no explicit indices are provided
+            if event_type == 'movement_onset':
+                if not hasattr(self, 'movement_onset_indices') or len(self.movement_onset_indices) == 0:
+                    raise ValueError("No movement onset indices available. Please run movement detection first.")
+                event_indices = self.movement_onset_indices
+                default_title = "Movement Onset-Related Neural Activity"
+            elif event_type == 'velocity_peak':
+                if not hasattr(self, 'velocity_peak_indices') or len(self.velocity_peak_indices) == 0:
+                    raise ValueError("No velocity peak indices available.")
+                event_indices = self.velocity_peak_indices
+                default_title = "Velocity Peak-Related Neural Activity"
+            elif event_type == 'movement_offset':
+                if not hasattr(self, 'movement_offset_indices') or len(self.movement_offset_indices) == 0:
+                    raise ValueError("No movement offset indices available.")
+                event_indices = self.movement_offset_indices
+                default_title = "Movement Offset-Related Neural Activity"
+            else:
+                raise ValueError("event_type must be one of: 'movement_onset', 'velocity_peak', 'movement_offset'")
+        else:
+            # Use the provided event indices
+            if len(event_indices) == 0:
+                raise ValueError("event_indices cannot be empty")
+            default_title = "Event-Related Neural Activity"
+
+        # Set title if not provided
+        if title is None:
+            title = default_title
+
+        # Check if at least one cell type is selected
+        if not any([show_d1, show_d2, show_chi]):
+            raise ValueError("At least one cell type (show_d1, show_d2, or show_chi) must be set to True")
+
+        # Use pre-computed peak indices for each cell type if not provided
+        if show_d1 and d1_peak_indices is None:
+            d1_peak_indices = [self.peak_indices[i] for i in self.d1_indices]
+
+        if show_d2 and d2_peak_indices is None:
+            d2_peak_indices = [self.peak_indices[i] for i in self.d2_indices]
+
+        if show_chi and chi_peak_indices is None:
+            chi_peak_indices = [self.peak_indices[i] for i in self.chi_indices]
+
+        # Convert time window to samples
+        pre_samples = int(pre_window * self.ci_rate)
+        post_samples = int(post_window * self.ci_rate)
+        window_size = post_samples - pre_samples
+
+        # Function to align spikes to events
+        def align_spikes_to_events(spike_indices, event_indices, pre_samples, post_samples, ci_rate):
+            aligned_spikes = []
+            event_windows = []
+
+            # For each event, create a window
+            for event in event_indices:
+                window_start = event + pre_samples  # negative pre_samples
+                window_end = event + post_samples
+                event_windows.append((window_start, window_end))
+
+            # For each neuron's spikes, find those within event windows
+            for neuron_spikes in spike_indices:
+                neuron_aligned = []
+
+                for event_idx, (window_start, window_end) in enumerate(event_windows):
+                    # Find spikes within this window
+                    in_window = [spike for spike in neuron_spikes
+                                if window_start <= spike < window_end]
+
+                    # Convert to time relative to event (in seconds)
+                    relative_times = [(spike - event_indices[event_idx]) / ci_rate
+                                    for spike in in_window]
+
+                    # Add to this neuron's aligned spikes
+                    neuron_aligned.extend([(event_idx, t) for t in relative_times])
+
+                aligned_spikes.append(neuron_aligned)
+
+            return aligned_spikes
+
+        # Calculate average velocity aligned to events
+        def align_velocity_to_events(velocity, event_indices, pre_samples, post_samples, ci_rate):
+            window_size = post_samples - pre_samples
+            aligned_velocity = np.zeros((len(event_indices), window_size))
+
+            for i, event in enumerate(event_indices):
+                window_start = event + pre_samples
+                window_end = event + post_samples
+
+                # Check if window is within the velocity array bounds
+                if window_start >= 0 and window_end < len(velocity):
+                    aligned_velocity[i, :] = velocity[window_start:window_end]
+
+            # Average across all events
+            avg_velocity = np.mean(aligned_velocity, axis=0)
+
+            # Create time points
+            time_points = np.linspace(pre_window, post_window, len(avg_velocity))
+
+            return time_points, avg_velocity
+
+        # Align spikes to events
+        d1_aligned = align_spikes_to_events(d1_peak_indices, event_indices,
+                                            pre_samples, post_samples, self.ci_rate) if show_d1 else []
+        d2_aligned = align_spikes_to_events(d2_peak_indices, event_indices,
+                                            pre_samples, post_samples, self.ci_rate) if show_d2 else []
+        chi_aligned = align_spikes_to_events(chi_peak_indices, event_indices,
+                                            pre_samples, post_samples, self.ci_rate) if show_chi else []
+
+        # Get average velocity aligned to events
+        time_points, avg_velocity = align_velocity_to_events(self.smoothed_velocity,
+                                                            event_indices,
+                                                            pre_samples, post_samples,
+                                                            self.ci_rate)
+
+        # Calculate spike density over time (PSTH)
+        bins = np.arange(pre_window, post_window + bin_width, bin_width)
+        bin_centers = bins[:-1] + bin_width / 2
+
+        # Aggregate spikes across neurons
+        d1_all_times = []
+        d2_all_times = []
+        chi_all_times = []
+
+        if show_d1 and d1_aligned:
+            # Collect all spike times across all D1 neurons
+            spikes_list = [[t for _, t in neuron_spikes] for neuron_spikes in d1_aligned if neuron_spikes]
+            if spikes_list:  # Make sure there's data
+                d1_all_times = np.concatenate(spikes_list)
+
+        if show_d2 and d2_aligned:
+            spikes_list = [[t for _, t in neuron_spikes] for neuron_spikes in d2_aligned if neuron_spikes]
+            if spikes_list:
+                d2_all_times = np.concatenate(spikes_list)
+
+        if show_chi and chi_aligned:
+            spikes_list = [[t for _, t in neuron_spikes] for neuron_spikes in chi_aligned if neuron_spikes]
+            if spikes_list:
+                chi_all_times = np.concatenate(spikes_list)
+
+        # Create histograms
+        d1_hist = np.zeros_like(bin_centers)
+        d2_hist = np.zeros_like(bin_centers)
+        chi_hist = np.zeros_like(bin_centers)
+
+        if len(d1_all_times) > 0:
+            d1_hist, _ = np.histogram(d1_all_times, bins=bins)
+            # Normalize by number of neurons and bin width to get firing rate (spikes/s)
+            d1_hist = d1_hist / (len(d1_aligned) * bin_width) if len(d1_aligned) > 0 else d1_hist
+
+        if len(d2_all_times) > 0:
+            d2_hist, _ = np.histogram(d2_all_times, bins=bins)
+            d2_hist = d2_hist / (len(d2_aligned) * bin_width) if len(d2_aligned) > 0 else d2_hist
+
+        if len(chi_all_times) > 0:
+            chi_hist, _ = np.histogram(chi_all_times, bins=bins)
+            chi_hist = chi_hist / (len(chi_aligned) * bin_width) if len(chi_aligned) > 0 else chi_hist
+
+        # Normalize velocity for plotting (scale to match firing rate range)
+        max_firing_rate = max(np.max(d1_hist) if len(d1_hist) > 0 else 0,
+                            np.max(d2_hist) if len(d2_hist) > 0 else 0,
+                            np.max(chi_hist) if len(chi_hist) > 0 else 0)
+
+        if max_firing_rate > 0 and np.max(avg_velocity) > 0:
+            normalized_velocity = avg_velocity / np.max(
+                avg_velocity) * max_firing_rate * 0.8  # Scale to 80% of max firing rate
+        else:
+            normalized_velocity = avg_velocity  # Fallback if no firing rate data
+
+        # 1. PSTH (Peri-Stimulus Time Histogram) plot with velocity overlay
+        # Determine appropriate title based on event type
+        psth_title = f"Peri-Event Time Histogram"
+        if event_type == 'movement_onset':
+            x_axis_label = "Time relative to movement onset (s)"
+        elif event_type == 'velocity_peak':
+            x_axis_label = "Time relative to velocity peak (s)"
+        elif event_type == 'movement_offset':
+            x_axis_label = "Time relative to movement offset (s)"
+        else:
+            x_axis_label = "Time relative to event (s)"
+
+        p1 = figure(width=900, height=400,
+                    title=psth_title,
+                    x_axis_label=x_axis_label,
+                    y_axis_label="Firing Rate (Hz)",
+                    tools="pan,box_zoom,wheel_zoom,reset,save")
+
+        # Remove grid
+        p1.grid.grid_line_color = None
+
+        # Add vertical line at event time
+        event_line = Span(location=0, dimension='height', line_color='black',
+                        line_dash='dashed', line_width=2)
+        p1.add_layout(event_line)
+
+        # Create ColumnDataSource for the histograms
+        source_hist = ColumnDataSource(data=dict(
+            bin_centers=bin_centers,
+            d1_hist=d1_hist,
+            d2_hist=d2_hist,
+            chi_hist=chi_hist
+        ))
+
+        # Create ColumnDataSource for velocity
+        source_velocity = ColumnDataSource(data=dict(
+            time=time_points,
+            velocity=normalized_velocity
+        ))
+
+        # Plot histograms as bars without legend labels
+        legend_items1 = []
+
+        if show_d1 and len(d1_all_times) > 0:
+            d1_hist_plot = p1.vbar(x='bin_centers', top='d1_hist', width=bin_width * 0.8, source=source_hist,
+                                color='navy', alpha=0.5)
+            legend_items1.append(LegendItem(label="D1 Neurons", renderers=[d1_hist_plot]))
+
+        if show_d2 and len(d2_all_times) > 0:
+            d2_hist_plot = p1.vbar(x='bin_centers', top='d2_hist', width=bin_width * 0.8, source=source_hist,
+                                color='crimson', alpha=0.5)
+            legend_items1.append(LegendItem(label="D2 Neurons", renderers=[d2_hist_plot]))
+
+        if show_chi and len(chi_all_times) > 0:
+            chi_hist_plot = p1.vbar(x='bin_centers', top='chi_hist', width=bin_width * 0.8, source=source_hist,
+                                    color='green', alpha=0.5)
+            legend_items1.append(LegendItem(label="CHI Neurons", renderers=[chi_hist_plot]))
+
+        # Plot velocity as a line
+        velocity_line = p1.line('time', 'velocity', source=source_velocity, color='black',
+                                line_width=3, alpha=0.8)
+        legend_items1.append(LegendItem(label="Avg. Velocity", renderers=[velocity_line]))
+
+        # Create and add legend outside the plot
+        legend1 = Legend(items=legend_items1, location="center")
+
+        # Set legend outside the plot
+        p1.add_layout(legend1, 'right')
+        legend1.click_policy = "hide"  # Allow toggling visibility
+        legend1.background_fill_alpha = 0.7
+
+        # Add pre/post event regions
+        pre_box = BoxAnnotation(left=pre_window, right=0, fill_color='lightgray', fill_alpha=0.2)
+        post_box = BoxAnnotation(left=0, right=post_window, fill_color='lightyellow', fill_alpha=0.2)
+        p1.add_layout(pre_box)
+        p1.add_layout(post_box)
+
+        # 2. Raster plot of sample neurons
+        raster_title = "Spike Raster Plot"
+        if event_type == 'movement_onset':
+            raster_title += " Relative to Movement Onset"
+        elif event_type == 'velocity_peak':
+            raster_title += " Relative to Velocity Peak"
+        elif event_type == 'movement_offset':
+            raster_title += " Relative to Movement Offset"
+        else:
+            raster_title += " Relative to Event"
+
+        p2 = figure(width=900, height=500,
+                    title=raster_title,
+                    x_axis_label=x_axis_label,
+                    y_axis_label="Neuron #",
+                    tools="pan,box_zoom,wheel_zoom,reset,save")
+
+        # Remove grid
+        p2.grid.grid_line_color = None
+
+        # Add vertical line at event time
+        event_line = Span(location=0, dimension='height', line_color='black',
+                        line_dash='dashed', line_width=2)
+        p2.add_layout(event_line)
+
+        # Plot raster for a subset of neurons (limited by max_neurons_to_plot)
+        # Calculate max neurons to show for each type
+        max_d1 = min(max_neurons_to_plot, len(d1_aligned)) if show_d1 else 0
+        max_d2 = min(max_neurons_to_plot, len(d2_aligned)) if show_d2 else 0
+        max_chi = min(max_neurons_to_plot, len(chi_aligned)) if show_chi else 0
+
+        # Prepare data for raster plot
+        d1_raster_data = {'x': [], 'y': []}
+        d2_raster_data = {'x': [], 'y': []}
+        chi_raster_data = {'x': [], 'y': []}
+
+        # Add D1 neurons
+        for i in range(max_d1):
+            if i < len(d1_aligned) and d1_aligned[i]:
+                for _, spike_time in d1_aligned[i]:
+                    d1_raster_data['x'].append(spike_time)
+                    d1_raster_data['y'].append(i)
+
+        # Add D2 neurons (offset y position)
+        d2_offset = max_d1 + 1 if max_d1 > 0 else 0  # Add a gap between groups
+        for i in range(max_d2):
+            if i < len(d2_aligned) and d2_aligned[i]:
+                for _, spike_time in d2_aligned[i]:
+                    d2_raster_data['x'].append(spike_time)
+                    d2_raster_data['y'].append(i + d2_offset)
+
+        # Add CHI neurons (offset y position further)
+        chi_offset = d2_offset + max_d2 + 1 if max_d2 > 0 else d2_offset  # Add another gap
+        for i in range(max_chi):
+            if i < len(chi_aligned) and chi_aligned[i]:
+                for _, spike_time in chi_aligned[i]:
+                    chi_raster_data['x'].append(spike_time)
+                    chi_raster_data['y'].append(i + chi_offset)
+
+        # Create ColumnDataSource for rasters
+        d1_source_raster = ColumnDataSource(data=d1_raster_data)
+        d2_source_raster = ColumnDataSource(data=d2_raster_data)
+        chi_source_raster = ColumnDataSource(data=chi_raster_data)
+
+        # Create legend items for raster plot
+        raster_legend_items = []
+
+        # Plot raster points for each cell type
+        if show_d1 and d1_raster_data['x']:
+            d1_scatter = p2.scatter(x='x', y='y', source=d1_source_raster, size=4, color='navy', alpha=0.7)
+            raster_legend_items.append(LegendItem(label="D1 Neurons", renderers=[d1_scatter]))
+
+        if show_d2 and d2_raster_data['x']:
+            d2_scatter = p2.scatter(x='x', y='y', source=d2_source_raster, size=4, color='crimson', alpha=0.7)
+            raster_legend_items.append(LegendItem(label="D2 Neurons", renderers=[d2_scatter]))
+
+        if show_chi and chi_raster_data['x']:
+            chi_scatter = p2.scatter(x='x', y='y', source=chi_source_raster, size=4, color='green', alpha=0.7)
+            raster_legend_items.append(LegendItem(label="CHI Neurons", renderers=[chi_scatter]))
+
+        # Add velocity to raster plot
+        # Calculate the vertical position for the velocity line
+        middle_point = (chi_offset + max_chi) / 2 if max_chi > 0 else (d2_offset + max_d2) / 2 if max_d2 > 0 else max_d1 / 2
+        max_height = chi_offset + max_chi if max_chi > 0 else d2_offset + max_d2 if max_d2 > 0 else max_d1
+
+        # Scale velocity to fit within the plot's vertical range (25% of max height)
+        if max_height > 0 and np.max(avg_velocity) > 0:
+            scale_factor = max_height * 0.25 / np.max(avg_velocity)
+            scaled_velocity = avg_velocity * scale_factor
+            # Center the velocity line vertically
+            velocity_offset = middle_point
+
+            velocity_line2 = p2.line(time_points, scaled_velocity + velocity_offset,
+                                    color='gold', line_width=3, alpha=0.8)
+            raster_legend_items.append(LegendItem(label="Avg. Velocity", renderers=[velocity_line2]))
+
+        # Add dividing lines between neuron types
+        if max_d1 > 0 and (max_d2 > 0 or max_chi > 0):
+            div_line1 = Span(location=max_d1, dimension='width',
+                            line_color='gray', line_width=1, line_alpha=0.5)
+            p2.add_layout(div_line1)
+
+        if max_d2 > 0 and max_chi > 0:
+            div_line2 = Span(location=d2_offset + max_d2, dimension='width',
+                            line_color='gray', line_width=1, line_alpha=0.5)
+            p2.add_layout(div_line2)
+
+        # Create and add legend outside the plot
+        legend2 = Legend(items=raster_legend_items, location="center")
+        p2.add_layout(legend2, 'right')
+        legend2.click_policy = "hide"  # Allow toggling visibility
+
+        # Set y-range to accommodate all plotted neurons
+        p2.y_range.start = -1
+        p2.y_range.end = chi_offset + max_chi + 1 if max_chi > 0 else d2_offset + max_d2 + 1 if max_d2 > 0 else max_d1 + 1
+
+        # 3. Modulation Analysis
+        # Calculate phase preferences
+        pre_phase = (pre_window, 0)  # Before event
+        post_phase = (0, post_window)  # After event
+
+        # Count spikes in each phase
+        def count_phase_spikes(aligned_spikes, phase_range):
+            phase_start, phase_end = phase_range
+            counts = []
+
+            for neuron_spikes in aligned_spikes:
+                phase_count = sum(1 for _, t in neuron_spikes if phase_start <= t < phase_end)
+                counts.append(phase_count)
+
+            return counts
+
+        # Calculate modulation index: (post - pre) / (post + pre)
+        def calc_modulation_index(pre_counts, post_counts):
+            indices = []
+
+            for pre, post in zip(pre_counts, post_counts):
+                if pre + post > 0:  # Avoid division by zero
+                    index = (post - pre) / (post + pre)
+                else:
+                    index = 0
+                indices.append(index)
+
+            return indices
+
+        # Calculate pre/post counts and modulation indices for each cell type
+        d1_pre_counts = count_phase_spikes(d1_aligned, pre_phase) if show_d1 else []
+        d1_post_counts = count_phase_spikes(d1_aligned, post_phase) if show_d1 else []
+        d1_mod_indices = calc_modulation_index(d1_pre_counts, d1_post_counts) if show_d1 and d1_pre_counts else []
+
+        d2_pre_counts = count_phase_spikes(d2_aligned, pre_phase) if show_d2 else []
+        d2_post_counts = count_phase_spikes(d2_aligned, post_phase) if show_d2 else []
+        d2_mod_indices = calc_modulation_index(d2_pre_counts, d2_post_counts) if show_d2 and d2_pre_counts else []
+
+        chi_pre_counts = count_phase_spikes(chi_aligned, pre_phase) if show_chi else []
+        chi_post_counts = count_phase_spikes(chi_aligned, post_phase) if show_chi else []
+        chi_mod_indices = calc_modulation_index(chi_pre_counts, chi_post_counts) if show_chi and chi_pre_counts else []
+
+        # Check if we have enough data for modulation analysis
+        if any([d1_mod_indices, d2_mod_indices, chi_mod_indices]):
+            # Create box plot for modulation indices
+            mod_title = "Event-Related Modulation"
+            if event_type == 'movement_onset':
+                mod_title = "Movement Onset-Related Modulation"
+            elif event_type == 'velocity_peak':
+                mod_title = "Velocity Peak-Related Modulation"
+            elif event_type == 'movement_offset':
+                mod_title = "Movement Offset-Related Modulation"
+
+            p3 = figure(width=900, height=400,
+                        title=mod_title,
+                        x_axis_label="Neuron Type",
+                        y_axis_label="Modulation Index (post-pre)/(post+pre)",
+                        tools="pan,box_zoom,wheel_zoom,reset,save")
+
+            # Remove grid
+            p3.grid.grid_line_color = None
+
+            # Add horizontal line at 0
+            zero_line = Span(location=0, dimension='width', line_color='black',
+                            line_dash='dashed', line_width=1)
+            p3.add_layout(zero_line)
+
+            # Function to calculate box plot statistics
+            def calc_box_stats(data):
+                if not data:
+                    return (0, 0, 0, 0, 0)  # Return zeros if no data
+
+                q1 = np.percentile(data, 25)
+                q2 = np.percentile(data, 50)  # median
+                q3 = np.percentile(data, 75)
+                iqr = q3 - q1
+                upper = min(q3 + 1.5 * iqr, np.max(data))
+                lower = max(q1 - 1.5 * iqr, np.min(data))
+                return lower, q1, q2, q3, upper
+
+            # Calculate box plot data for each cell type
+            d1_box = calc_box_stats(d1_mod_indices)
+            d2_box = calc_box_stats(d2_mod_indices)
+            chi_box = calc_box_stats(chi_mod_indices)
+
+            # Helper function to draw boxplot
+            def add_boxplot(plot, x_pos, stats, width=0.3, color='navy'):
+                lower, q1, q2, q3, upper = stats
+
+                # Only draw if we have valid data
+                if q1 == q3 == 0:
+                    return None
+
+                # Box
+                box = plot.vbar(x=x_pos, width=width, top=q3, bottom=q1,
+                                fill_color=color, line_color="black", alpha=0.7)
+
+                # Median line
+                plot.line([x_pos - width / 2, x_pos + width / 2], [q2, q2], line_color="white", line_width=2)
+
+                # Whiskers
+                plot.segment(x0=x_pos, y0=q3, x1=x_pos, y1=upper, line_color="black")
+                plot.segment(x0=x_pos, y0=q1, x1=x_pos, y1=lower, line_color="black")
+
+                # Caps on whiskers
+                plot.segment(x0=x_pos - width / 4, y0=upper, x1=x_pos + width / 4, y1=upper, line_color="black")
+                plot.segment(x0=x_pos - width / 4, y0=lower, x1=x_pos + width / 4, y1=lower, line_color="black")
+
+                return box
+
+            # Function to create jittered x-coordinates
+            def jitter(x_pos, n, width=0.2):
+                return np.random.normal(x_pos, width / 4, size=n)
+
+            # Create legend items list
+            mod_legend_items = []
+
+            # Plot D1 modulation data if available
+            if show_d1 and d1_mod_indices:
+                # Add D1 box plot
+                d1_box_plot = add_boxplot(p3, 1, d1_box, color='navy')
+
+                # Add scatter points with jitter
+                d1_x = jitter(1, len(d1_mod_indices), width=0.2)
+                d1_source = ColumnDataSource(data=dict(x=d1_x, y=d1_mod_indices))
+                d1_circles = p3.scatter(x='x', y='y', source=d1_source, size=6, color='navy', alpha=0.5)
+
+                mod_legend_items.append(LegendItem(label="D1", renderers=[d1_box_plot, d1_circles]))
+
+            # Plot D2 modulation data if available
+            if show_d2 and d2_mod_indices:
+                # Add D2 box plot
+                d2_box_plot = add_boxplot(p3, 2, d2_box, color='crimson')
+
+                # Add scatter points with jitter
+                d2_x = jitter(2, len(d2_mod_indices), width=0.2)
+                d2_source = ColumnDataSource(data=dict(x=d2_x, y=d2_mod_indices))
+                d2_circles = p3.scatter(x='x', y='y', source=d2_source, size=6, color='crimson', alpha=0.5)
+
+                mod_legend_items.append(LegendItem(label="D2", renderers=[d2_box_plot, d2_circles]))
+
+            # Plot CHI modulation data if available
+            if show_chi and chi_mod_indices:
+                # Add CHI box plot
+                chi_box_plot = add_boxplot(p3, 3, chi_box, color='green')
+
+                # Add scatter points with jitter
+                chi_x = jitter(3, len(chi_mod_indices), width=0.2)
+                chi_source = ColumnDataSource(data=dict(x=chi_x, y=chi_mod_indices))
+                chi_circles = p3.scatter(x='x', y='y', source=chi_source, size=6, color='green', alpha=0.5)
+
+                mod_legend_items.append(LegendItem(label="CHI", renderers=[chi_box_plot, chi_circles]))
+
+            # Create legend for the modulation plot
+            legend3 = Legend(items=mod_legend_items, location="center")
+            p3.add_layout(legend3, 'right')
+
+            # Set x-axis ticks and range
+            positions = []
+            labels = {}
+
+            if show_d1 and d1_mod_indices:
+                positions.append(1)
+                labels[1] = 'D1'
+
+            if show_d2 and d2_mod_indices:
+                positions.append(2)
+                labels[2] = 'D2'
+
+            if show_chi and chi_mod_indices:
+                positions.append(3)
+                labels[3] = 'CHI'
+
+            p3.xaxis.ticker = positions
+            p3.xaxis.major_label_overrides = labels
+            p3.x_range.start = min(positions) - 0.5 if positions else 0.5
+            p3.x_range.end = max(positions) + 0.5 if positions else 3.5
+
+            # Calculate statistics for printing
+            event_str = event_type.replace('_', ' ').title() if event_type else "Event"
+
+            if d1_mod_indices:
+                d1_mean = np.mean(d1_mod_indices)
+                d1_sem = np.std(d1_mod_indices) / np.sqrt(len(d1_mod_indices))
+                d1_median = np.median(d1_mod_indices)
+                d1_pos_pct = np.sum(np.array(d1_mod_indices) > 0) / len(d1_mod_indices) * 100
+
+                print(f"\nEvent-Related Activity Statistics:")
+                print(f"D1 Neurons (n={len(d1_aligned)}):")
+                print(f"- Mean modulation index: {d1_mean:.3f} ± {d1_sem:.3f}")
+                print(f"- Median modulation index: {d1_median:.3f}")
+                print(f"- % positive modulation: {d1_pos_pct:.1f}%")
+
+            if d2_mod_indices:
+                d2_mean = np.mean(d2_mod_indices)
+                d2_sem = np.std(d2_mod_indices) / np.sqrt(len(d2_mod_indices))
+                d2_median = np.median(d2_mod_indices)
+                d2_pos_pct = np.sum(np.array(d2_mod_indices) > 0) / len(d2_mod_indices) * 100
+
+                if not d1_mod_indices:  # Print header if not already printed
+                    print(f"\n{event_str}-Related Activity Statistics:")
+                print(f"\nD2 Neurons (n={len(d2_aligned)}):")
+                print(f"- Mean modulation index: {d2_mean:.3f} ± {d2_sem:.3f}")
+                print(f"- Median modulation index: {d2_median:.3f}")
+                print(f"- % positive modulation: {d2_pos_pct:.1f}%")
+
+            if chi_mod_indices:
+                chi_mean = np.mean(chi_mod_indices)
+                chi_sem = np.std(chi_mod_indices) / np.sqrt(len(chi_mod_indices))
+                chi_median = np.median(chi_mod_indices)
+                chi_pos_pct = np.sum(np.array(chi_mod_indices) > 0) / len(chi_mod_indices) * 100
+
+                if not d1_mod_indices and not d2_mod_indices:  # Print header if not already printed
+                    print(f"\n{event_str}-Related Activity Statistics:")
+                print(f"\nCHI Neurons (n={len(chi_aligned)}):")
+                print(f"- Mean modulation index: {chi_mean:.3f} ± {chi_sem:.3f}")
+                print(f"- Median modulation index: {chi_median:.3f}")
+                print(f"- % positive modulation: {chi_pos_pct:.1f}%")
+
+            # Statistical comparison if we have multiple cell types
+            if show_d1 and show_d2 and d1_mod_indices and d2_mod_indices:
+                t_stat, p_val = stats.ttest_ind(d1_mod_indices, d2_mod_indices, equal_var=False)
+                print(f"\nStatistical Comparison:")
+                print(f"- D1 vs D2 t-test: t={t_stat:.3f}, p={p_val:.5f}")
+
+            if show_d1 and show_chi and d1_mod_indices and chi_mod_indices:
+                t_stat, p_val = stats.ttest_ind(d1_mod_indices, chi_mod_indices, equal_var=False)
+                print(f"- D1 vs CHI t-test: t={t_stat:.3f}, p={p_val:.5f}")
+
+            if show_d2 and show_chi and d2_mod_indices and chi_mod_indices:
+                t_stat, p_val = stats.ttest_ind(d2_mod_indices, chi_mod_indices, equal_var=False)
+                print(f"- D2 vs CHI t-test: t={t_stat:.3f}, p={p_val:.5f}")
+            else:
+                # Skip modulation analysis if no data
+                p3 = figure(width=900, height=400,
+                            title="Event-Related Modulation (insufficient data)",
+                            x_axis_label="Neuron Type",
+                            y_axis_label="Modulation Index")
+                p3.grid.grid_line_color = None
+
+            # 4. Heatmap visualization
+            # Create a heatmap showing activity over time for each neuron
+
+            # Function to create neuron heatmap data
+            def create_neuron_heatmap_data(aligned_spikes, bins):
+                n_neurons = len(aligned_spikes)
+                n_bins = len(bins) - 1
+                heatmap = np.zeros((n_neurons, n_bins))
+
+                for i, neuron_spikes in enumerate(aligned_spikes):
+                    if neuron_spikes:
+                        spike_times = [t for _, t in neuron_spikes]
+                        hist, _ = np.histogram(spike_times, bins=bins)
+                        heatmap[i, :] = hist
+
+                return heatmap
+
+            # Function to normalize heatmap values
+            def normalize_heatmap(heatmap):
+                normalized = np.zeros_like(heatmap)
+                for i in range(heatmap.shape[0]):
+                    if np.max(heatmap[i, :]) > 0:
+                        normalized[i, :] = heatmap[i, :] / np.max(heatmap[i, :])
+                return normalized
+
+            # Create heatmap bins
+            heatmap_bins = np.linspace(pre_window, post_window, 61)  # 0.1s bins
+            heatmap_bin_centers = (heatmap_bins[:-1] + heatmap_bins[1:]) / 2
+
+            # List to store heatmap plots
+            heatmap_plots = []
+
+            # Determine heatmap titles
+            heatmap_title_base = "Neuron Activity Heat Map"
+            if event_type == 'movement_onset':
+                heatmap_title_suffix = "around Movement Onset"
+            elif event_type == 'velocity_peak':
+                heatmap_title_suffix = "around Velocity Peak"
+            elif event_type == 'movement_offset':
+                heatmap_title_suffix = "around Movement Offset"
+            else:
+                heatmap_title_suffix = "around Event"
+
+            # Create D1 heatmap if applicable
+            if show_d1 and len(d1_aligned) > 0:
+                d1_heatmap = create_neuron_heatmap_data(d1_aligned, heatmap_bins)
+                d1_heatmap_norm = normalize_heatmap(d1_heatmap)
+
+                if np.sum(d1_heatmap_norm) > 0:  # Only create plot if there's activity
+                    p4 = figure(width=900, height=300, title=f"D1 {heatmap_title_base} {heatmap_title_suffix}",
+                                x_axis_label="Time (s)", y_axis_label="Neuron #",
+                                tools="pan,box_zoom,wheel_zoom,reset,save")
+
+                    # Remove grid
+                    p4.grid.grid_line_color = None
+
+                    # Flip heatmap vertically for proper orientation
+                    d1_img = np.flipud(d1_heatmap_norm)
+
+                    # Calculate dimensions for plotting
+                    d1_dh = len(d1_aligned)
+
+                    # Plot the heatmap
+                    p4.image(image=[d1_img], x=pre_window, y=0,
+                            dw=post_window - pre_window, dh=d1_dh,
+                            palette="Viridis256", level="image")
+
+                    # Add event line
+                    p4.add_layout(Span(location=0, dimension='height',
+                                    line_color='white', line_dash='dashed', line_width=2))
+
+                    # Add velocity overlay if possible
+                    if len(time_points) > 0 and len(avg_velocity) > 0:
+                        scaled_velocity = avg_velocity / np.max(avg_velocity) * d1_dh * 0.8
+                        p4.line(time_points, scaled_velocity, color='gold', line_width=3, alpha=0.8)
+
+                    # Set y-range
+                    p4.y_range.start = 0
+                    p4.y_range.end = d1_dh
+
+                    heatmap_plots.append(p4)
+
+            # Create D2 heatmap if applicable
+            if show_d2 and len(d2_aligned) > 0:
+                d2_heatmap = create_neuron_heatmap_data(d2_aligned, heatmap_bins)
+                d2_heatmap_norm = normalize_heatmap(d2_heatmap)
+
+                if np.sum(d2_heatmap_norm) > 0:  # Only create plot if there's activity
+                    p5 = figure(width=900, height=300, title=f"D2 {heatmap_title_base} {heatmap_title_suffix}",
+                                x_axis_label="Time (s)", y_axis_label="Neuron #",
+                                tools="pan,box_zoom,wheel_zoom,reset,save")
+
+                    # Remove grid
+                    p5.grid.grid_line_color = None
+
+                    # Flip heatmap vertically for proper orientation
+                    d2_img = np.flipud(d2_heatmap_norm)
+
+                    # Calculate dimensions for plotting
+                    d2_dh = len(d2_aligned)
+
+                    # Plot the heatmap
+                    p5.image(image=[d2_img], x=pre_window, y=0,
+                            dw=post_window - pre_window, dh=d2_dh,
+                            palette="Viridis256", level="image")
+
+                    # Add event line
+                    p5.add_layout(Span(location=0, dimension='height',
+                                    line_color='white', line_dash='dashed', line_width=2))
+
+                    # Add velocity overlay if possible
+                    if len(time_points) > 0 and len(avg_velocity) > 0:
+                        scaled_velocity = avg_velocity / np.max(avg_velocity) * d2_dh * 0.8
+                        p5.line(time_points, scaled_velocity, color='gold', line_width=3, alpha=0.8)
+
+                    # Set y-range
+                    p5.y_range.start = 0
+                    p5.y_range.end = d2_dh
+
+                    heatmap_plots.append(p5)
+
+            # Create CHI heatmap if applicable
+            if show_chi and len(chi_aligned) > 0:
+                chi_heatmap = create_neuron_heatmap_data(chi_aligned, heatmap_bins)
+                chi_heatmap_norm = normalize_heatmap(chi_heatmap)
+
+                if np.sum(chi_heatmap_norm) > 0:  # Only create plot if there's activity
+                    p6 = figure(width=900, height=300, title=f"CHI {heatmap_title_base} {heatmap_title_suffix}",
+                                x_axis_label="Time (s)", y_axis_label="Neuron #",
+                                tools="pan,box_zoom,wheel_zoom,reset,save")
+
+                    # Remove grid
+                    p6.grid.grid_line_color = None
+
+                    # Flip heatmap vertically for proper orientation
+                    chi_img = np.flipud(chi_heatmap_norm)
+
+                    # Calculate dimensions for plotting
+                    chi_dh = len(chi_aligned)
+
+                    # Plot the heatmap
+                    p6.image(image=[chi_img], x=pre_window, y=0,
+                            dw=post_window - pre_window, dh=chi_dh,
+                            palette="Viridis256", level="image")
+
+                    # Add event line
+                    p6.add_layout(Span(location=0, dimension='height',
+                                    line_color='white', line_dash='dashed', line_width=2))
+
+                    # Add velocity overlay if possible
+                    if len(time_points) > 0 and len(avg_velocity) > 0:
+                        scaled_velocity = avg_velocity / np.max(avg_velocity) * chi_dh * 0.8
+                        p6.line(time_points, scaled_velocity, color='gold', line_width=3, alpha=0.8)
+
+                    # Set y-range
+                    p6.y_range.start = 0
+                    p6.y_range.end = chi_dh
+
+                    heatmap_plots.append(p6)
+
+            # Create a layout with the plots stacked vertically
+            plots = [p1, p2, p3] + heatmap_plots
+            layout = column(*plots)
+
+            # Set default save path if none provided
+            if save_path is None:
+                cell_types = []
+                if show_d1: cell_types.append("D1")
+                if show_d2: cell_types.append("D2")
+                if show_chi: cell_types.append("CHI")
+                cell_type_str = "_".join(cell_types)
+
+                # Include event type in filename if provided
+                event_name = event_type if event_type else "Event"
+
+                save_path = os.path.join(self.config["SummaryPlotsPath"],
+                                        self.session_name,
+                                        f'{event_name}_Related_{cell_type_str}_Activity.html')
+
+            # Output the plot
+            self.output_bokeh_plot(layout, save_path=save_path, title=title,
+                                notebook=notebook, overwrite=overwrite)
+
+            return layout
