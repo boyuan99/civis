@@ -557,17 +557,52 @@ class VirmenTank:
 
 
     @classmethod
-    def output_bokeh_plot(cls, plot, save_path=None, title=None, notebook=False, overwrite=False):
+    def output_bokeh_plot(cls, plot, save_path=None, title=None, notebook=False, overwrite=False, font_size="12pt"):
         import os
         from bokeh.plotting import figure
         from bokeh.layouts import LayoutDOM
         from bokeh.io import output_notebook, output_file, reset_output, export_svg, save, show, curdoc
+
+        def set_figures_backend(obj, backend):
+            """Recursively set the output_backend of all figure objects"""
+            if isinstance(obj, figure):
+                obj.output_backend = backend
+            elif isinstance(obj, LayoutDOM) and hasattr(obj, 'children'):
+                for child in obj.children:
+                    set_figures_backend(child, backend)
+        
+        def set_font_sizes(obj, font_size="24pt"):
+            """Recursively set font sizes for all figure objects"""
+            if isinstance(obj, figure):
+                # Set title font size
+                if obj.title:
+                    obj.title.text_font_size = font_size
+                
+                # Set axis label font sizes
+                obj.xaxis.axis_label_text_font_size = font_size
+                obj.yaxis.axis_label_text_font_size = font_size
+                
+                # Set axis tick label font sizes
+                obj.xaxis.major_label_text_font_size = font_size
+                obj.yaxis.major_label_text_font_size = font_size
+                
+                # Set legend font size
+                if obj.legend:
+                    obj.legend.label_text_font_size = font_size
+                    
+            elif isinstance(obj, LayoutDOM) and hasattr(obj, 'children'):
+                for child in obj.children:
+                    set_font_sizes(child, font_size)
 
         if save_path is not None:
             reset_output()
             if os.path.exists(save_path) and not overwrite:
                 print("File already exists and overwrite is set to False.")
             else:
+                # Set font sizes for all output formats if font_size is specified
+                if font_size is not None:
+                    set_font_sizes(plot, font_size)
+                
                 if save_path.split(".")[-1] == 'html':
                     output_file(save_path, title=title)
                     curdoc().clear()
@@ -576,14 +611,6 @@ class VirmenTank:
                     print("File saved as html.")
                     curdoc().clear()
                 elif save_path.split(".")[-1] == 'svg':
-                    def set_figures_backend(obj, backend):
-                        """Recursively set the output_backend of all figure objects"""
-                        if isinstance(obj, figure):
-                            obj.output_backend = backend
-                        elif isinstance(obj, LayoutDOM) and hasattr(obj, 'children'):
-                            for child in obj.children:
-                                set_figures_backend(child, backend)
-                    
                     # set all figures to SVG backend
                     set_figures_backend(plot, 'svg')
                     
@@ -615,7 +642,7 @@ class VirmenTank:
             # Extend the palette by repeating it
             return list(itertools.islice(itertools.cycle(palette), num_categories))
 
-    def plot_lick_and_velocity(self, title="Lick And Velocity", notebook=False, save_path=None, overwrite=False):
+    def plot_lick_and_velocity(self, title="Lick And Velocity", notebook=False, save_path=None, overwrite=False, font_size=None):
         """
         Plot the lick data and velocity data with vertical lines for events.
         """
@@ -692,7 +719,7 @@ class VirmenTank:
         # Create layout and output
         layout = column(p, p_v)
         self.output_bokeh_plot(layout, save_path=save_path, title=title, 
-                             notebook=notebook, overwrite=overwrite)
+                             notebook=notebook, overwrite=overwrite, font_size=font_size)
 
         return layout
 
@@ -769,7 +796,7 @@ class MazeV3Tank():
             "total_trials": len(self.virmen_trials)
         }
     
-    def plot_falls(self, save_path=None, title="Animal Falls in Maze", notebook=False, overwrite=False):
+    def plot_falls(self, save_path=None, title="Animal Falls in Maze", notebook=False, overwrite=False, font_size=None):
         """
         Creates a visualization of animal trajectory with fall locations highlighted.
         
@@ -836,7 +863,7 @@ class MazeV3Tank():
         
         # Output
         VirmenTank.output_bokeh_plot(p, save_path=save_path, title=title, 
-                                   notebook=notebook, overwrite=overwrite)
+                                   notebook=notebook, overwrite=overwrite, font_size=font_size)
         
         return p
 
@@ -936,7 +963,7 @@ class MazeV1Tank():
 
         return confusion_matrix
 
-    def plot_confusion_matrix(self, save_path=None, title=None, notebook=False, overwrite=False, backend='matplotlib'):
+    def plot_confusion_matrix(self, save_path=None, title=None, notebook=False, overwrite=False, backend='matplotlib', font_size=None):
         """
         Plots the confusion matrix as a heatmap.
 
@@ -997,7 +1024,7 @@ class MazeV1Tank():
             p.text(x='x', y='y', text='value', source=source,
                    text_align="center", text_baseline="middle")
 
-            VirmenTank.output_bokeh_plot(p, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite)
+            VirmenTank.output_bokeh_plot(p, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite, font_size=font_size)
 
             return p
         else:

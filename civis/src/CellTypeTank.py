@@ -171,7 +171,7 @@ class CellTypeTank(CITank):
     def plot_cell_activity_at_events(self, event_type='movement_onset', 
                                      show_d1=True, show_d2=True, show_chi=True,
                                      d1_signal=None, d2_signal=None, chi_signal=None,
-                                     cut_interval=50, save_path=None, title=None, notebook=False, overwrite=False):
+                                     cut_interval=50, save_path=None, title=None, notebook=False, overwrite=False, font_size=None):
         """
         Plot average calcium traces for D1, D2, and/or CHI neuron populations, along with velocity, around specific events.
         Uses dual y-axes to separately scale calcium and velocity signals, with optimized scaling.
@@ -202,6 +202,9 @@ class CellTypeTank(CITank):
             Flag to indicate if the plot is for a Jupyter notebook
         overwrite : bool
             Flag to indicate whether to overwrite existing file
+        font_size : str, optional
+            Font size for all text elements in the plot (e.g., "16pt", "24pt"). 
+            If None, uses Bokeh's default font sizes.
         
         Returns:
         --------
@@ -336,7 +339,7 @@ class CellTypeTank(CITank):
         cell_type_str = "_".join(cell_types)
         
         output_title = f"{plot_title} ({cell_type_str})" if cell_types else plot_title
-        self.output_bokeh_plot(p, save_path=save_path, title=output_title, notebook=notebook, overwrite=overwrite)
+        self.output_bokeh_plot(p, save_path=save_path, title=output_title, notebook=notebook, overwrite=overwrite, font_size=font_size)
         
         return p
 
@@ -346,7 +349,7 @@ class CellTypeTank(CITank):
                                     velocity_color='plum', movement_onset_color='green',
                                     x_range=(0, 60), y_range=(-0.05, 1.5), width=800, height=400,
                                     split_plots=False, 
-                                    save_path=None, title=None, notebook=False, overwrite=False):
+                                    save_path=None, title=None, notebook=False, overwrite=False, font_size=None):
         """
         Plot average signals for different cell types (D1, D2, CHI) along with behavioral markers.
         
@@ -489,7 +492,7 @@ class CellTypeTank(CITank):
             
             # Output the layout
             self.output_bokeh_plot(layout, save_path=save_path, title=title, 
-                                  notebook=notebook, overwrite=overwrite)
+                                  notebook=notebook, overwrite=overwrite, font_size=font_size)
             
             return layout
         else:
@@ -550,7 +553,7 @@ class CellTypeTank(CITank):
             
             # Output the plot
             self.output_bokeh_plot(p, save_path=save_path, title=title, 
-                                  notebook=notebook, overwrite=overwrite)
+                                  notebook=notebook, overwrite=overwrite, font_size=font_size)
             
             return p
 
@@ -559,7 +562,7 @@ class CellTypeTank(CITank):
                                      show_d1=True, show_d2=True, show_chi=True,
                                      add_kde_contours=True, add_population_means=True,
                                      split_scatter_plots=True,
-                                     save_path=None, title=None, notebook=False, overwrite=False):
+                                     save_path=None, title=None, notebook=False, overwrite=False, font_size=None):
         """
         Compare peak activity of different neuron types (D1, D2, CHI) with a specified signal.
         Creates visualizations including histograms of signal values at neural peaks,
@@ -1217,7 +1220,7 @@ class CellTypeTank(CITank):
         
         # Output the plot
         self.output_bokeh_plot(all_plots, save_path=save_path, title=title, 
-                              notebook=notebook, overwrite=overwrite)
+                              notebook=notebook, overwrite=overwrite, font_size=font_size)
         
         # Return all created plots
         plot_list = [p1, p1_line, peak_counts_fig]
@@ -1230,7 +1233,7 @@ class CellTypeTank(CITank):
                                            show_d1=True, show_d2=True, show_chi=True, 
                                            split_scatter_plots=True,
                                            save_path=None, title=None, 
-                                           notebook=False, overwrite=False):
+                                           notebook=False, overwrite=False, font_size=None):
         """
         Compare peak activity of different neuron types (D1, D2, CHI) with velocity data.
         Creates visualizations including histograms of velocities at neural peaks,
@@ -1284,14 +1287,15 @@ class CellTypeTank(CITank):
             save_path=save_path,
             title=title,
             notebook=notebook,
-            overwrite=overwrite
+            overwrite=overwrite,
+            font_size=font_size
         )
     
     def compare_neuron_peaks_with_acceleration(self, d1_peak_indices=None, d2_peak_indices=None, chi_peak_indices=None, 
                                               show_d1=True, show_d2=True, show_chi=True, 
                                               split_scatter_plots=True,
                                               save_path=None, title=None, 
-                                              notebook=False, overwrite=False):
+                                              notebook=False, overwrite=False, font_size=None):
         """
         Compare peak activity of different neuron types (D1, D2, CHI) with acceleration data.
         Creates visualizations including histograms of accelerations at neural peaks,
@@ -1345,12 +1349,13 @@ class CellTypeTank(CITank):
             save_path=save_path,
             title=title,
             notebook=notebook,
-            overwrite=overwrite
+            overwrite=overwrite,
+            font_size=font_size
         )
 
     def create_cell_type_spike_visualizations(self, d1_peak_indices=None, d2_peak_indices=None, chi_peak_indices=None,
                                        show_d1=True, show_d2=True, show_chi=True, 
-                                       save_path=None, title="Neural Spike Analysis", notebook=False, overwrite=False):
+                                       save_path=None, title="Neural Spike Analysis", notebook=False, overwrite=False, font_size=None):
         """
         Create comprehensive visualizations of D1, D2, and CHI neural spike data.
         
@@ -1666,8 +1671,8 @@ class CellTypeTank(CITank):
         )
         
         # Output the plot
-        self.output_bokeh_plot(layout, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite)
-        
+        self.output_bokeh_plot(layout, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite, font_size=font_size)
+
         return layout
 
 
@@ -1676,7 +1681,7 @@ class CellTypeTank(CITank):
                                         show_d1=True, show_d2=True, show_chi=True,
                                         pre_window=-3, post_window=3, bin_width=0.1,
                                         max_neurons_to_plot=20,
-                                        save_path=None, title=None, notebook=False, overwrite=False):
+                                        save_path=None, title=None, notebook=False, overwrite=False, font_size=None):
         """
         Analyze neural activity in relation to any specified event indices. Creates multiple visualizations
         showing how different neuron types (D1, D2, CHI) activate around these events.
@@ -2510,7 +2515,6 @@ class CellTypeTank(CITank):
                                         f'{event_name}_Related_{cell_type_str}_Activity.html')
 
             # Output the plot
-            self.output_bokeh_plot(layout, save_path=save_path, title=title,
-                                notebook=notebook, overwrite=overwrite)
+            self.output_bokeh_plot(layout, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite, font_size=font_size)
 
             return layout

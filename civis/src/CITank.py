@@ -1585,6 +1585,7 @@ class CITank(VirmenTank):
         
         return results
 
+    # Going to remove this function
     def analyze_d1_d2_spikes_signal(self, json_masks, signal, signal_name="Signal", time_window=4, height=0.0, 
                                save_path=None, title=None, notebook=False, overwrite=False):
         """
