@@ -2518,3 +2518,369 @@ class CellTypeTank(CITank):
             self.output_bokeh_plot(layout, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite, font_size=font_size)
 
             return layout
+
+    def analyze_signal_around_cell_type_spikes(self, d1_indices=None, d2_indices=None, chi_indices=None, 
+                                              signal=None, signal_name="Signal", time_window=4.0, height=0.5,
+                                              show_d1=True, show_d2=True, show_chi=True,
+                                              save_path=None, title=None, notebook=False, overwrite=False, font_size=None):
+        """
+        Analyze any signal before and after spikes in D1, D2, and CHI neurons.
+        
+        Parameters:
+        -----------
+        d1_indices : array-like, optional
+            Indices of D1 neurons. If None, uses self.d1_indices
+        d2_indices : array-like, optional
+            Indices of D2 neurons. If None, uses self.d2_indices
+        chi_indices : array-like, optional
+            Indices of CHI neurons. If None, uses self.chi_indices
+        signal : numpy.ndarray, optional
+            Signal array to analyze (e.g., self.smoothed_velocity, self.acceleration)
+            If None, uses self.smoothed_velocity
+        signal_name : str
+            Name of signal for plot labels (e.g., "Velocity", "Acceleration")
+        time_window : float
+            Time window in seconds before and after spike to analyze
+        height : float
+            Height threshold for peak detection
+        show_d1 : bool
+            Whether to analyze and show D1 neurons
+        show_d2 : bool
+            Whether to analyze and show D2 neurons
+        show_chi : bool
+            Whether to analyze and show CHI neurons
+        save_path : str, optional
+            Path to save the plot
+        title : str, optional
+            Title for the plot (if None, will be generated based on signal_name)
+        notebook : bool
+            Whether to display in notebook
+        overwrite : bool
+            Whether to overwrite existing file
+        font_size : str, optional
+            Font size for plot text elements
+        
+        Returns:
+        --------
+        dict : Dictionary containing analysis results and plot objects
+        """
+        from bokeh.plotting import figure
+        from bokeh.layouts import gridplot
+        from bokeh.models import ColumnDataSource, Span
+        from scipy.signal import find_peaks
+        
+        # Use default indices if not provided
+        if d1_indices is None:
+            d1_indices = self.d1_indices
+        if d2_indices is None:
+            d2_indices = self.d2_indices
+        if chi_indices is None:
+            chi_indices = self.chi_indices
+            
+        # Use default signal if not provided
+        if signal is None:
+            signal = self.smoothed_velocity
+        
+        # Set default title if not provided
+        if title is None:
+            cell_types = []
+            if show_d1: cell_types.append("D1")
+            if show_d2: cell_types.append("D2") 
+            if show_chi: cell_types.append("CHI")
+            title = f"{signal_name} around {', '.join(cell_types)} Neuron Spikes"
+        
+        # Convert time window to samples
+        samples_window = int(time_window * self.ci_rate)
+        
+        # Initialize results dictionary
+        results = {
+            'time_axis': np.linspace(-time_window, time_window, 2 * samples_window + 1),
+            'signal_name': signal_name
+        }
+        
+        plots = []
+        
+        # Process D1 neurons if requested
+        if show_d1 and len(d1_indices) > 0:
+            d1_peak_indices = []
+            for i in d1_indices:
+                x, _ = find_peaks(self.C_denoised[i], height=height)
+                d1_peak_indices.append(x)
+            
+            d1_signals = []
+            for neuron_spikes in d1_peak_indices:
+                for spike_idx in neuron_spikes:
+                    if spike_idx - samples_window >= 0 and spike_idx + samples_window < len(signal):
+                        signal_segment = signal[spike_idx - samples_window:spike_idx + samples_window + 1]
+                        d1_signals.append(signal_segment)
+            
+            if len(d1_signals) > 0:
+                d1_signals = np.array(d1_signals)
+                d1_avg_signal = np.mean(d1_signals, axis=0)
+                d1_sem_signal = np.std(d1_signals, axis=0) / np.sqrt(len(d1_signals))
+                
+                # Store results
+                results['d1_avg_signal'] = d1_avg_signal
+                results['d1_sem_signal'] = d1_sem_signal
+                results['d1_sample_count'] = len(d1_signals)
+                
+                # Create D1 plot
+                p1 = figure(width=900, height=400, 
+                        title=f"{signal_name} around D1 Neuron Spikes (n={len(d1_signals)})",
+                        x_axis_label="Time relative to spike (s)",
+                        y_axis_label=signal_name)
+                
+                p1.line(results['time_axis'], d1_avg_signal, line_width=3, color='navy', legend_label="D1 Average")
+                p1.patch(
+                    np.concatenate([results['time_axis'], results['time_axis'][::-1]]),
+                    np.concatenate([
+                        d1_avg_signal + d1_sem_signal,
+                        (d1_avg_signal - d1_sem_signal)[::-1]
+                    ]),
+                    color='navy', alpha=0.2
+                )
+                
+                # Add vertical line at spike time
+                p1.line([0, 0], [np.min(d1_avg_signal)-1, np.max(d1_avg_signal) * 1.2], 
+                       line_width=2, color='black', line_dash='dashed')
+                
+                # Add horizontal line at y=0 for acceleration signals
+                if signal_name.lower() == "acceleration":
+                    zero_line = Span(location=0, dimension='width', line_color='black', line_width=2, line_dash='dotted')
+                    p1.add_layout(zero_line)
+                
+                p1.xgrid.grid_line_color = None
+                p1.ygrid.grid_line_color = None
+                p1.legend.location = "top_right"
+                p1.legend.click_policy = "hide"
+                
+                plots.append(p1)
+        
+        # Process D2 neurons if requested
+        if show_d2 and len(d2_indices) > 0:
+            d2_peak_indices = []
+            for i in d2_indices:
+                x, _ = find_peaks(self.C_denoised[i], height=height)
+                d2_peak_indices.append(x)
+            
+            d2_signals = []
+            for neuron_spikes in d2_peak_indices:
+                for spike_idx in neuron_spikes:
+                    if spike_idx - samples_window >= 0 and spike_idx + samples_window < len(signal):
+                        signal_segment = signal[spike_idx - samples_window:spike_idx + samples_window + 1]
+                        d2_signals.append(signal_segment)
+            
+            if len(d2_signals) > 0:
+                d2_signals = np.array(d2_signals)
+                d2_avg_signal = np.mean(d2_signals, axis=0)
+                d2_sem_signal = np.std(d2_signals, axis=0) / np.sqrt(len(d2_signals))
+                
+                # Store results
+                results['d2_avg_signal'] = d2_avg_signal
+                results['d2_sem_signal'] = d2_sem_signal
+                results['d2_sample_count'] = len(d2_signals)
+                
+                # Create D2 plot
+                p2 = figure(width=900, height=400, 
+                        title=f"{signal_name} around D2 Neuron Spikes (n={len(d2_signals)})",
+                        x_axis_label="Time relative to spike (s)",
+                        y_axis_label=signal_name,
+                        x_range=plots[0].x_range if plots else None)
+                
+                p2.line(results['time_axis'], d2_avg_signal, line_width=3, color='crimson', legend_label="D2 Average")
+                p2.patch(
+                    np.concatenate([results['time_axis'], results['time_axis'][::-1]]),
+                    np.concatenate([
+                        d2_avg_signal + d2_sem_signal,
+                        (d2_avg_signal - d2_sem_signal)[::-1]
+                    ]),
+                    color='crimson', alpha=0.2
+                )
+                
+                # Add vertical line at spike time
+                p2.line([0, 0], [np.min(d2_avg_signal)-1, np.max(d2_avg_signal) * 1.2], 
+                       line_width=2, color='black', line_dash='dashed')
+                
+                # Add horizontal line at y=0 for acceleration signals
+                if signal_name.lower() == "acceleration":
+                    zero_line = Span(location=0, dimension='width', line_color='black', line_width=2, line_dash='dotted')
+                    p2.add_layout(zero_line)
+                
+                p2.xgrid.grid_line_color = None
+                p2.ygrid.grid_line_color = None
+                p2.legend.location = "top_right"
+                p2.legend.click_policy = "hide"
+                
+                plots.append(p2)
+        
+        # Process CHI neurons if requested
+        if show_chi and len(chi_indices) > 0:
+            chi_peak_indices = []
+            for i in chi_indices:
+                x, _ = find_peaks(self.C_denoised[i], height=height)
+                chi_peak_indices.append(x)
+            
+            chi_signals = []
+            for neuron_spikes in chi_peak_indices:
+                for spike_idx in neuron_spikes:
+                    if spike_idx - samples_window >= 0 and spike_idx + samples_window < len(signal):
+                        signal_segment = signal[spike_idx - samples_window:spike_idx + samples_window + 1]
+                        chi_signals.append(signal_segment)
+            
+            if len(chi_signals) > 0:
+                chi_signals = np.array(chi_signals)
+                chi_avg_signal = np.mean(chi_signals, axis=0)
+                chi_sem_signal = np.std(chi_signals, axis=0) / np.sqrt(len(chi_signals))
+                
+                # Store results
+                results['chi_avg_signal'] = chi_avg_signal
+                results['chi_sem_signal'] = chi_sem_signal
+                results['chi_sample_count'] = len(chi_signals)
+                
+                # Create CHI plot
+                p3 = figure(width=900, height=400, 
+                        title=f"{signal_name} around CHI Neuron Spikes (n={len(chi_signals)})",
+                        x_axis_label="Time relative to spike (s)",
+                        y_axis_label=signal_name,
+                        x_range=plots[0].x_range if plots else None)
+                
+                p3.line(results['time_axis'], chi_avg_signal, line_width=3, color='limegreen', legend_label="CHI Average")
+                p3.patch(
+                    np.concatenate([results['time_axis'], results['time_axis'][::-1]]),
+                    np.concatenate([
+                        chi_avg_signal + chi_sem_signal,
+                        (chi_avg_signal - chi_sem_signal)[::-1]
+                    ]),
+                    color='limegreen', alpha=0.2
+                )
+                
+                # Add vertical line at spike time
+                p3.line([0, 0], [np.min(chi_avg_signal)-1, np.max(chi_avg_signal) * 1.2], 
+                       line_width=2, color='black', line_dash='dashed')
+                
+                # Add horizontal line at y=0 for acceleration signals
+                if signal_name.lower() == "acceleration":
+                    zero_line = Span(location=0, dimension='width', line_color='black', line_width=2, line_dash='dotted')
+                    p3.add_layout(zero_line)
+                
+                p3.xgrid.grid_line_color = None
+                p3.ygrid.grid_line_color = None
+                p3.legend.location = "top_right"
+                p3.legend.click_policy = "hide"
+                
+                plots.append(p3)
+        
+        # Create comparison plot if multiple cell types are shown
+        if len(plots) > 1:
+            comparison_plot = figure(width=900, height=500, 
+                    title=f"Comparison of {signal_name} around Cell Type Spikes",
+                    x_axis_label="Time relative to spike (s)",
+                    y_axis_label=signal_name,
+                    x_range=plots[0].x_range if plots else None)
+            
+            # Add lines for each cell type
+            if show_d1 and 'd1_avg_signal' in results:
+                comparison_plot.line(results['time_axis'], results['d1_avg_signal'], 
+                                   line_width=3, color='navy', legend_label="D1 Average")
+            if show_d2 and 'd2_avg_signal' in results:
+                comparison_plot.line(results['time_axis'], results['d2_avg_signal'], 
+                                   line_width=3, color='crimson', legend_label="D2 Average")
+            if show_chi and 'chi_avg_signal' in results:
+                comparison_plot.line(results['time_axis'], results['chi_avg_signal'], 
+                                   line_width=3, color='limegreen', legend_label="CHI Average")
+            
+            # Add vertical line at spike time
+            y_min = min([np.min(results.get(f'{ct}_avg_signal', [0])) for ct in ['d1', 'd2', 'chi']])
+            y_max = max([np.max(results.get(f'{ct}_avg_signal', [0])) for ct in ['d1', 'd2', 'chi']])
+            comparison_plot.line([0, 0], [y_min - 1, y_max * 1.2], 
+                               line_width=2, color='black', line_dash='dashed')
+            
+            # Add horizontal line at y=0 for acceleration signals
+            if signal_name.lower() == "acceleration":
+                zero_line = Span(location=0, dimension='width', line_color='black', line_width=2, line_dash='dotted')
+                comparison_plot.add_layout(zero_line)
+            
+            comparison_plot.xgrid.grid_line_color = None
+            comparison_plot.ygrid.grid_line_color = None
+            comparison_plot.legend.location = "top_right"
+            comparison_plot.legend.click_policy = "hide"
+            
+            plots.append(comparison_plot)
+        
+        # Create the layout
+        if plots:
+            layout = gridplot([[p] for p in plots])
+            
+            # Output the plot
+            self.output_bokeh_plot(layout, save_path=save_path, title=title, notebook=notebook, 
+                                 overwrite=overwrite, font_size=font_size)
+            
+            results['plot'] = layout
+        else:
+            print("No valid spikes found for the selected cell types.")
+            results['plot'] = None
+        
+        return results
+
+    def analyze_cell_type_spikes_signal(self, signal=None, signal_name="Signal", time_window=4, height=0.0,
+                                       show_d1=True, show_d2=True, show_chi=True,
+                                       save_path=None, title=None, notebook=False, overwrite=False, font_size=None):
+        """
+        Wrapper function to analyze and plot any signal around D1, D2, and CHI neuron spikes.
+        
+        Parameters:
+        -----------
+        signal : numpy.ndarray, optional
+            Signal array to analyze (e.g., self.smoothed_velocity, self.acceleration)
+            If None, uses self.smoothed_velocity
+        signal_name : str
+            Name of signal for plot labels (e.g., "Velocity", "Acceleration")
+        time_window : float
+            Time window in seconds before and after spike to analyze
+        height : float
+            Height threshold for peak detection
+        show_d1 : bool
+            Whether to analyze and show D1 neurons
+        show_d2 : bool
+            Whether to analyze and show D2 neurons
+        show_chi : bool
+            Whether to analyze and show CHI neurons
+        save_path : str, optional
+            Path to save the figure
+        title : str, optional
+            Title for the plot (if None, will be generated based on signal_name)
+        notebook : bool
+            Whether to display in notebook
+        overwrite : bool
+            Whether to overwrite existing file
+        font_size : str, optional
+            Font size for plot text elements
+        
+        Returns:
+        --------
+        dict : Results dictionary
+        """
+        # Use default signal if not provided
+        if signal is None:
+            signal = self.smoothed_velocity
+        
+        # Call the analysis function
+        results = self.analyze_signal_around_cell_type_spikes(
+            d1_indices=self.d1_indices,
+            d2_indices=self.d2_indices,
+            chi_indices=self.chi_indices,
+            signal=signal,
+            signal_name=signal_name,
+            time_window=time_window,
+            height=height,
+            show_d1=show_d1,
+            show_d2=show_d2,
+            show_chi=show_chi,
+            save_path=save_path,
+            title=title,
+            notebook=notebook,
+            overwrite=overwrite,
+            font_size=font_size
+        )
+        
+        return results
