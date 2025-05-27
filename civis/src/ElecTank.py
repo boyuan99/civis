@@ -99,7 +99,7 @@ class ElecTank(VirmenTank):
         return psd_welch, freq_welch
 
     def plot_resample_demo(self, start=70, stop=72,
-                           notebook=False, save_path=None, overwrite=False):
+                           notebook=False, save_path=None, overwrite=False, font_size=None):
         """
         Plot a short demo showing the resampling result
 
@@ -128,11 +128,11 @@ class ElecTank(VirmenTank):
 
         p.legend.click_policy = 'hide'
 
-        self.output_bokeh_plot(p, save_path=save_path, title=str(p.title.text), notebook=notebook, overwrite=overwrite)
+        self.output_bokeh_plot(p, save_path=save_path, title=str(p.title.text), notebook=notebook, overwrite=overwrite, font_size=font_size)
 
         return p
 
-    def plot_raw_vs_notch(self, start=10, stop=14, save_path=None, notebook=False, overwrite=False):
+    def plot_raw_vs_notch(self, start=10, stop=14, save_path=None, notebook=False, overwrite=False, font_size=None):
         """
         Plot raw resampled signal with notch filtered resampled signal
 
@@ -154,11 +154,11 @@ class ElecTank(VirmenTank):
 
         p.legend.click_policy = 'hide'
 
-        self.output_bokeh_plot(p, save_path=save_path, title=str(p.title.text), notebook=notebook, overwrite=overwrite)
+        self.output_bokeh_plot(p, save_path=save_path, title=str(p.title.text), notebook=notebook, overwrite=overwrite, font_size=font_size)
 
         return p
 
-    def plot_velocity_with_signal(self, save_path=None, notebook=False, overwrite=False):
+    def plot_velocity_with_signal(self, save_path=None, notebook=False, overwrite=False, font_size=None):
         """
         Plot velocity from virmen with resampled, filtered signal
         Args:
@@ -182,7 +182,7 @@ class ElecTank(VirmenTank):
 
         p.legend.click_policy = 'hide'
 
-        self.output_bokeh_plot(p, save_path=save_path, title=str(p.title.text), notebook=notebook, overwrite=overwrite)
+        self.output_bokeh_plot(p, save_path=save_path, title=str(p.title.text), notebook=notebook, overwrite=overwrite, font_size=font_size)
 
         return p
 
@@ -202,7 +202,7 @@ class ElecTank(VirmenTank):
                                         time_start=0, time_end=None,
                                         time_dec_factor=20, freq_dec_factor=1,
                                         palette="Turbo256",
-                                        save_path=None, notebook=False, overwrite=False):
+                                        save_path=None, notebook=False, overwrite=False, font_size=None):
         import mne
         from bokeh.plotting import figure
         from bokeh.models import LinearColorMapper, ColorBar
@@ -259,7 +259,7 @@ class ElecTank(VirmenTank):
         layout = column([p1, p2])
 
         self.output_bokeh_plot(layout, save_path=save_path, title=str(p1.title.text), notebook=notebook,
-                               overwrite=overwrite)
+                               overwrite=overwrite, font_size=font_size)
 
         return layout
 
@@ -269,7 +269,7 @@ class ElecTank(VirmenTank):
                                                time_dec_factor=20, freq_dec_factor=1,
                                                beta_min=12, beta_max=30, threshold_std=1.5,
                                                palette="Turbo256",
-                                               save_path=None, notebook=False, overwrite=False):
+                                               save_path=None, notebook=False, overwrite=False, font_size=None):
         import mne
         from bokeh.plotting import figure
         from bokeh.models import LinearColorMapper, ColorBar, BoxAnnotation, Span, Label
@@ -463,7 +463,7 @@ class ElecTank(VirmenTank):
         layout = gridplot([[p1], [p2], [p3]])
 
         self.output_bokeh_plot(layout, save_path=save_path, title="Time-Frequency Analysis with Beta Band",
-                               notebook=notebook, overwrite=overwrite)
+                               notebook=notebook, overwrite=overwrite, font_size=font_size)
 
         return layout
     

@@ -588,24 +588,21 @@ class CITank(VirmenTank):
 
         return spike_stats
 
-    def plot_t_ca_all(self, notebook=False, save_path=None, overwrite=False):
+    def plot_t_ca_all(self, notebook=False, save_path=None, overwrite=False, font_size=None):
         """
-        Plot the average calcium trace for all neurons.
-        :param notebook: Flag to indicate if the plot is for a Jupyter notebook.
-        :param save_path: Path to save the plot as an HTML file.
-        :return:
+        Plot the average calcium signal over time.
         """
         from bokeh.plotting import figure
 
-        p = figure(width=800, height=400, active_scroll="wheel_zoom", title="Average Calcium Trace (Δf/f)")
-        p.line(self.t, self.ca_all, line_width=2)
+        p = figure(width=800, height=300, active_scroll='wheel_zoom', title="Average Calcium Signal")
+        p.line(self.t, self.ca_all, color='blue', alpha=0.7, legend_label="ca_all")
 
-        self.output_bokeh_plot(p, save_path=save_path, title=str(p.title.text), notebook=notebook, overwrite=overwrite)
+        p.legend.click_policy = 'hide'
 
-        return p
+        self.output_bokeh_plot(p, save_path=save_path, title=str(p.title.text), notebook=notebook, overwrite=overwrite, font_size=font_size)
 
     def plot_ca_around_indices(self, map_data, indices, cut_interval=50, title="None", notebook=False, save_path=None,
-                               overwrite=False):
+                               overwrite=False, font_size=None):
         """
         Plot the calcium temporal traces around the specified indices.
         :param map_data  A 2D NumPy array containing the calcium traces.
@@ -657,12 +654,12 @@ class CITank(VirmenTank):
 
         layout = column(p, v)
 
-        self.output_bokeh_plot(layout, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite)
+        self.output_bokeh_plot(layout, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite, font_size=font_size)
 
         return layout
 
     def create_outlier_visualization(self, precomputed_data, coefficients_all_numpy, threshold=4, title=None,
-                                     notebook=False, save_path=None, overwrite=False):
+                                     notebook=False, save_path=None, overwrite=False, font_size=None):
         """
         Creates an interactive visualization to display outliers and mean value for a set of coefficients.
 
@@ -760,7 +757,7 @@ class CITank(VirmenTank):
         row_slider.js_on_change('value', callback)
         layout = column(row_slider, row(p, details_div))
 
-        self.output_bokeh_plot(layout, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite)
+        self.output_bokeh_plot(layout, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite, font_size=font_size)
 
         return layout
 
@@ -867,7 +864,7 @@ class CITank(VirmenTank):
         return "Not Found"
 
     def create_neuron_categories_pie_chart(self, neuron_categories, title="Neuron Categories", notebook=False,
-                                           save_path=None, overwrite=False):
+                                           save_path=None, overwrite=False, font_size=None):
         """
         Create a pie chart to visualize the distribution of neurons across different categories.
         :param neuron_categories: dictionary containing neuron categories as keys and neuron indices as values (e.g., {'Category 1': [0, 1, 2], 'Category 2': [3, 4, 5]})
@@ -906,12 +903,12 @@ class CITank(VirmenTank):
         p.grid.grid_line_color = None
         p.legend.location = "top_right"
 
-        self.output_bokeh_plot(p, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite)
+        self.output_bokeh_plot(p, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite, font_size=font_size)
 
         return p
 
     def create_heatmap_with_trace(self, sorted_indices, trace, cutoff_index=10000, title=None,
-                                  save_path=None, notebook=False, overwrite=False):
+                                  save_path=None, notebook=False, overwrite=False, font_size=None):
         """
          Create a heatmap
          :param sorted_indices: sorted indices (could be based on correlation coefficient)
@@ -962,12 +959,12 @@ class CITank(VirmenTank):
 
         layout = column(p, v)
 
-        self.output_bokeh_plot(layout, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite)
+        self.output_bokeh_plot(layout, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite, font_size=font_size)
 
         return layout
 
     def plot_calcium_trace_with_lick_and_velocity(self, title="Average Calcium Trace with Lick and Speed",
-                                                  save_path=None, notebook=False, overwrite=False):
+                                                  save_path=None, notebook=False, overwrite=False, font_size=None):
 
         from bokeh.plotting import figure
         from bokeh.models import Span
@@ -987,13 +984,13 @@ class CITank(VirmenTank):
             p.add_layout(vline, 'below')
 
         p.legend.click_policy = 'hide'
-        self.output_bokeh_plot(p, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite)
+        self.output_bokeh_plot(p, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite, font_size=font_size)
 
         return p
 
     def plot_calcium_trace_around_indices(self, cut_interval=50, save_path=None,
                                           title="Average Calcium Trace around Indices",
-                                          notebook=False, overwrite=False):
+                                          notebook=False, overwrite=False, font_size=None):
 
         from bokeh.plotting import figure
         from bokeh.models import CustomJSTickFormatter
@@ -1028,11 +1025,11 @@ class CITank(VirmenTank):
         #     return (tick / 20).toFixed(2);
         # """)
 
-        self.output_bokeh_plot(p, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite)
+        self.output_bokeh_plot(p, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite, font_size=font_size)
 
         return p
 
-    def generate_raster_plot(self, save_path=None, title="Raster Plot", notebook=False, overwrite=False):
+    def generate_raster_plot(self, save_path=None, title="Raster Plot", notebook=False, overwrite=False, font_size=None):
 
         from bokeh.models import ColumnDataSource
         from bokeh.plotting import figure
@@ -1073,12 +1070,12 @@ class CITank(VirmenTank):
 
         layout = column(p, v)
 
-        self.output_bokeh_plot(layout, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite)
+        self.output_bokeh_plot(layout, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite, font_size=font_size)
 
         return layout
 
     def create_cross_correlation_slider_plot(self, instance, lags, correlations,
-                                             save_path=None, title="Raster Plot", notebook=False, overwrite=False):
+                                             save_path=None, title="Raster Plot", notebook=False, overwrite=False, font_size=None):
 
         from bokeh.models import ColumnDataSource, Slider, CustomJS
         from bokeh.plotting import figure
@@ -1124,24 +1121,24 @@ class CITank(VirmenTank):
         grid = gridplot([[p1], [p2]])
         layout = column(slider, grid)
 
-        self.output_bokeh_plot(layout, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite)
+        self.output_bokeh_plot(layout, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite, font_size=font_size)
 
         return layout
 
     def show_single_signal(self, index,
-                           save_path=None, title=f"example signal", notebook=False, overwrite=False):
+                           save_path=None, title=f"example signal", notebook=False, overwrite=False, font_size=None):
         from bokeh.plotting import figure
 
         p = figure(width=800, height=300, title=title)
 
         p.line(self.t, self.C_raw[index], color="blue", alpha=0.7, legend_label="Calcium Trace")
 
-        self.output_bokeh_plot(p, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite)
+        self.output_bokeh_plot(p, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite, font_size=font_size)
 
         return p
 
     def show_multiple_signal(self, signal_gap=2, scale_gap=2,
-                             save_path=None, title=f"Multiple Example signals", notebook=False, overwrite=False):
+                             save_path=None, title=f"Multiple Example signals", notebook=False, overwrite=False, font_size=None):
         from bokeh.plotting import figure
         from bokeh.palettes import Category10
 
@@ -1152,7 +1149,7 @@ class CITank(VirmenTank):
         for i in range(10):
             p.line(self.t, self.C_raw[i * signal_gap] + i * scale_gap, color=colors[i], alpha=0.7)
 
-        self.output_bokeh_plot(p, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite)
+        self.output_bokeh_plot(p, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite, font_size=font_size)
 
         return p
 
@@ -1637,9 +1634,8 @@ class CITank(VirmenTank):
         return results
 
 
-    # Going to remove this function
     def plot_d1_d2_calcium_around_events(self, event_type='movement_onset', d1_signal=None, d2_signal=None, 
-                                     cut_interval=50, save_path=None, title=None, notebook=False, overwrite=False):
+                                     cut_interval=50, save_path=None, title=None, notebook=False, overwrite=False, font_size=None):
         """
         Plot average calcium traces for D1 and D2 neuron populations, along with velocity, around specific events.
         Uses dual y-axes to separately scale calcium and velocity signals, with optimized scaling.
@@ -1746,11 +1742,11 @@ class CITank(VirmenTank):
         p.line([0, 0], [ca_min, ca_max], line_width=1, line_dash='dashed', color='black', alpha=0.7)
         
         # Output the plot
-        self.output_bokeh_plot(p, save_path=save_path, title=plot_title, notebook=notebook, overwrite=overwrite)
+        self.output_bokeh_plot(p, save_path=save_path, title=plot_title, notebook=notebook, overwrite=overwrite, font_size=font_size)
         
         return p
 
-    def create_d1_d2_spike_visualizations(self, d1_peaks, d2_peaks, save_path=None, title="D1D2SpikePlots", notebook=False, overwrite=False):
+    def create_d1_d2_spike_visualizations(self, d1_peaks, d2_peaks, save_path=None, title="D1D2SpikePlots", notebook=False, overwrite=False, font_size=None):
         """
         Create comprehensive visualizations of D1 and D2 neural spike data.
         
@@ -1971,7 +1967,7 @@ class CITank(VirmenTank):
         )
         
         # Output the plot
-        self.output_bokeh_plot(layout, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite)
+        self.output_bokeh_plot(layout, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite, font_size=font_size)
         
         return layout
 
