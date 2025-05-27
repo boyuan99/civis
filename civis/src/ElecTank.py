@@ -1365,20 +1365,97 @@ class ElecTank(VirmenTank):
                 signal_segment = self.signal[event_sample - window_samples:
                                              event_sample + window_samples]
 
-                # Use sliding window to calculate band powers
-                window_size = int(self.fs * 0.2)  # 200ms window
-                for i in range(len(signal_segment) - window_size):
-                    window = signal_segment[i:i + window_size]
+                # Use different window sizes for different frequency bands
+                # For delta band (1-4 Hz), we need at least 2 seconds to get good frequency resolution
+                # For higher frequencies, we can use shorter windows for better temporal resolution
+                
+                # Delta and theta bands: use 2-second windows with 0.5-second hop
+                delta_theta_window_size = int(self.fs * 2.0)  # 2 seconds
+                delta_theta_hop_size = int(self.fs * 0.5)     # 0.5 second hop
+                
+                # Alpha and beta bands: use 1-second windows with 0.25-second hop  
+                alpha_beta_window_size = int(self.fs * 1.0)   # 1 second
+                alpha_beta_hop_size = int(self.fs * 0.25)     # 0.25 second hop
+                
+                # Gamma bands: use 0.5-second windows with 0.1-second hop
+                gamma_window_size = int(self.fs * 0.5)        # 0.5 seconds
+                gamma_hop_size = int(self.fs * 0.1)           # 0.1 second hop
+                
+                # Create arrays to store band powers for this event
+                event_band_powers = {band: np.zeros(len(signal_segment)) for band in bands}
+                
+                # Process different frequency bands with appropriate window sizes
+                band_configs = {
+                    'delta': (delta_theta_window_size, delta_theta_hop_size),
+                    'theta': (delta_theta_window_size, delta_theta_hop_size),
+                    'alpha': (alpha_beta_window_size, alpha_beta_hop_size),
+                    'beta': (alpha_beta_window_size, alpha_beta_hop_size),
+                    'gamma_low': (gamma_window_size, gamma_hop_size),
+                    'gamma_high': (gamma_window_size, gamma_hop_size)
+                }
+                
+                for band_name, (low, high) in bands.items():
+                    window_size, hop_size = band_configs[band_name]
+                    
+                    # Skip if window is larger than signal segment
+                    if window_size > len(signal_segment):
+                        continue
+                        
+                    # Calculate the number of windows that fit in the signal segment
+                    n_windows = (len(signal_segment) - window_size) // hop_size + 1
+                    
+                    # Sliding window analysis for this band
+                    for i in range(n_windows):
+                        start_idx = i * hop_size
+                        end_idx = start_idx + window_size
+                        
+                        # Ensure we don't exceed signal bounds
+                        if end_idx <= len(signal_segment):
+                            window = signal_segment[start_idx:end_idx]
 
-                    # Calculate power spectrum
-                    freqs, psd = welch(window, fs=self.fs, nperseg=window_size)
+                            # Calculate power spectrum with appropriate parameters for frequency resolution
+                            # Use nperseg equal to window_size for maximum frequency resolution
+                            freqs, psd = welch(window, fs=self.fs, nperseg=window_size, 
+                                             noverlap=window_size//2, nfft=window_size*2)
 
-                    # Calculate band powers
-                    for band_name, (low, high) in bands.items():
-                        band_mask = (freqs >= low) & (freqs <= high)
-                        if np.any(band_mask):
-                            band_power = np.mean(psd[band_mask])
-                            band_powers[band_name][i] += 10 * np.log10(band_power)
+                            # Calculate band power
+                            band_mask = (freqs >= low) & (freqs <= high)
+                            if np.any(band_mask):
+                                band_power = np.mean(psd[band_mask])
+                                # Convert to dB and assign to the center of the window
+                                center_idx = start_idx + window_size // 2
+                                if center_idx < len(signal_segment):
+                                    # Use log10 with a small epsilon to avoid log(0)
+                                    if band_power > 0:
+                                        event_band_powers[band_name][center_idx] = 10 * np.log10(band_power)
+                                    else:
+                                        event_band_powers[band_name][center_idx] = -80  # Very low power in dB
+                
+                # Interpolate to fill gaps and smooth the band power time series
+                for band_name in bands:
+                    # Find non-zero indices (where we have calculated values)
+                    non_zero_indices = np.where(event_band_powers[band_name] != 0)[0]
+                    
+                    if len(non_zero_indices) > 1:
+                        # Interpolate to fill the entire time series
+                        from scipy.interpolate import interp1d
+                        
+                        # Create interpolation function
+                        f = interp1d(non_zero_indices, 
+                                   event_band_powers[band_name][non_zero_indices],
+                                   kind='linear', 
+                                   bounds_error=False, 
+                                   fill_value='extrapolate')
+                        
+                        # Apply interpolation to all indices
+                        all_indices = np.arange(len(signal_segment))
+                        event_band_powers[band_name] = f(all_indices)
+                    elif len(non_zero_indices) == 1:
+                        # If only one value, fill the entire array with that value
+                        event_band_powers[band_name][:] = event_band_powers[band_name][non_zero_indices[0]]
+                    
+                    # Add to accumulated band powers
+                    band_powers[band_name] += event_band_powers[band_name]
 
                 valid_count += 1
 
@@ -1399,14 +1476,21 @@ class ElecTank(VirmenTank):
         for band in bands:
             band_powers[band] /= valid_count
             # Normalize for better visualization
-            band_powers[band] = (band_powers[band] - np.min(band_powers[band])) / \
-                                (np.max(band_powers[band]) - np.min(band_powers[band]))
+            if np.max(band_powers[band]) > np.min(band_powers[band]):
+                band_powers[band] = (band_powers[band] - np.min(band_powers[band])) / \
+                                    (np.max(band_powers[band]) - np.min(band_powers[band]))
+            else:
+                # Handle case where all values are the same
+                band_powers[band] = np.zeros_like(band_powers[band])
 
         # Average and normalize velocity
         if valid_velocity_count > 0:
             avg_velocity /= valid_velocity_count
-            avg_velocity_norm = (avg_velocity - np.min(avg_velocity)) / \
-                                (np.max(avg_velocity) - np.min(avg_velocity))
+            if np.max(avg_velocity) > np.min(avg_velocity):
+                avg_velocity_norm = (avg_velocity - np.min(avg_velocity)) / \
+                                    (np.max(avg_velocity) - np.min(avg_velocity))
+            else:
+                avg_velocity_norm = np.zeros_like(avg_velocity)
 
         # Set plot title
         if title is None:
