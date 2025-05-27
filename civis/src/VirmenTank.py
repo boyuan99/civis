@@ -576,20 +576,23 @@ class VirmenTank:
                     print("File saved as html.")
                     curdoc().clear()
                 elif save_path.split(".")[-1] == 'svg':
-                    if isinstance(plot, figure):
-                        plot.output_backend = "svg"
-                        export_svg(plot, filename=save_path)
-                        print("Plot successfully saved as svg.")
-                        plot.output_backend = "canvas"
-                    elif isinstance(plot, LayoutDOM):
-                        for i in range(len(plot.children)):
-                            plot.children[i].output_backend = 'svg'
-                        export_svg(plot, filename=save_path)
-                        print("Plot successfully saved as svg.")
-                        for i in range(len(plot.children)):
-                            plot.children[i].output_backend = 'canvas'
-                    else:
-                        raise ValueError("Invalid plot element.")
+                    def set_figures_backend(obj, backend):
+                        """Recursively set the output_backend of all figure objects"""
+                        if isinstance(obj, figure):
+                            obj.output_backend = backend
+                        elif isinstance(obj, LayoutDOM) and hasattr(obj, 'children'):
+                            for child in obj.children:
+                                set_figures_backend(child, backend)
+                    
+                    # set all figures to SVG backend
+                    set_figures_backend(plot, 'svg')
+                    
+                    # export SVG
+                    export_svg(plot, filename=save_path)
+                    print("Plot successfully saved as svg.")
+                    
+                    # set back to canvas backend
+                    set_figures_backend(plot, 'canvas')
                 else:
                     raise ValueError("Invalid file type.")
 
