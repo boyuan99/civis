@@ -1333,10 +1333,10 @@ class ElecTank(VirmenTank):
 
         # Define frequency bands
         bands = {
-            'delta': (1, 4),
-            'theta': (4, 8),
-            'alpha': (8, 12),
-            'beta': (12, 30),
+            'delta': (1, 5),
+            'theta': (5, 12),
+            'alpha': (12, 15),
+            'beta': (15, 30),
             'gamma_low': (30, 60),
             'gamma_high': (60, 100)
         }
