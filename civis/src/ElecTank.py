@@ -1327,7 +1327,8 @@ class ElecTank(VirmenTank):
         """
         import numpy as np
         from bokeh.plotting import figure
-        from bokeh.models import Span
+        from bokeh.models import Span, Legend, LegendItem
+        from bokeh.layouts import row
         from scipy.signal import welch
 
         # Define frequency bands
@@ -1369,29 +1370,42 @@ class ElecTank(VirmenTank):
                 # For delta band (1-4 Hz), we need at least 2 seconds to get good frequency resolution
                 # For higher frequencies, we can use shorter windows for better temporal resolution
                 
-                # Delta and theta bands: use 2-second windows with 0.5-second hop
-                delta_theta_window_size = int(self.fs * 2.0)  # 2 seconds
-                delta_theta_hop_size = int(self.fs * 0.5)     # 0.5 second hop
+                # Delta bands: use 2-second windows with 0.25-second hop
+                delta_window_size = int(self.fs * 2.0)  # 2 seconds
+                delta_hop_size = int(self.fs * 0.25)     # 0.25 second hop
+
+                # Theta bands: use 2-second windows with 0.20-second hop
+                theta_window_size = int(self.fs * 2.0)  # 2 seconds
+                theta_hop_size = int(self.fs * 0.2)     # 0.2 second hop    
+
                 
-                # Alpha and beta bands: use 1-second windows with 0.25-second hop  
-                alpha_beta_window_size = int(self.fs * 1.0)   # 1 second
-                alpha_beta_hop_size = int(self.fs * 0.25)     # 0.25 second hop
-                
-                # Gamma bands: use 0.5-second windows with 0.1-second hop
-                gamma_window_size = int(self.fs * 0.5)        # 0.5 seconds
-                gamma_hop_size = int(self.fs * 0.1)           # 0.1 second hop
+                # Alpha bands: use 1-second windows with 0.1-second hop  
+                alpha_window_size = int(self.fs * 1.0)   # 1 second
+                alpha_hop_size = int(self.fs * 0.1)     # 0.1 second hop
+
+                # Beta bands: use 1-second windows with 0.05-second hop  
+                beta_window_size = int(self.fs * 1.0)   # 1 second
+                beta_hop_size = int(self.fs * 0.05)     # 0.05 second hop
+
+                # Gamma-low bands: use 0.5-second windows with 0.025-second hop
+                gamma_low_window_size = int(self.fs * 0.5)        # 0.5 seconds
+                gamma_low_hop_size = int(self.fs * 0.025)           # 0.025 second hop
+
+                # Gamma-high bands: use 0.5-second windows with 0.025-second hop
+                gamma_high_window_size = int(self.fs * 0.5)        # 0.5 seconds
+                gamma_high_hop_size = int(self.fs * 0.025)           # 0.025 second hop
                 
                 # Create arrays to store band powers for this event
                 event_band_powers = {band: np.zeros(len(signal_segment)) for band in bands}
                 
                 # Process different frequency bands with appropriate window sizes
                 band_configs = {
-                    'delta': (delta_theta_window_size, delta_theta_hop_size),
-                    'theta': (delta_theta_window_size, delta_theta_hop_size),
-                    'alpha': (alpha_beta_window_size, alpha_beta_hop_size),
-                    'beta': (alpha_beta_window_size, alpha_beta_hop_size),
-                    'gamma_low': (gamma_window_size, gamma_hop_size),
-                    'gamma_high': (gamma_window_size, gamma_hop_size)
+                    'delta': (delta_window_size, delta_hop_size),
+                    'theta': (theta_window_size, theta_hop_size),
+                    'alpha': (alpha_window_size, alpha_hop_size),
+                    'beta': (beta_window_size, beta_hop_size),
+                    'gamma_low': (gamma_low_window_size, gamma_low_hop_size),
+                    'gamma_high': (gamma_high_window_size, gamma_high_hop_size)
                 }
                 
                 for band_name, (low, high) in bands.items():
@@ -1501,7 +1515,7 @@ class ElecTank(VirmenTank):
             title=title,
             x_axis_label='Time relative to event (s)',
             y_axis_label='Normalized Power',
-            width=900,
+            width=1200,
             height=500,
             x_range=(-window_sec, window_sec),
             tools="pan,wheel_zoom,box_zoom,reset,save"
@@ -1510,33 +1524,42 @@ class ElecTank(VirmenTank):
         # Colors for bands
         colors = ['navy', 'forestgreen', 'darkred', 'purple', 'orange', 'darkturquoise']
 
+        # Store line renderers for legend
+        legend_items = []
+
         # Plot each band
         for (band, power), color in zip(band_powers.items(), colors):
-            p.line(
+            line_renderer = p.line(
                 times,
                 power,
                 line_width=2,
-                color=color,
-                legend_label=f"{band} ({bands[band][0]}-{bands[band][1]} Hz)"
+                color=color
             )
+            legend_items.append(LegendItem(label=f"{band} ({bands[band][0]}-{bands[band][1]} Hz)", 
+                                         renderers=[line_renderer]))
 
         # Plot velocity if available
         if valid_velocity_count > 0:
-            p.line(
+            velocity_renderer = p.line(
                 velocity_times,
                 avg_velocity_norm,
                 line_width=3,
                 color="black",
-                line_dash="dotted",
-                legend_label="Avg. Velocity"
+                line_dash="dotted"
             )
+            legend_items.append(LegendItem(label="Avg. Velocity", renderers=[velocity_renderer]))
 
         # Vertical line at event
         p.line([0, 0], [0, 1], line_width=2, color="black", line_dash="dashed")
 
-        # Customize legend
-        p.legend.location = "top_right"
-        p.legend.click_policy = "hide"
+        # Create external legend and add it to the plot
+        legend = Legend(items=legend_items, click_policy="hide")
+        legend.label_text_font_size = "10pt"
+        legend.spacing = 5
+        legend.margin = 10
+        
+        # Add legend to the right of the plot
+        p.add_layout(legend, 'right')
 
         # Use the class's output method
         self.output_bokeh_plot(p, save_path=save_path, title=title, notebook=notebook, overwrite=overwrite)
