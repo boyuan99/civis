@@ -44,6 +44,16 @@ class ElecTank(VirmenTank):
         self.signal_raw = self.resample_data()
         self.signal = self.notch_filter(notch_freqs=notch_fs, notch_Q=notch_Q)
 
+        # Define standard frequency bands as class property
+        self.frequency_bands = {
+            'delta': (1, 5),
+            'theta': (5, 12),
+            'alpha': (12, 15),
+            'beta': (15, 30),
+            'gamma_low': (30, 60),
+            'gamma_high': (60, 100)
+        }
+
     def resample_data(self):
         indices = np.searchsorted(self.tdt_t, self.elc_t, side='left')
         LFP_data_raw = self.tdt_signal_filtered[indices]
@@ -1300,7 +1310,7 @@ class ElecTank(VirmenTank):
 
         return final_layout
     
-    def calculate_band_powers(self, event_indices, window_sec=5, notebook=False, title=None,
+    def calculate_band_powers(self, event_indices, bands=None, window_sec=5, notebook=False, title=None,
                               save_path=None, overwrite=False):
         """
         Calculate and visualize power in different frequency bands around events
@@ -1331,15 +1341,8 @@ class ElecTank(VirmenTank):
         from bokeh.layouts import row
         from scipy.signal import welch
 
-        # Define frequency bands
-        bands = {
-            'delta': (1, 5),
-            'theta': (5, 12),
-            'alpha': (12, 15),
-            'beta': (15, 30),
-            'gamma_low': (30, 60),
-            'gamma_high': (60, 100)
-        }
+        if bands is None:
+            bands = self.frequency_bands
 
         # Convert window to samples
         window_samples = int(window_sec * self.fs)
@@ -1683,6 +1686,225 @@ class ElecTank(VirmenTank):
         print(f"  - {len(excluded_indices)} events had artifacts within ±{artifact_window_sec}s window")
         
         return filtered_indices, excluded_indices
+
+    def frequency_band_energy(self, freq_range, n_cycles=7, decim=1, window='hann'):
+        """
+        Calculate energy of a specific frequency band over time using Morlet wavelets
+        
+        Parameters:
+        -----------
+        freq_range : tuple
+            Frequency range (tuple), e.g., (10, 30) for 10-30Hz
+        n_cycles : float or array
+            Number of cycles for Morlet wavelets. Higher values give better frequency 
+            resolution but worse time resolution
+        decim : int
+            Decimation factor for time axis (1 = no decimation)
+        window : str
+            Not used in wavelet method, kept for compatibility
+        
+        Returns:
+        --------
+        t : array
+            Time axis (decimated)
+        energy : array
+            Energy of the specified frequency band over time
+        f : array
+            Frequency axis used for the analysis
+        tfr : array
+            Complete time-frequency representation (for compatibility)
+        """
+        import mne
+        
+        # Define frequency range
+        freq_min, freq_max = freq_range
+        
+        # Create frequency array with appropriate resolution
+        # Use more frequencies for better band coverage
+        freq_step = min(0.5, (freq_max - freq_min) / 10)  # At least 10 frequencies per band
+        freqs = np.arange(freq_min, freq_max + freq_step/2, freq_step)
+        
+        # Ensure we have at least one frequency
+        if len(freqs) == 0:
+            freqs = np.array([freq_min])
+        
+        # Reshape signal for MNE (expects 3D: n_epochs x n_channels x n_times)
+        signal_reshaped = self.signal.reshape(1, 1, -1)
+        
+        # Calculate time-frequency representation using Morlet wavelets
+        tfr = mne.time_frequency.tfr_array_morlet(
+            signal_reshaped, 
+            sfreq=self.fs, 
+            freqs=freqs, 
+            n_cycles=n_cycles,
+            zero_mean=True,
+            output='power'
+        )
+        
+        # Remove singleton dimensions and get power
+        tfr_power = tfr.squeeze()  # Shape: (n_freqs, n_times)
+        
+        # Calculate energy by summing across frequencies in the band
+        if len(freqs) > 1:
+            energy = np.mean(tfr_power, axis=0)  # Average across frequencies
+        else:
+            energy = tfr_power.squeeze()
+        
+        # Create time axis
+        t = self.elc_t[:len(energy)]
+        
+        # Apply decimation if requested
+        if decim > 1:
+            energy = energy[::decim]
+            t = t[::decim]
+            tfr_power = tfr_power[:, ::decim]
+        
+        return t, energy, freqs, tfr_power
+
+    def plot_frequency_band_analysis(self, freq_bands=None, n_cycles=12, 
+                                   percentile_range=(5, 95), save_path=None, 
+                                   notebook=False, overwrite=False, font_size=None):
+        """
+        Plot comprehensive frequency band analysis using Bokeh
+        
+        Parameters:
+        -----------
+        freq_bands : list or None
+            List of tuples (freq_min, freq_max, label). If None, uses self.frequency_bands
+        n_cycles : float or array
+            Number of cycles for Morlet wavelets (higher = better frequency resolution)
+        percentile_range : tuple
+            Percentile range for normalization (low, high) to exclude outliers.
+            Default (5, 95) excludes extreme 5% on each end
+        save_path : str
+            Path to save the plot
+        notebook : bool
+            Whether to display in notebook
+        overwrite : bool
+            Whether to overwrite existing file
+        font_size : str
+            Font size for the plot
+            
+        Returns:
+        --------
+        layout : bokeh layout object
+            The created plot layout
+        """
+        from bokeh.plotting import figure
+        from bokeh.models import LinearColorMapper, ColorBar
+        from bokeh.layouts import gridplot
+        from bokeh.palettes import Turbo256, Category10
+        
+        # Use class property if no freq_bands provided
+        if freq_bands is None:
+            # Convert from dict format to list of tuples format
+            freq_bands = [(freq_min, freq_max, band_name.title()) 
+                         for band_name, (freq_min, freq_max) in self.frequency_bands.items()]
+
+        # Generate time axis for original signal
+        t_orig = self.elc_t
+        
+        # Create figure for original signal
+        p1 = figure(width=1200, height=300, title="Original Signal",
+                    x_axis_label="Time (s)", y_axis_label="Amplitude",
+                    x_range=(0, 60),
+                    tools=["pan", "wheel_zoom", "box_zoom", "reset", "save"])
+        p1.line(t_orig, self.signal, line_width=1, color='navy', alpha=0.8)
+        
+        # Create figure for frequency band energy analysis
+        p2 = figure(width=1200, height=400, title="Normalized Frequency Band Energy vs Time",
+                    x_axis_label="Time (s)", y_axis_label="Normalized Energy",
+                    x_range=p1.x_range, y_range=(0, 1.2),
+                    tools=["pan", "wheel_zoom", "box_zoom", "reset", "save"])
+        
+        # Analyze energy in different frequency bands
+        colors = Category10[10]  # Bokeh color palette
+        
+        # Store all band energies for normalization
+        all_band_energies = {}
+        all_times = {}
+        
+        # First pass: calculate all band energies
+        for i, (freq_min, freq_max, label) in enumerate(freq_bands):
+            # Using Morlet wavelets for better time-frequency resolution
+            t_energy, energy = self.frequency_band_energy((freq_min, freq_max), n_cycles=n_cycles)[:2]
+            all_band_energies[label] = energy
+            all_times[label] = t_energy
+        
+        # Second pass: normalize and plot each band
+        for i, (freq_min, freq_max, label) in enumerate(freq_bands):
+            energy = all_band_energies[label]
+            t_energy = all_times[label]
+            
+            # Normalize each band using percentiles to avoid outliers
+            # But preserve original data without clipping
+            p_low, p_high = percentile_range
+            p_low_val = np.percentile(energy, p_low)
+            p_high_val = np.percentile(energy, p_high)
+            
+            if p_high_val > p_low_val:
+                # Normalize using percentile range but don't clip the data
+                energy_normalized = (energy - p_low_val) / (p_high_val - p_low_val)
+            else:
+                # If no variation, set to zero
+                energy_normalized = np.zeros_like(energy)
+            
+            color = colors[i % len(colors)]
+            p2.line(t_energy, energy_normalized, legend_label=label, line_width=2, color=color, alpha=0.7)
+        
+        p2.legend.location = "top_left"
+        p2.legend.click_policy = "hide"
+        
+        # Create figure for velocity comparison if available
+        p3 = figure(width=1200, height=300, title="Normalized Velocity",
+                    x_axis_label="Time (s)", y_axis_label="Normalized Amplitude",
+                    x_range=p1.x_range,
+                    tools=["pan", "wheel_zoom", "box_zoom", "reset", "save"])
+        
+        # Plot velocity if available
+        try:
+            p3.line(self.t, self.normalize_signal(self.smoothed_velocity), 
+                    line_width=2, color="black", legend_label="Velocity")
+            p3.line(self.t, self.lick_raw, line_width=2, color="green", 
+                    legend_label="Lick", alpha=0.7)
+        except AttributeError:
+            # If velocity data is not available, plot a placeholder
+            p3.text([self.elc_t[len(self.elc_t)//2]], [0.5], ["Velocity data not available"], 
+                    text_align="center", text_baseline="middle")
+        
+        p3.legend.location = "top_left"
+        p3.legend.click_policy = "hide"
+        
+        # Create grid layout with 3 plots instead of 4
+        grid = gridplot([[p1], [p2], [p3]])
+        
+        # Use the class's output method
+        self.output_bokeh_plot(grid, save_path=save_path, title="Frequency Band Analysis", 
+                              notebook=notebook, overwrite=overwrite, font_size=font_size)
+        
+        # Print statistical analysis
+        self._print_frequency_band_statistics(freq_bands, n_cycles)
+        
+        return grid
+
+    def _print_frequency_band_statistics(self, freq_bands, n_cycles=7):
+        """Print statistical analysis of frequency bands"""
+        print("=" * 60)
+        print("FREQUENCY BAND ENERGY ANALYSIS RESULTS")
+        print("=" * 60)
+        
+        for freq_min, freq_max, label in freq_bands:
+            t_energy, energy = self.frequency_band_energy((freq_min, freq_max), n_cycles=n_cycles)[:2]
+            
+            max_energy_idx = np.argmax(energy)
+            max_energy_time = t_energy[max_energy_idx]
+            
+            print(f"{label} ({freq_min}-{freq_max} Hz):")
+            print(f"  Peak energy time: {max_energy_time:.2f}s")
+            print(f"  Average energy: {np.mean(energy):.2e}")
+            print(f"  Peak energy: {np.max(energy):.2e}")
+            print(f"  Energy std deviation: {np.std(energy):.2e}")
+            print()
 
 
 if __name__ == "__main__":
