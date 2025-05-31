@@ -2048,15 +2048,15 @@ class CellTypeTank(CITank):
 
         # Plot raster points for each cell type
         if show_d1 and d1_raster_data['x']:
-            d1_scatter = p2.scatter(x='x', y='y', source=d1_source_raster, size=4, color='navy', alpha=0.7)
+            d1_scatter = p2.scatter(x='x', y='y', source=d1_source_raster, size=4, color='navy', alpha=0.2)
             raster_legend_items.append(LegendItem(label="D1 Neurons", renderers=[d1_scatter]))
 
         if show_d2 and d2_raster_data['x']:
-            d2_scatter = p2.scatter(x='x', y='y', source=d2_source_raster, size=4, color='crimson', alpha=0.7)
+            d2_scatter = p2.scatter(x='x', y='y', source=d2_source_raster, size=4, color='crimson', alpha=0.2)
             raster_legend_items.append(LegendItem(label="D2 Neurons", renderers=[d2_scatter]))
 
         if show_chi and chi_raster_data['x']:
-            chi_scatter = p2.scatter(x='x', y='y', source=chi_source_raster, size=4, color='green', alpha=0.7)
+            chi_scatter = p2.scatter(x='x', y='y', source=chi_source_raster, size=4, color='green', alpha=0.2)
             raster_legend_items.append(LegendItem(label="CHI Neurons", renderers=[chi_scatter]))
 
         # Add velocity to raster plot
