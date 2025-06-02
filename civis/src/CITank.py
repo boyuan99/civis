@@ -55,6 +55,7 @@ class CITank(VirmenTank):
         self.C_zsc = self._z_score_normalize_all()
         self.ca_all = self.normalize_signal(self.shift_signal_single(np.mean(self.C_zsc, axis=0)))
         self.peak_indices = self._find_peaks_in_traces()
+        self.rising_edges_starts = self._find_rising_edges_starts()
         
 
     @staticmethod
@@ -180,6 +181,20 @@ class CITank(VirmenTank):
             peak_indices_all.append(peaks)
         
         return peak_indices_all
+    
+    def _find_rising_edges_starts(self):
+        """
+        Find the start indices of rising edges in the calcium traces.
+        """
+        rising_edges_starts = []
+        for i in range(self.neuron_num):
+            c1 = np.where(self.C_deconvolved[i] > 0.0001, 1, 0)
+            c2 = np.diff(c1, append=c1[-1])
+            c3 = np.where(c2 == 1, 1, 0)
+
+            rising_edges_starts.append(np.where(c3 == 1)[0])
+
+        return rising_edges_starts
 
     def compute_correlation_ca_instance(self, instance):
         """
