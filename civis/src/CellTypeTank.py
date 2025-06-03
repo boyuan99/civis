@@ -117,7 +117,16 @@ class CellTypeTank(CITank):
         self.d1_zsc = self.C_zsc[self.d1_indices]
         self.d2_zsc = self.C_zsc[self.d2_indices]
         self.chi_zsc = self.C_zsc[self.chi_indices]
+
+        # Rising edges starts
+        self.d1_rising_edges_starts = [self.rising_edges_starts[i] for i in self.d1_indices]
+        self.d2_rising_edges_starts = [self.rising_edges_starts[i] for i in self.d2_indices]
+        self.chi_rising_edges_starts = [self.rising_edges_starts[i] for i in self.chi_indices]
         
+        # Peak indices for each cell type
+        self.d1_peak_indices = [self.peak_indices[i] for i in self.d1_indices]
+        self.d2_peak_indices = [self.peak_indices[i] for i in self.d2_indices]
+        self.chi_peak_indices = [self.peak_indices[i] for i in self.chi_indices]
         
     def _load_cell_type_labels(self, cell_type_label_file):
         """
@@ -627,13 +636,13 @@ class CellTypeTank(CITank):
         
         # Use pre-computed peak indices for each cell type if not provided
         if show_d1 and d1_peak_indices is None:
-            d1_peak_indices = [self.peak_indices[i] for i in self.d1_indices]
+            d1_peak_indices = self.d1_peak_indices
             
         if show_d2 and d2_peak_indices is None:
-            d2_peak_indices = [self.peak_indices[i] for i in self.d2_indices]
+            d2_peak_indices = self.d2_peak_indices
             
         if show_chi and chi_peak_indices is None:
-            chi_peak_indices = [self.peak_indices[i] for i in self.chi_indices]
+            chi_peak_indices = self.chi_peak_indices
         
         # Get signal values corresponding to each peak for each neuron type
         d1_peak_signals = []
@@ -1397,13 +1406,13 @@ class CellTypeTank(CITank):
             
         # Use pre-computed peak indices for each cell type if not provided
         if show_d1 and d1_peak_indices is None:
-            d1_peak_indices = [self.peak_indices[i] for i in self.d1_indices]
+            d1_peak_indices = self.d1_peak_indices
             
         if show_d2 and d2_peak_indices is None:
-            d2_peak_indices = [self.peak_indices[i] for i in self.d2_indices]
+            d2_peak_indices = self.d2_peak_indices
             
         if show_chi and chi_peak_indices is None:
-            chi_peak_indices = [self.peak_indices[i] for i in self.chi_indices]
+            chi_peak_indices = self.chi_peak_indices
             
         def convert_to_seconds(indices):
             """Convert sample indices to seconds"""
@@ -1769,13 +1778,13 @@ class CellTypeTank(CITank):
 
         # Use pre-computed peak indices for each cell type if not provided
         if show_d1 and d1_peak_indices is None:
-            d1_peak_indices = [self.peak_indices[i] for i in self.d1_indices]
+            d1_peak_indices = self.d1_peak_indices
 
         if show_d2 and d2_peak_indices is None:
-            d2_peak_indices = [self.peak_indices[i] for i in self.d2_indices]
+            d2_peak_indices = self.d2_peak_indices
 
         if show_chi and chi_peak_indices is None:
-            chi_peak_indices = [self.peak_indices[i] for i in self.chi_indices]
+            chi_peak_indices = self.chi_peak_indices
 
         # Convert time window to samples
         pre_samples = int(pre_window * self.ci_rate)
