@@ -4192,152 +4192,400 @@ class CellTypeTank(CITank):
             bokeh.layouts.layout
                 The created plot layout
             """
-            from bokeh.plotting import figure
-            from bokeh.layouts import column, row
-            from bokeh.models import ColumnDataSource, Range1d
-            
-            plots = []
-            
-            # 1. Conditional Probabilities Bar Chart with FIXED AXES
-            # Use the shortest time window for visualization
-            window_key = list(self.conditional_probs.keys())[0]
-            probs = self.conditional_probs[window_key]
-            
-            # Create bar chart with explicit positioning
-            connection_names = []
-            prob_values = []
-            
-            for connection, prob in probs.items():
-                source, target = connection.split('_to_')
-                connection_names.append(f"{source}→{target}")
-                prob_values.append(prob)
-            
-            p1 = figure(width=600, height=400, 
-                       title=f"Conditional Probabilities ({window_key})",
-                       x_axis_label="Connection",
-                       y_axis_label="P(Target|Source)")
-            
-            # FIX: Use explicit x-positions instead of categorical strings
-            x_pos1 = list(range(len(connection_names)))
-            colors = ['navy', 'crimson', 'green', 'purple', 'orange', 'brown']
-            p1.vbar(x=x_pos1, top=prob_values, width=0.8, 
-                   color=colors[:len(connection_names)], alpha=0.7)
-            
-            # Set explicit axis ranges
-            if prob_values:
-                p1.x_range = Range1d(-0.5, len(connection_names) - 0.5)
-                p1.y_range = Range1d(0, max(prob_values) * 1.2)
+            def create_enhanced_connectivity_visualizations(analyzer):
+                """
+                Create enhanced connectivity visualizations to better display analysis results
+                """
+                from bokeh.plotting import figure
+                from bokeh.layouts import column, row, gridplot
+                from bokeh.models import ColumnDataSource, HoverTool, Legend, LegendItem, Arrow, VeeHead
+                from bokeh.palettes import RdYlBu11, Spectral6
+                import networkx as nx
+                import pandas as pd
+                import numpy as np
                 
-                # Override x-axis labels
-                p1.xaxis.ticker = x_pos1
-                p1.xaxis.major_label_overrides = {i: name for i, name in enumerate(connection_names)}
+                plots = []
                 
-                # Add value labels on bars
-                for i, (pos, value) in enumerate(zip(x_pos1, prob_values)):
-                    p1.text(x=[pos], y=[value + max(prob_values)*0.02], text=[f"{value:.3f}"],
-                           text_align="center", text_font_size="9pt")
-            
-            p1.grid.grid_line_color = None
-            p1.xaxis.major_label_orientation = 45
-            plots.append(p1)
-            
-            # 2. Cross-correlation peaks with FIXED AXES
-            p2 = figure(width=600, height=400,
-                       title="Cross-Correlation Analysis",
-                       x_axis_label="Cell Type Pairs",
-                       y_axis_label="Peak Correlation")
-            
-            pairs = list(self.cross_correlations.keys())
-            correlations = [self.cross_correlations[pair]['peak_correlation'] for pair in pairs]
-            lags = [self.cross_correlations[pair]['peak_lag'] for pair in pairs]
-            
-            # FIX: Use explicit x-positions
-            x_pos2 = list(range(len(pairs)))
-            p2.vbar(x=x_pos2, top=correlations, width=0.8, color='steelblue', alpha=0.7)
-            
-            # Set explicit axis ranges
-            if correlations:
-                p2.x_range = Range1d(-0.5, len(pairs) - 0.5)
-                p2.y_range = Range1d(min(0, min(correlations)*1.1), max(correlations) * 1.2)
+                # 1. Conditional Probability Heatmap Matrix
+                def create_conditional_probability_heatmap():
+                    if not hasattr(analyzer, 'conditional_probs'):
+                        return None
+                        
+                    # Use the shortest time window data
+                    window_key = list(analyzer.conditional_probs.keys())[0]
+                    probs = analyzer.conditional_probs[window_key]
+                    
+                    # Create 3x3 matrix - corrected coordinate system
+                    cell_types = ['CHI', 'D1', 'D2']
+                    matrix_data = []
+                    
+                    for i, source in enumerate(cell_types):
+                        for j, target in enumerate(cell_types):
+                            if source != target:
+                                key = f'{source}_to_{target}'
+                                prob = probs.get(key, 0)
+                            else:
+                                prob = 0  # Self-to-self set to 0
+                            
+                            # Format probability value to 3 decimal places
+                            prob_formatted = f'{prob:.3f}' if prob > 0 else '0'
+                            
+                            matrix_data.append({
+                                'source': source,
+                                'target': target,
+                                'probability': prob,
+                                'probability_text': prob_formatted,
+                                'x': j,      # Column index - Target
+                                'y': 2-i,    # Row index - Source (flipped: CHI=2, D1=1, D2=0)
+                                'color_value': prob
+                            })
+                    
+                    df = pd.DataFrame(matrix_data)
+                    
+                    # Create HoverTool
+                    hover = HoverTool(tooltips=[
+                        ('From', '@source'),
+                        ('To', '@target'),
+                        ('Probability', '@probability{0.000}')
+                    ])
+                    
+                    p = figure(width=450, height=450,
+                              title="Conditional Activation Probability Matrix P(Target|Source)",
+                              x_range=[-0.5, 2.5],           # Extended range to center squares
+                              y_range=[-0.5, 2.5],           # Extended range to center squares
+                              tools=[hover, 'pan', 'wheel_zoom', 'box_zoom', 'reset', 'save'])
+                    
+                    # Create color mapping
+                    from bokeh.transform import linear_cmap
+                    from bokeh.palettes import RdYlBu11
+                    
+                    source_data = ColumnDataSource(df)
+                    
+                    # Draw heatmap squares
+                    p.rect(x='x', y='y', width=0.9, height=0.9, source=source_data,
+                           fill_color=linear_cmap('color_value', RdYlBu11, 0, df['probability'].max()),
+                           line_color='white', line_width=3)
+                    
+                    # Add probability value text
+                    p.text(x='x', y='y', text='probability_text', source=source_data,
+                           text_align='center', text_baseline='middle', text_font_size='16pt',
+                           text_color='black', text_font_style='bold')
+                    
+                    # Set axis labels
+                    p.xaxis.ticker = [0, 1, 2]
+                    p.yaxis.ticker = [0, 1, 2]
+                    p.xaxis.major_label_overrides = {0: "CHI", 1: "D1", 2: "D2"}
+                    p.yaxis.major_label_overrides = {0: "D2", 1: "D1", 2: "CHI"}  # Flipped labels
+                    
+                    # Correct axis labels
+                    p.xaxis.axis_label = "Target (Activated Neuron Type)"
+                    p.yaxis.axis_label = "Source (Activating Neuron Type)"
+                    
+                    # Add axis label styling
+                    p.xaxis.axis_label_text_font_size = "12pt"
+                    p.yaxis.axis_label_text_font_size = "12pt"
+                    p.xaxis.major_label_text_font_size = "12pt"
+                    p.yaxis.major_label_text_font_size = "12pt"
+                    
+                    return p
                 
-                # Override x-axis labels
-                p2.xaxis.ticker = x_pos2
-                p2.xaxis.major_label_overrides = {i: pair for i, pair in enumerate(pairs)}
+                # 2. Network Connection Strength Diagram
+                def create_network_strength_diagram():
+                    if not hasattr(analyzer, 'conditional_probs'):
+                        return None
+                        
+                    window_key = list(analyzer.conditional_probs.keys())[0]
+                    probs = analyzer.conditional_probs[window_key]
+                    
+                    p = figure(width=600, height=600,
+                              title="Neural Network Connection Strength Diagram",
+                              tools=['pan', 'wheel_zoom', 'box_zoom', 'reset'])
+                    
+                    # Node positions - triangular layout highlighting hierarchical relationships
+                    positions = {
+                        'CHI': (0.5, 0.8),    # Top - regulator
+                        'D1': (0.2, 0.3),     # Bottom left - relay
+                        'D2': (0.8, 0.3)      # Bottom right - executor
+                    }
+                    
+                    # Draw nodes
+                    node_colors = {'CHI': 'green', 'D1': 'navy', 'D2': 'crimson'}
+                    node_sizes = {'CHI': 60, 'D1': 80, 'D2': 70}  # D1 largest, emphasizing relay role
+                    
+                    for node, (x, y) in positions.items():
+                        p.scatter([x], [y], size=node_sizes[node], color=node_colors[node], 
+                                alpha=0.8, line_width=3, line_color='white')
+                        p.text([x], [y], [node], text_align='center', text_baseline='middle',
+                              text_font_size='14pt', text_color='white', text_font_style='bold')
+                    
+                    # Draw connection lines - line width represents connection strength
+                    max_prob = max(probs.values()) if probs.values() else 1
+                    
+                    for connection, prob in probs.items():
+                        source, target = connection.split('_to_')
+                        if prob > 0.1:  # Only show stronger connections
+                            x1, y1 = positions[source]
+                            x2, y2 = positions[target]
+                            
+                            # Line width proportional to probability
+                            line_width = max(2, prob / max_prob * 15)
+                            
+                            # Color depth represents strength
+                            alpha = 0.3 + (prob / max_prob) * 0.7
+                            
+                            p.line([x1, x2], [y1, y2], line_width=line_width, 
+                                  color='gray', alpha=alpha)
+                            
+                            # Add probability labels
+                            mid_x, mid_y = (x1 + x2) / 2, (y1 + y2) / 2
+                            p.text([mid_x], [mid_y], [f'{prob:.2f}'], 
+                                  text_align='center', text_baseline='middle',
+                                  text_font_size='10pt', text_color='black',
+                                  background_fill_color='white', background_fill_alpha=0.8)
+                    
+                    p.axis.visible = False
+                    p.grid.visible = False
+                    p.x_range.start, p.x_range.end = -0.1, 1.1
+                    p.y_range.start, p.y_range.end = 0, 1
+                    
+                    return p
                 
-                # Add lag information as text
-                for i, (pos, corr, lag) in enumerate(zip(x_pos2, correlations, lags)):
-                    p2.text(x=[pos], y=[corr + max(correlations)*0.02], text=[f"lag: {lag}"],
-                           text_align="center", text_font_size="8pt")
-            
-            p2.grid.grid_line_color = None
-            p2.xaxis.major_label_orientation = 45
-            plots.append(p2)
-            
-            # 3. Co-activation patterns with FIXED AXES
-            patterns = self.coactivation_patterns
-            pattern_names = list(patterns.keys())
-            proportions = [patterns[name]['proportion'] for name in pattern_names]
-            
-            p3 = figure(width=800, height=400,
-                       title="Co-activation Pattern Proportions",
-                       x_axis_label="Activation Pattern",
-                       y_axis_label="Proportion of Time")
-            
-            # FIX: Use explicit x-positions
-            x_pos3 = list(range(len(pattern_names)))
-            colors = ['navy', 'crimson', 'green', 'purple', 'orange', 'brown', 'pink', 'gray']
-            p3.vbar(x=x_pos3, top=proportions, width=0.8, 
-                   color=colors[:len(pattern_names)], alpha=0.7)
-            
-            # Set explicit axis ranges
-            if proportions:
-                p3.x_range = Range1d(-0.5, len(pattern_names) - 0.5)
-                p3.y_range = Range1d(0, max(proportions) * 1.2)
+                # 3. Activation Cascade Timeline Plot
+                def create_activation_cascade_plot():
+                    if not hasattr(analyzer, 'peak_timing_relationships'):
+                        return None
+                        
+                    proximities = analyzer.peak_timing_relationships['peak_proximities']
+                    
+                    p = figure(width=800, height=400,
+                              title="Neural Activation Temporal Relationships (Average Proximity)",
+                              x_axis_label="Average Time Delay (seconds)",
+                              y_axis_label="Connection Type",
+                              tools=['pan', 'wheel_zoom', 'box_zoom', 'reset'])
+                    
+                    # Prepare data
+                    connections = []
+                    delays = []
+                    colors = []
+                    
+                    color_map = {
+                        'CHI_to_D1': 'green',
+                        'CHI_to_D2': 'lightgreen', 
+                        'D1_to_D2': 'blue',
+                        'D2_to_D1': 'red',
+                        'D1_to_CHI': 'orange',
+                        'D2_to_CHI': 'pink'
+                    }
+                    
+                    for connection, prox_array in proximities.items():
+                        if len(prox_array) > 0:
+                            connections.append(connection)
+                            delays.append(np.mean(prox_array))
+                            colors.append(color_map.get(connection, 'gray'))
+                    
+                    if not connections:
+                        return None
+                        
+                    # Sort by delay
+                    sorted_data = sorted(zip(connections, delays, colors), key=lambda x: x[1])
+                    connections, delays, colors = zip(*sorted_data)
+                    
+                    y_positions = list(range(len(connections)))
+                    
+                    p.scatter(delays, y_positions, size=15, color=colors, alpha=0.8)
+                    
+                    # Add connecting lines showing activation sequence
+                    for i in range(len(delays)-1):
+                        p.line([delays[i], delays[i+1]], [y_positions[i], y_positions[i+1]],
+                              line_dash='dashed', color='gray', alpha=0.5)
+                    
+                    p.yaxis.ticker = y_positions
+                    p.yaxis.major_label_overrides = {i: conn for i, conn in enumerate(connections)}
+                    
+                    return p
                 
-                # Override x-axis labels
-                p3.xaxis.ticker = x_pos3
-                p3.xaxis.major_label_overrides = {i: name for i, name in enumerate(pattern_names)}
-            
-            p3.grid.grid_line_color = None
-            p3.xaxis.major_label_orientation = 45
-            plots.append(p3)
-            
-            # 4. Mutual Information with FIXED AXES
-            pairs = list(self.mutual_information.keys())
-            mi_values = list(self.mutual_information.values())
-            
-            p4 = figure(width=500, height=400,
-                       title="Mutual Information Between Cell Types",
-                       x_axis_label="Cell Type Pairs",
-                       y_axis_label="Mutual Information")
-            
-            # FIX: Use explicit x-positions
-            x_pos4 = list(range(len(pairs)))
-            p4.vbar(x=x_pos4, top=mi_values, width=0.8, color='darkgreen', alpha=0.7)
-            
-            # Set explicit axis ranges
-            if mi_values:
-                p4.x_range = Range1d(-0.5, len(pairs) - 0.5)
-                p4.y_range = Range1d(0, max(mi_values) * 1.2)
+                # 4. Co-activation Pattern Pie Chart
+                def create_coactivation_pie_chart():
+                    if not hasattr(analyzer, 'coactivation_patterns'):
+                        return None
+                        
+                    patterns = analyzer.coactivation_patterns
+                    
+                    # Prepare data
+                    pattern_names = []
+                    proportions = []
+                    colors = []
+                    
+                    color_scheme = {
+                        'None': 'lightgray',
+                        'D1_only': 'navy',
+                        'D2_only': 'crimson', 
+                        'CHI_only': 'green',
+                        'D1_D2': 'purple',
+                        'D1_CHI': 'teal',
+                        'D2_CHI': 'orange',
+                        'D1_D2_CHI': 'gold'
+                    }
+                    
+                    for pattern, stats in patterns.items():
+                        if stats['proportion'] > 0.01:  # Only show patterns >1%
+                            pattern_names.append(pattern)
+                            proportions.append(stats['proportion'])
+                            colors.append(color_scheme.get(pattern, 'gray'))
+                    
+                    if not pattern_names:
+                        return None
+                        
+                    # Calculate angles
+                    angles = [p * 2 * np.pi for p in proportions]
+                    
+                    p = figure(width=500, height=500,
+                              title="Co-activation Pattern Distribution",
+                              tools=['pan', 'wheel_zoom', 'box_zoom', 'reset'])
+                    
+                    # Draw pie chart
+                    start_angle = 0
+                    for i, (angle, color, name, prop) in enumerate(zip(angles, colors, pattern_names, proportions)):
+                        end_angle = start_angle + angle
+                        
+                        p.wedge(x=0, y=0, radius=0.8, start_angle=start_angle, end_angle=end_angle,
+                               color=color, alpha=0.8, legend_label=f'{name}: {prop:.1%}')
+                        
+                        # Add labels
+                        mid_angle = (start_angle + end_angle) / 2
+                        label_x = 0.6 * np.cos(mid_angle)
+                        label_y = 0.6 * np.sin(mid_angle)
+                        
+                        if prop > 0.05:  # Only add labels for large segments
+                            p.text([label_x], [label_y], [f'{prop:.1%}'], 
+                                  text_align='center', text_baseline='middle',
+                                  text_font_size='10pt', text_color='white', text_font_style='bold')
+                        
+                        start_angle = end_angle
+                    
+                    p.axis.visible = False
+                    p.grid.visible = False
+                    p.legend.location = "center_right"
+                    p.legend.click_policy = "hide"
+                    
+                    return p
                 
-                # Override x-axis labels
-                p4.xaxis.ticker = x_pos4
-                p4.xaxis.major_label_overrides = {i: pair for i, pair in enumerate(pairs)}
+                # 5. Information Flow Diagram
+                def create_information_flow_diagram():
+                    if not hasattr(analyzer, 'mutual_information') or not hasattr(analyzer, 'conditional_probs'):
+                        return None
+                        
+                    # Create HoverTool
+                    hover = HoverTool(tooltips=[
+                        ('Connection', '@connection'),
+                        ('Conditional Prob', '@cond_prob{0.000}'),
+                        ('Mutual Info', '@mutual_info{0.000}')
+                    ])
+                    
+                    p = figure(width=600, height=400,
+                              title="Information Flow Strength Analysis",
+                              x_axis_label="Conditional Probability P(Target|Source)",
+                              y_axis_label="Mutual Information",
+                              tools=[hover, 'pan', 'wheel_zoom', 'box_zoom', 'reset'])
+                    
+                    # Prepare data
+                    window_key = list(analyzer.conditional_probs.keys())[0]
+                    cond_probs = analyzer.conditional_probs[window_key]
+                    mutual_info = analyzer.mutual_information
+                    
+                    # Map conditional probabilities to mutual information
+                    flow_data = []
+                    
+                    for connection, cond_prob in cond_probs.items():
+                        source, target = connection.split('_to_')
+                        
+                        # Find corresponding mutual information
+                        mi_key1 = f'{source}_vs_{target}'
+                        mi_key2 = f'{target}_vs_{source}'
+                        
+                        mi_value = mutual_info.get(mi_key1, mutual_info.get(mi_key2, 0))
+                        
+                        flow_data.append({
+                            'connection': connection,
+                            'cond_prob': cond_prob,
+                            'mutual_info': mi_value,
+                            'source': source,
+                            'target': target
+                        })
+                    
+                    if not flow_data:
+                        return None
+                        
+                    df = pd.DataFrame(flow_data)
+                    
+                    # Different connection types use different colors
+                    colors = []
+                    for _, row in df.iterrows():
+                        if 'CHI' in row['source']:
+                            colors.append('green')
+                        elif 'D1' in row['source']:
+                            colors.append('navy')
+                        else:
+                            colors.append('crimson')
+                    
+                    df['colors'] = colors
+                    
+                    source_data = ColumnDataSource(df)
+                    
+                    p.scatter('cond_prob', 'mutual_info', size=12, color='colors', 
+                            alpha=0.7, source=source_data)
+                    
+                    # Add connection labels
+                    p.text('cond_prob', 'mutual_info', 'connection', source=source_data,
+                          text_font_size='8pt', x_offset=5, y_offset=5)
+                    
+                    return p
                 
-                # Add value labels on bars
-                for i, (pos, value) in enumerate(zip(x_pos4, mi_values)):
-                    p4.text(x=[pos], y=[value + max(mi_values)*0.02], text=[f"{value:.3f}"],
-                           text_align="center", text_font_size="9pt")
+                # Create all plots
+                p1 = create_conditional_probability_heatmap()
+                p2 = create_network_strength_diagram()
+                p3 = create_activation_cascade_plot()
+                p4 = create_coactivation_pie_chart()
+                p5 = create_information_flow_diagram()
+                
+                # Filter out None plots
+                valid_plots = [p for p in [p1, p2, p3, p4, p5] if p is not None]
+                
+                if not valid_plots:
+                    print("No available data to create visualization plots")
+                    return None
+                
+                # Combine layout
+                if len(valid_plots) >= 5:
+                    layout = column(
+                        row(valid_plots[0], valid_plots[1]),
+                        valid_plots[2],
+                        row(valid_plots[3], valid_plots[4])
+                    )
+                elif len(valid_plots) >= 3:
+                    layout = column(
+                        row(valid_plots[0], valid_plots[1]),
+                        *valid_plots[2:]
+                    )
+                else:
+                    layout = column(*valid_plots)
+                
+                return layout
             
-            p4.grid.grid_line_color = None
-            p4.xaxis.major_label_orientation = 45
-            plots.append(p4)
+            # Create enhanced plots using the analyzer instance (self)
+            layout = create_enhanced_connectivity_visualizations(self)
             
-            # Create layout - we always have 4 plots
-            layout = column(
-                row(plots[0], plots[1]),
-                row(plots[2], plots[3])
-            )
+            if layout is None:
+                # Fallback to simple message if no data available
+                from bokeh.plotting import figure
+                from bokeh.layouts import column
+                
+                p = figure(width=800, height=400, title="No Connectivity Data Available")
+                p.grid.grid_line_color = None
+                p.text([0.5], [0.5], ["No connectivity analysis data available"], 
+                       text_align="center", text_baseline="middle")
+                p.axis.visible = False
+                layout = column(p)
             
             # Set default save path if none provided
             if save_path is None:
