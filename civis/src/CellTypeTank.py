@@ -3443,3 +3443,985 @@ class CellTypeTank(CITank):
             overwrite=overwrite,
             font_size=font_size
         )
+
+    class NeuralConnectivityAnalyzer:
+        """
+        Nested class for analyzing functional connectivity between neural types.
+        Directly accesses parent CellTypeTank data without redundant property declarations.
+        """
+        
+        def __init__(self, parent_tank, save_dir=None, use_rising_edges=True):
+            """
+            Initialize analyzer with reference to parent CellTypeTank and optionally run full analysis
+            
+            Parameters:
+            -----------
+            parent_tank : CellTypeTank
+                Parent CellTypeTank object containing neural data
+            save_dir : str, optional
+                Directory to save results
+            use_rising_edges : bool
+                Whether to use rising edges instead of peak indices
+            run_analysis : bool
+                Whether to run the full analysis during initialization
+            """
+            self.tank = parent_tank
+
+            print(f"Neural Connectivity Analyzer initialized:")
+            print(f"D1 neurons: {len(self.tank.d1_peak_indices)} cells, total {sum(len(peaks) for peaks in self.tank.d1_peak_indices)} peaks")
+            print(f"D2 neurons: {len(self.tank.d2_peak_indices)} cells, total {sum(len(peaks) for peaks in self.tank.d2_peak_indices)} peaks")
+            print(f"CHI neurons: {len(self.tank.chi_peak_indices)} cells, total {sum(len(peaks) for peaks in self.tank.chi_peak_indices)} peaks")
+
+            
+            # Store analysis results - initialize all properties that will be set by analysis methods
+            self.binary_signals = self.create_binary_signals_from_peaks(window_size=5, use_rising_edges=use_rising_edges)
+            self.conditional_probs = self.calculate_conditional_probabilities(time_windows=[5, 10, 20, 50])
+            self.cross_correlations = self.calculate_cross_correlations_from_peaks(max_lag=100)
+            self.coactivation_patterns = self.identify_coactivation_patterns_from_peaks(min_duration=3)
+            self.peak_timing_relationships = self.calculate_peak_timing_relationships()
+            self.mutual_information = self.calculate_mutual_information_from_peaks(bins=10)
+            self.network = self.create_connectivity_network(threshold=0.1)
+            
+            self.generate_summary_report()
+            self.analysis_results = self.get_analysis_results()
+            
+            print("Full neural connectivity analysis completed!")
+        
+        def get_analysis_results(self):
+            """
+            Get all analysis results as a dictionary
+            
+            Returns:
+            --------
+            dict : Analysis results
+            """
+            return {
+                'binary_signals': self.binary_signals,
+                'conditional_probs': self.conditional_probs,
+                'cross_correlations': self.cross_correlations,
+                'coactivation_patterns': self.coactivation_patterns,
+                'peak_timing_relationships': self.peak_timing_relationships,
+                'mutual_information': self.mutual_information,
+                'network': self.network
+            }
+        
+        def create_binary_signals_from_peaks(self, window_size=5, use_rising_edges=True):
+            """
+            Create binary activation signals based on existing peak indices
+            
+            Parameters:
+            -----------
+            window_size : int
+                Duration window size for activation events (in samples)
+            use_rising_edges : bool
+                Whether to use rising edges instead of peak indices
+            
+            Returns:
+            --------
+            dict : Contains binary signals for each neural type
+            """
+            print("Creating binary activation signals from existing peak indices...")
+            
+            # Choose between peak indices or rising edges
+            if use_rising_edges:
+                d1_events = self.tank.d1_rising_edges_starts
+                d2_events = self.tank.d2_rising_edges_starts
+                chi_events = self.tank.chi_rising_edges_starts
+                print("Using rising edges data")
+            else:
+                d1_events = self.tank.d1_peak_indices
+                d2_events = self.tank.d2_peak_indices
+                chi_events = self.tank.chi_peak_indices
+                print("Using peak indices data")
+            
+            signal_length = len(self.tank.d1_denoised[0])
+            
+            # Create D1 binary signals
+            d1_binary = np.zeros((len(d1_events), signal_length))
+            for i, events in enumerate(d1_events):
+                for event in events:
+                    start = max(0, event - window_size//2)
+                    end = min(signal_length, event + window_size//2 + 1)
+                    d1_binary[i, start:end] = 1
+            
+            # Create D2 binary signals
+            d2_binary = np.zeros((len(d2_events), signal_length))
+            for i, events in enumerate(d2_events):
+                for event in events:
+                    start = max(0, event - window_size//2)
+                    end = min(signal_length, event + window_size//2 + 1)
+                    d2_binary[i, start:end] = 1
+            
+            # Create CHI binary signals
+            chi_binary = np.zeros((len(chi_events), signal_length))
+            for i, events in enumerate(chi_events):
+                for event in events:
+                    start = max(0, event - window_size//2)
+                    end = min(signal_length, event + window_size//2 + 1)
+                    chi_binary[i, start:end] = 1
+            
+            binary_signals = {
+                'D1': d1_binary,
+                'D2': d2_binary,
+                'CHI': chi_binary
+            }
+            
+            return binary_signals
+        
+        def calculate_conditional_probabilities(self, time_windows=[5, 10, 20, 50]):
+            """
+            Calculate conditional activation probabilities
+            
+            Parameters:
+            -----------
+            time_windows : list
+                Different time window sizes (in samples)
+            
+            Returns:
+            --------
+            dict : Conditional probability results
+            """
+            print("Calculating conditional activation probabilities...")
+            
+            results = {}
+            
+            for window in time_windows:
+                window_results = {}
+                
+                # Calculate population activation signals (how many neurons are active at each time point)
+                d1_population = np.sum(self.binary_signals['D1'], axis=0)
+                d2_population = np.sum(self.binary_signals['D2'], axis=0)
+                chi_population = np.sum(self.binary_signals['CHI'], axis=0)
+                
+                # Binarize population signals (at least one neuron active)
+                d1_active = (d1_population > 0).astype(int)
+                d2_active = (d2_population > 0).astype(int)
+                chi_active = (chi_population > 0).astype(int)
+                
+                # Calculate conditional probability P(B activated | A activated)
+                def calc_conditional_prob(signal_a, signal_b, window_size):
+                    """Calculate probability of B activation within window_size time after A activation"""
+                    a_events = np.where(signal_a == 1)[0]
+                    if len(a_events) == 0:
+                        return 0.0
+                    
+                    conditional_activations = 0
+                    for event in a_events:
+                        # Check time window after the event
+                        start = event + 1
+                        end = min(len(signal_b), event + window_size + 1)
+                        if start < len(signal_b) and np.any(signal_b[start:end]):
+                            conditional_activations += 1
+                    
+                    return conditional_activations / len(a_events)
+                
+                # Calculate conditional probabilities for all pairs
+                pairs = [('D1', 'D2'), ('D1', 'CHI'), ('D2', 'D1'), 
+                        ('D2', 'CHI'), ('CHI', 'D1'), ('CHI', 'D2')]
+                
+                signals = {'D1': d1_active, 'D2': d2_active, 'CHI': chi_active}
+                
+                for source, target in pairs:
+                    prob = calc_conditional_prob(signals[source], signals[target], window)
+                    window_results[f'{source}_to_{target}'] = prob
+                
+                results[f'window_{window}'] = window_results
+            
+            
+            return results
+        
+        def calculate_cross_correlations_from_peaks(self, max_lag=100):
+            """
+            Calculate time-lagged cross-correlations based on existing peak indices
+            
+            Parameters:
+            -----------
+            max_lag : int
+                Maximum lag time (in samples)
+            
+            Returns:
+            --------
+            dict : Cross-correlation results
+            """
+            print("Calculating time-lagged cross-correlations from peak indices...")
+            
+            # Calculate population activation signals
+            d1_population = np.sum(self.binary_signals['D1'], axis=0)
+            d2_population = np.sum(self.binary_signals['D2'], axis=0)
+            chi_population = np.sum(self.binary_signals['CHI'], axis=0)
+            
+            signals = {
+                'D1': d1_population,
+                'D2': d2_population,
+                'CHI': chi_population
+            }
+            
+            results = {}
+            lags = np.arange(-max_lag, max_lag + 1)
+            
+            # Calculate cross-correlations for all pairs
+            pairs = [('D1', 'D2'), ('D1', 'CHI'), ('D2', 'CHI')]
+            
+            for source, target in pairs:
+                correlation = np.correlate(signals[source], signals[target], mode='full')
+                
+                # Normalize
+                n = len(signals[source])
+                std_source = np.std(signals[source])
+                std_target = np.std(signals[target])
+                
+                if std_source > 0 and std_target > 0:
+                    correlation = correlation / (std_source * std_target * n)
+                else:
+                    correlation = np.zeros_like(correlation)
+                
+                # Extract lag range of interest
+                center = len(correlation) // 2
+                start = center - max_lag
+                end = center + max_lag + 1
+                correlation = correlation[start:end]
+                
+                results[f'{source}_vs_{target}'] = {
+                    'lags': lags,
+                    'correlation': correlation,
+                    'peak_lag': lags[np.argmax(np.abs(correlation))],
+                    'peak_correlation': np.max(np.abs(correlation))
+                }
+            
+            return results
+        
+        def identify_coactivation_patterns_from_peaks(self, min_duration=3):
+            """
+            Identify co-activation patterns based on existing peak indices
+            
+            Parameters:
+            -----------
+            min_duration : int
+                Minimum co-activation duration (in samples)
+            
+            Returns:
+            --------
+            dict : Co-activation pattern statistics
+            """
+            print("Identifying co-activation patterns from peak indices...")
+            
+            # Calculate population activation signals
+            d1_active = (np.sum(self.binary_signals['D1'], axis=0) > 0).astype(int)
+            d2_active = (np.sum(self.binary_signals['D2'], axis=0) > 0).astype(int)
+            chi_active = (np.sum(self.binary_signals['CHI'], axis=0) > 0).astype(int)
+            
+            # Create combination activation patterns
+            patterns = {
+                'D1_only': d1_active * (1 - d2_active) * (1 - chi_active),
+                'D2_only': (1 - d1_active) * d2_active * (1 - chi_active),
+                'CHI_only': (1 - d1_active) * (1 - d2_active) * chi_active,
+                'D1_D2': d1_active * d2_active * (1 - chi_active),
+                'D1_CHI': d1_active * (1 - d2_active) * chi_active,
+                'D2_CHI': (1 - d1_active) * d2_active * chi_active,
+                'D1_D2_CHI': d1_active * d2_active * chi_active,
+                'None': (1 - d1_active) * (1 - d2_active) * (1 - chi_active)
+            }
+            
+            # Calculate duration and frequency statistics for each pattern
+            results = {}
+            
+            for pattern_name, pattern_signal in patterns.items():
+                # Find continuous activation segments
+                diff = np.diff(np.concatenate(([0], pattern_signal, [0])))
+                starts = np.where(diff == 1)[0]
+                ends = np.where(diff == -1)[0]
+                
+                durations = ends - starts
+                valid_episodes = durations >= min_duration
+                
+                results[pattern_name] = {
+                    'total_episodes': len(durations),
+                    'valid_episodes': np.sum(valid_episodes),
+                    'total_duration': np.sum(durations),
+                    'valid_duration': np.sum(durations[valid_episodes]),
+                    'mean_duration': np.mean(durations) if len(durations) > 0 else 0,
+                    'proportion': np.sum(pattern_signal) / len(pattern_signal)
+                }
+            
+            return results
+        
+        def calculate_peak_timing_relationships(self):
+            """
+            Analyze peak timing relationships between different neural types
+            
+            Returns:
+            --------
+            dict : Peak timing relationship analysis results
+            """
+            print("Analyzing peak timing relationships...")
+            
+            # Convert all peaks to time series
+            def peaks_to_times(peak_indices_list):
+                """Convert peak indices to time points (seconds)"""
+                all_times = []
+                for peaks in peak_indices_list:
+                    times = peaks / self.tank.ci_rate
+                    all_times.extend(times)
+                return np.array(sorted(all_times))
+            
+            d1_times = peaks_to_times(self.tank.d1_peak_indices)
+            d2_times = peaks_to_times(self.tank.d2_peak_indices)
+            chi_times = peaks_to_times(self.tank.chi_peak_indices)
+            
+            results = {}
+            
+            # Calculate inter-peak interval distributions
+            def calc_inter_peak_intervals(times):
+                if len(times) > 1:
+                    return np.diff(times)
+                return np.array([])
+            
+            results['inter_peak_intervals'] = {
+                'D1': calc_inter_peak_intervals(d1_times),
+                'D2': calc_inter_peak_intervals(d2_times),
+                'CHI': calc_inter_peak_intervals(chi_times)
+            }
+            
+            # Calculate temporal proximity between different types
+            def calc_peak_proximity(times1, times2, max_distance=2.0):
+                """Calculate temporal proximity between two peak time groups (within seconds)"""
+                proximities = []
+                for t1 in times1:
+                    distances = np.abs(times2 - t1)
+                    min_distance = np.min(distances) if len(distances) > 0 else np.inf
+                    if min_distance <= max_distance:
+                        proximities.append(min_distance)
+                return np.array(proximities)
+            
+            results['peak_proximities'] = {
+                'D1_to_D2': calc_peak_proximity(d1_times, d2_times),
+                'D1_to_CHI': calc_peak_proximity(d1_times, chi_times),
+                'D2_to_D1': calc_peak_proximity(d2_times, d1_times),
+                'D2_to_CHI': calc_peak_proximity(d2_times, chi_times),
+                'CHI_to_D1': calc_peak_proximity(chi_times, d1_times),
+                'CHI_to_D2': calc_peak_proximity(chi_times, d2_times)
+            }
+            
+            # Calculate sequential activation patterns (activation order within time window) - optimized version
+            def find_sequential_activations(times1, times2, times3, window=1.0, max_sequence_length=5):
+                """Find sequential activation patterns within time window, limiting sequence length"""
+                sequences = []
+                
+                # Combine all time points and mark types
+                all_events = []
+                for t in times1:
+                    all_events.append((t, 'D1'))
+                for t in times2:
+                    all_events.append((t, 'D2'))
+                for t in times3:
+                    all_events.append((t, 'CHI'))
+                
+                # Sort by time
+                all_events.sort(key=lambda x: x[0])
+                
+                # Find sequences within window, limiting sequence length
+                for i, (start_time, start_type) in enumerate(all_events):
+                    window_events = [(start_time, start_type)]
+                    
+                    for j in range(i+1, len(all_events)):
+                        event_time, event_type = all_events[j]
+                        if event_time - start_time <= window:
+                            window_events.append((event_time, event_type))
+                            # Limit sequence length
+                            if len(window_events) >= max_sequence_length:
+                                break
+                        else:
+                            break
+                    
+                    if len(window_events) >= 2:
+                        sequence = tuple([event[1] for event in window_events])
+                        sequences.append(sequence)
+                
+                return sequences
+            
+            sequences = find_sequential_activations(d1_times, d2_times, chi_times, 
+                                                  window=1.0, max_sequence_length=5)
+            
+            # Count sequence patterns
+            from collections import Counter
+            sequence_counts = Counter(sequences)
+            results['sequential_patterns'] = dict(sequence_counts)
+            
+            return results
+        
+        def calculate_mutual_information_from_peaks(self, bins=10):
+            """
+            Calculate mutual information between neural types based on existing peak indices
+            
+            Parameters:
+            -----------
+            bins : int
+                Number of bins for discretization
+            
+            Returns:
+            --------
+            dict : Mutual information matrix
+            """
+            print("Calculating mutual information from peak data...")
+            
+            # Calculate population activation strength
+            d1_strength = np.sum(self.binary_signals['D1'], axis=0)
+            d2_strength = np.sum(self.binary_signals['D2'], axis=0)
+            chi_strength = np.sum(self.binary_signals['CHI'], axis=0)
+            
+            # Discretize signals
+            def discretize(signal, bins):
+                if np.max(signal) > 0:
+                    return np.digitize(signal, np.linspace(0, np.max(signal), bins))
+                else:
+                    return np.zeros_like(signal, dtype=int)
+            
+            d1_discrete = discretize(d1_strength, bins)
+            d2_discrete = discretize(d2_strength, bins)
+            chi_discrete = discretize(chi_strength, bins)
+            
+            signals = {
+                'D1': d1_discrete,
+                'D2': d2_discrete,
+                'CHI': chi_discrete
+            }
+            
+            # Calculate mutual information for all pairs
+            from sklearn.metrics import mutual_info_score
+            results = {}
+            pairs = [('D1', 'D2'), ('D1', 'CHI'), ('D2', 'CHI')]
+            
+            for source, target in pairs:
+                mi = mutual_info_score(signals[source], signals[target])
+                results[f'{source}_vs_{target}'] = mi
+            
+            self.mutual_information = results
+            return results
+        
+        def create_connectivity_network(self, threshold=0.1):
+            """
+            Create functional connectivity network
+            
+            Parameters:
+            -----------
+            threshold : float
+                Connection strength threshold
+            
+            Returns:
+            --------
+            networkx.Graph : Network graph object
+            """
+            print("Creating functional connectivity network...")
+            
+            import networkx as nx
+            G = nx.DiGraph()
+            
+            # Add nodes
+            G.add_node('D1', type='D1', color='navy')
+            G.add_node('D2', type='D2', color='crimson')
+            G.add_node('CHI', type='CHI', color='green')
+            
+            # Add directed edges based on conditional probabilities
+            # Use shortest time window results
+            window_key = list(self.conditional_probs.keys())[0]
+            probs = self.conditional_probs[window_key]
+            
+            for connection, prob in probs.items():
+                if prob > threshold:
+                    source, target = connection.split('_to_')
+                    G.add_edge(source, target, weight=prob, type='conditional_prob')
+            
+            # Add undirected edge weights based on mutual information
+            for connection, mi in self.mutual_information.items():
+                source, target = connection.split('_vs_')
+                if G.has_edge(source, target):
+                    G[source][target]['mutual_info'] = mi
+                elif G.has_edge(target, source):
+                    G[target][source]['mutual_info'] = mi
+            
+            return G
+        
+        def generate_summary_report(self):
+            """
+            Generate analysis summary report
+            """
+            print("\n" + "="*60)
+            print("Neural Functional Connectivity Analysis Report")
+            print("="*60)
+            
+            # Basic statistics
+            print("\n1. Peak Event Statistics:")
+            d1_total = sum(len(peaks) for peaks in self.tank.d1_peak_indices)
+            d2_total = sum(len(peaks) for peaks in self.tank.d2_peak_indices)
+            chi_total = sum(len(peaks) for peaks in self.tank.chi_peak_indices)
+            
+            print(f"   D1: {len(self.tank.d1_peak_indices)} neurons, total {d1_total} peaks, average {d1_total/len(self.tank.d1_peak_indices):.1f} peaks/neuron")
+            print(f"   D2: {len(self.tank.d2_peak_indices)} neurons, total {d2_total} peaks, average {d2_total/len(self.tank.d2_peak_indices):.1f} peaks/neuron")
+            print(f"   CHI: {len(self.tank.chi_peak_indices)} neurons, total {chi_total} peaks, average {chi_total/len(self.tank.chi_peak_indices):.1f} peaks/neuron")
+            
+            # Conditional probabilities
+            print("\n2. Conditional Activation Probabilities (shortest time window):")
+            window_key = list(self.conditional_probs.keys())[0]
+            probs = self.conditional_probs[window_key]
+            for connection, prob in probs.items():
+                source, target = connection.split('_to_')
+                print(f"   P({target} activated|{source} activated) = {prob:.3f}")
+            
+            # Cross-correlation peaks
+            print("\n3. Cross-correlation Peaks:")
+            for pair, data in self.cross_correlations.items():
+                print(f"   {pair}: peak correlation={data['peak_correlation']:.3f}, "
+                      f"lag={data['peak_lag']} samples")
+            
+            # Co-activation patterns
+            print("\n4. Major Co-activation Patterns:")
+            patterns = self.coactivation_patterns
+            sorted_patterns = sorted(patterns.items(), 
+                                   key=lambda x: x[1]['proportion'], reverse=True)
+            for pattern, stats in sorted_patterns[:5]:
+                print(f"   {pattern}: {stats['proportion']:.3f} "
+                      f"({stats['valid_episodes']} valid episodes)")
+            
+            # Peak timing relationships
+            print("\n5. Peak Timing Relationships:")
+            proximities = self.peak_timing_relationships['peak_proximities']
+            for pair, prox_array in proximities.items():
+                if len(prox_array) > 0:
+                    mean_prox = np.mean(prox_array)
+                    print(f"   {pair}: average proximity={mean_prox:.3f}s ({len(prox_array)} proximity events)")
+            
+            # Mutual information
+            print("\n6. Mutual Information:")
+            for pair, mi in self.mutual_information.items():
+                print(f"   {pair}: {mi:.3f}")
+            
+            print("\n" + "="*60)
+        
+        
+        def plot_peak_timing_relationships(self, save_path=None, title="Peak Timing Relationships Analysis", 
+                                         notebook=False, overwrite=False, font_size=None):
+            """
+            Plot peak timing relationship graphs
+            
+            Parameters:
+            -----------
+            save_path : str, optional
+                Path to save the plot as an HTML file
+            title : str, optional
+                Title for the plot
+            notebook : bool
+                Flag to indicate if the plot is for a Jupyter notebook
+            overwrite : bool
+                Flag to indicate whether to overwrite existing file
+            font_size : str, optional
+                Font size for all text elements in the plot
+            
+            Returns:
+            --------
+            bokeh.layouts.layout
+                The created plot layout
+            """
+            from bokeh.plotting import figure
+            from bokeh.layouts import column
+            from bokeh.models import Range1d
+            
+            results = self.peak_timing_relationships
+            
+            # 1. Inter-peak intervals distribution with FIXED AXES
+            p1 = figure(width=800, height=400, 
+                       title="Inter-Peak Interval Distribution",
+                       x_axis_label="Interval Time (seconds)",
+                       y_axis_label="Density")
+            
+            # Remove grid
+            p1.grid.grid_line_color = None
+            
+            colors = ['navy', 'crimson', 'green']
+            cell_types = ['D1', 'D2', 'CHI']
+            
+            has_interval_data = False
+            all_intervals = []
+            
+            for i, cell_type in enumerate(cell_types):
+                intervals = results['inter_peak_intervals'][cell_type]
+                if len(intervals) > 0:
+                    has_interval_data = True
+                    all_intervals.extend(intervals)
+                    
+                    # Use more bins for better visualization and density=True for proper scaling
+                    hist, edges = np.histogram(intervals, bins=50, density=True)
+                    centers = (edges[:-1] + edges[1:]) / 2
+                    
+                    p1.line(centers, hist, line_width=3, color=colors[i], 
+                           legend_label=f'{cell_type} (n={len(intervals)})')
+                    
+                    # Add circles to make lines more visible
+                    p1.scatter(centers, hist, size=4, color=colors[i], alpha=0.6)
+            
+            if has_interval_data and len(all_intervals) > 0:
+                # Set explicit axis ranges based on data (use 95th percentile to avoid outliers)
+                x_min, x_max = 0, np.percentile(all_intervals, 95)
+                p1.x_range = Range1d(x_min, x_max)
+            else:
+                p1.text([0.5], [0.5], ["No inter-peak interval data available"], 
+                       text_align="center", text_baseline="middle")
+            
+            p1.legend.click_policy = "hide"
+            
+            # 2. Peak proximity distribution with FIXED AXES
+            p2 = figure(width=800, height=400,
+                       title="Peak Proximity Between Different Types",
+                       x_axis_label="Minimum Distance (seconds)",
+                       y_axis_label="Frequency")
+            
+            # Remove grid
+            p2.grid.grid_line_color = None
+            
+            proximities = results['peak_proximities']
+            pair_colors = ['purple', 'orange', 'brown', 'pink', 'gray', 'cyan']
+            
+            has_proximity_data = False
+            all_proximities = []
+            max_frequency = 0
+            
+            for i, (pair, prox_array) in enumerate(proximities.items()):
+                if len(prox_array) > 0:
+                    has_proximity_data = True
+                    all_proximities.extend(prox_array)
+                    
+                    # Use fewer bins for better visibility
+                    hist, edges = np.histogram(prox_array, bins=25)
+                    max_frequency = max(max_frequency, hist.max())
+                    
+                    p2.quad(top=hist, bottom=0, left=edges[:-1], right=edges[1:],
+                           fill_color=pair_colors[i % len(pair_colors)], alpha=0.7,
+                           legend_label=f'{pair} (n={len(prox_array)})')
+            
+            if has_proximity_data and len(all_proximities) > 0:
+                # Set explicit axis ranges
+                x_min, x_max = 0, np.percentile(all_proximities, 95)
+                y_max = max_frequency * 1.1  # Add 10% padding
+                p2.x_range = Range1d(x_min, x_max)
+                p2.y_range = Range1d(0, y_max)
+            else:
+                p2.text([0.5], [0.5], ["No peak proximity data available"], 
+                       text_align="center", text_baseline="middle")
+            
+            p2.legend.click_policy = "hide"
+            
+            # 3. Sequential activation patterns with FIXED AXES
+            if 'sequential_patterns' in results:
+                patterns = results['sequential_patterns']
+                if patterns:
+                    # Convert tuples to strings and limit display to most common patterns
+                    pattern_items = list(patterns.items())
+                    # Sort by frequency, take top 15 most common patterns
+                    pattern_items.sort(key=lambda x: x[1], reverse=True)
+                    top_patterns = pattern_items[:15]  # Show more patterns
+                    
+                    # Convert tuples to strings
+                    pattern_names = [' → '.join(pattern) for pattern, _ in top_patterns]
+                    pattern_counts = [count for _, count in top_patterns]
+                    
+                    p3 = figure(width=1200, height=500,  # Made wider and taller
+                               title="Sequential Activation Pattern Frequency (Top 15 Most Common)",
+                               x_axis_label="Activation Sequence",
+                               y_axis_label="Occurrence Count")
+                    
+                    # Remove grid
+                    p3.grid.grid_line_color = None
+                    
+                    # Create bar chart with explicit positioning (FIX: don't use categorical strings directly)
+                    x_pos = list(range(len(pattern_names)))
+                    p3.vbar(x=x_pos, top=pattern_counts, width=0.8, 
+                           color='steelblue', alpha=0.7)
+                    
+                    # Set explicit axis ranges
+                    p3.x_range = Range1d(-0.5, len(pattern_names) - 0.5)
+                    p3.y_range = Range1d(0, max(pattern_counts) * 1.1)
+                    
+                    # Override x-axis labels (FIX: use explicit label overrides)
+                    p3.xaxis.ticker = x_pos
+                    p3.xaxis.major_label_overrides = {i: name for i, name in enumerate(pattern_names)}
+                    p3.xaxis.major_label_orientation = 45
+                else:
+                    p3 = figure(width=800, height=400, title="No Sequential Activation Patterns Found")
+                    p3.grid.grid_line_color = None
+                    p3.text([0.5], [0.5], ["No Sequential Activation Patterns Found"], 
+                           text_align="center", text_baseline="middle")
+            else:
+                p3 = figure(width=800, height=400, title="Sequential Activation Pattern Analysis Not Run")
+                p3.grid.grid_line_color = None
+                p3.text([0.5], [0.5], ["Sequential Activation Pattern Analysis Not Run"], 
+                       text_align="center", text_baseline="middle")
+            
+            layout = column(p1, p2, p3)
+            
+            # Set default save path if none provided
+            if save_path is None:
+                save_path = os.path.join(self.tank.config["SummaryPlotsPath"], 
+                                       self.tank.session_name, 
+                                       'Peak_Timing_Relationships.html')
+            
+            # Use tank's output_bokeh_plot method
+            self.tank.output_bokeh_plot(layout, save_path=save_path, title=title, 
+                                      notebook=notebook, overwrite=overwrite, font_size=font_size)
+            
+            return layout
+        
+        def plot_connectivity_analysis_summary(self, save_path=None, title="Neural Connectivity Analysis Summary",
+                                             notebook=False, overwrite=False, font_size=None):
+            """
+            Create comprehensive visualization of connectivity analysis results
+            
+            Parameters:
+            -----------
+            save_path : str, optional
+                Path to save the plot as an HTML file
+            title : str, optional
+                Title for the plot
+            notebook : bool
+                Flag to indicate if the plot is for a Jupyter notebook
+            overwrite : bool
+                Flag to indicate whether to overwrite existing file
+            font_size : str, optional
+                Font size for all text elements in the plot
+            
+            Returns:
+            --------
+            bokeh.layouts.layout
+                The created plot layout
+            """
+            from bokeh.plotting import figure
+            from bokeh.layouts import column, row
+            from bokeh.models import ColumnDataSource, Range1d
+            
+            plots = []
+            
+            # 1. Conditional Probabilities Bar Chart with FIXED AXES
+            # Use the shortest time window for visualization
+            window_key = list(self.conditional_probs.keys())[0]
+            probs = self.conditional_probs[window_key]
+            
+            # Create bar chart with explicit positioning
+            connection_names = []
+            prob_values = []
+            
+            for connection, prob in probs.items():
+                source, target = connection.split('_to_')
+                connection_names.append(f"{source}→{target}")
+                prob_values.append(prob)
+            
+            p1 = figure(width=600, height=400, 
+                       title=f"Conditional Probabilities ({window_key})",
+                       x_axis_label="Connection",
+                       y_axis_label="P(Target|Source)")
+            
+            # FIX: Use explicit x-positions instead of categorical strings
+            x_pos1 = list(range(len(connection_names)))
+            colors = ['navy', 'crimson', 'green', 'purple', 'orange', 'brown']
+            p1.vbar(x=x_pos1, top=prob_values, width=0.8, 
+                   color=colors[:len(connection_names)], alpha=0.7)
+            
+            # Set explicit axis ranges
+            if prob_values:
+                p1.x_range = Range1d(-0.5, len(connection_names) - 0.5)
+                p1.y_range = Range1d(0, max(prob_values) * 1.2)
+                
+                # Override x-axis labels
+                p1.xaxis.ticker = x_pos1
+                p1.xaxis.major_label_overrides = {i: name for i, name in enumerate(connection_names)}
+                
+                # Add value labels on bars
+                for i, (pos, value) in enumerate(zip(x_pos1, prob_values)):
+                    p1.text(x=[pos], y=[value + max(prob_values)*0.02], text=[f"{value:.3f}"],
+                           text_align="center", text_font_size="9pt")
+            
+            p1.grid.grid_line_color = None
+            p1.xaxis.major_label_orientation = 45
+            plots.append(p1)
+            
+            # 2. Cross-correlation peaks with FIXED AXES
+            p2 = figure(width=600, height=400,
+                       title="Cross-Correlation Analysis",
+                       x_axis_label="Cell Type Pairs",
+                       y_axis_label="Peak Correlation")
+            
+            pairs = list(self.cross_correlations.keys())
+            correlations = [self.cross_correlations[pair]['peak_correlation'] for pair in pairs]
+            lags = [self.cross_correlations[pair]['peak_lag'] for pair in pairs]
+            
+            # FIX: Use explicit x-positions
+            x_pos2 = list(range(len(pairs)))
+            p2.vbar(x=x_pos2, top=correlations, width=0.8, color='steelblue', alpha=0.7)
+            
+            # Set explicit axis ranges
+            if correlations:
+                p2.x_range = Range1d(-0.5, len(pairs) - 0.5)
+                p2.y_range = Range1d(min(0, min(correlations)*1.1), max(correlations) * 1.2)
+                
+                # Override x-axis labels
+                p2.xaxis.ticker = x_pos2
+                p2.xaxis.major_label_overrides = {i: pair for i, pair in enumerate(pairs)}
+                
+                # Add lag information as text
+                for i, (pos, corr, lag) in enumerate(zip(x_pos2, correlations, lags)):
+                    p2.text(x=[pos], y=[corr + max(correlations)*0.02], text=[f"lag: {lag}"],
+                           text_align="center", text_font_size="8pt")
+            
+            p2.grid.grid_line_color = None
+            p2.xaxis.major_label_orientation = 45
+            plots.append(p2)
+            
+            # 3. Co-activation patterns with FIXED AXES
+            patterns = self.coactivation_patterns
+            pattern_names = list(patterns.keys())
+            proportions = [patterns[name]['proportion'] for name in pattern_names]
+            
+            p3 = figure(width=800, height=400,
+                       title="Co-activation Pattern Proportions",
+                       x_axis_label="Activation Pattern",
+                       y_axis_label="Proportion of Time")
+            
+            # FIX: Use explicit x-positions
+            x_pos3 = list(range(len(pattern_names)))
+            colors = ['navy', 'crimson', 'green', 'purple', 'orange', 'brown', 'pink', 'gray']
+            p3.vbar(x=x_pos3, top=proportions, width=0.8, 
+                   color=colors[:len(pattern_names)], alpha=0.7)
+            
+            # Set explicit axis ranges
+            if proportions:
+                p3.x_range = Range1d(-0.5, len(pattern_names) - 0.5)
+                p3.y_range = Range1d(0, max(proportions) * 1.2)
+                
+                # Override x-axis labels
+                p3.xaxis.ticker = x_pos3
+                p3.xaxis.major_label_overrides = {i: name for i, name in enumerate(pattern_names)}
+            
+            p3.grid.grid_line_color = None
+            p3.xaxis.major_label_orientation = 45
+            plots.append(p3)
+            
+            # 4. Mutual Information with FIXED AXES
+            pairs = list(self.mutual_information.keys())
+            mi_values = list(self.mutual_information.values())
+            
+            p4 = figure(width=500, height=400,
+                       title="Mutual Information Between Cell Types",
+                       x_axis_label="Cell Type Pairs",
+                       y_axis_label="Mutual Information")
+            
+            # FIX: Use explicit x-positions
+            x_pos4 = list(range(len(pairs)))
+            p4.vbar(x=x_pos4, top=mi_values, width=0.8, color='darkgreen', alpha=0.7)
+            
+            # Set explicit axis ranges
+            if mi_values:
+                p4.x_range = Range1d(-0.5, len(pairs) - 0.5)
+                p4.y_range = Range1d(0, max(mi_values) * 1.2)
+                
+                # Override x-axis labels
+                p4.xaxis.ticker = x_pos4
+                p4.xaxis.major_label_overrides = {i: pair for i, pair in enumerate(pairs)}
+                
+                # Add value labels on bars
+                for i, (pos, value) in enumerate(zip(x_pos4, mi_values)):
+                    p4.text(x=[pos], y=[value + max(mi_values)*0.02], text=[f"{value:.3f}"],
+                           text_align="center", text_font_size="9pt")
+            
+            p4.grid.grid_line_color = None
+            p4.xaxis.major_label_orientation = 45
+            plots.append(p4)
+            
+            # Create layout - we always have 4 plots
+            layout = column(
+                row(plots[0], plots[1]),
+                row(plots[2], plots[3])
+            )
+            
+            # Set default save path if none provided
+            if save_path is None:
+                save_path = os.path.join(self.tank.config["SummaryPlotsPath"], 
+                                       self.tank.session_name, 
+                                       'Connectivity_Analysis_Summary.html')
+            
+            # Use tank's output_bokeh_plot method
+            self.tank.output_bokeh_plot(layout, save_path=save_path, title=title, 
+                                      notebook=notebook, overwrite=overwrite, font_size=font_size)
+            
+            return layout
+        
+        def analyze_and_plot_connectivity(self, save_dir=None, use_rising_edges=True, 
+                                        create_plots=True, notebook=False, overwrite=False, font_size=None):
+            """
+            Complete connectivity analysis workflow with optional plotting
+            (Equivalent to the standalone analyze_neural_connectivity_optimized function)
+            
+            Parameters:
+            -----------
+            save_dir : str, optional
+                Directory to save results and plots
+            use_rising_edges : bool
+                Whether to use rising edges instead of peak indices
+            create_plots : bool
+                Whether to create and save plots
+            notebook : bool
+                Flag to indicate if plots are for Jupyter notebook
+            overwrite : bool
+                Flag to indicate whether to overwrite existing files
+            font_size : str, optional
+                Font size for plot text elements
+            
+            Returns:
+            --------
+            dict : Complete analysis results including plots if created
+            """
+            print("Running complete neural connectivity analysis workflow...")
+            
+            # Run the full analysis
+            results = self.analysis_results
+            
+            # Create plots if requested
+            if create_plots:
+                print("Creating connectivity analysis plots...")
+                
+                # Set save paths
+                if save_dir:
+                    timing_path = os.path.join(save_dir, 'peak_timing_relationships.html')
+                    summary_path = os.path.join(save_dir, 'connectivity_summary.html')
+                else:
+                    timing_path = None
+                    summary_path = None
+                
+                # Create timing relationships plot
+                timing_plot = self.plot_peak_timing_relationships(
+                    save_path=timing_path, 
+                    notebook=notebook, 
+                    overwrite=overwrite, 
+                    font_size=font_size
+                )
+                
+                # Create summary plot
+                summary_plot = self.plot_connectivity_analysis_summary(
+                    save_path=summary_path, 
+                    notebook=notebook, 
+                    overwrite=overwrite, 
+                    font_size=font_size
+                )
+                
+                results['timing_plot'] = timing_plot
+                results['summary_plot'] = summary_plot
+                
+                print("Connectivity analysis and plotting complete!")
+            
+            return results
+
+    def create_connectivity_analyzer(self):
+        """
+        Create and return a NeuralConnectivityAnalyzer instance for this tank
+        
+        Returns:
+        --------
+        NeuralConnectivityAnalyzer : Analyzer instance
+        """
+        return self.NeuralConnectivityAnalyzer(self)
