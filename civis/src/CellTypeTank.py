@@ -4673,3 +4673,582 @@ class CellTypeTank(CITank):
         NeuralConnectivityAnalyzer : Analyzer instance
         """
         return self.NeuralConnectivityAnalyzer(self)
+
+    def _plot_population_centered_activity_core(self, center_cell_type, center_signals, center_peak_indices,
+                                               all_signals_dict, ci_rate=None, time_window=3.0,
+                                               save_path=None, title=None, notebook=False, overwrite=False, font_size=None):
+        """
+        Core function for plotting population-centered activity analysis where ALL neurons from each cell type
+        are averaged at the center cell type peak times (no activity filtering).
+        
+        This is different from the original approach which only averaged "active" neurons.
+        Here we average ALL neurons of each type at the same time points.
+        
+        Parameters:
+        -----------
+        center_cell_type : str
+            The cell type being centered ('D1', 'D2', or 'CHI')
+        center_signals : numpy.ndarray
+            Signals for the center cell type (shape: n_neurons x n_timepoints)
+        center_peak_indices : list
+            List of arrays containing peak indices for each center neuron
+        all_signals_dict : dict
+            Dictionary with all cell type signals {'D1': signals, 'D2': signals, 'CHI': signals}
+        ci_rate : float, optional
+            Sampling rate of calcium imaging data (Hz). If None, uses self.ci_rate
+        time_window : float
+            Time window in seconds before and after each peak for plotting
+        save_path : str, optional
+            Path to save the HTML file
+        title : str, optional
+            Title for the plot
+        notebook : bool
+            Whether to display in notebook
+        overwrite : bool
+            Whether to overwrite existing file
+        font_size : str, optional
+            Font size for plot text elements
+        
+        Returns:
+        --------
+        tuple
+            (bokeh.plotting.figure, dict) - The created figure and summary statistics
+        """
+        import numpy as np
+        from bokeh.plotting import figure
+        from bokeh.models import LinearAxis, Range1d
+        
+        if ci_rate is None:
+            ci_rate = self.ci_rate
+        
+        # Convert time window to samples
+        plot_window_samples = int(time_window * ci_rate)
+        
+        # Collect all center peak time indices
+        all_center_peak_times = []
+        for neuron_idx, peaks in enumerate(center_peak_indices):
+            for peak_idx in peaks:
+                all_center_peak_times.append(peak_idx)
+        
+        if not all_center_peak_times:
+            print(f"No {center_cell_type} peaks found for analysis.")
+            return None, None
+        
+        print(f"Found {len(all_center_peak_times)} total {center_cell_type} peaks for population analysis")
+        
+        # Collect traces for each cell type at all center peak times
+        all_cell_type_traces = {cell_type: [] for cell_type in all_signals_dict.keys()}
+        all_velocity_traces = []
+        valid_peak_count = 0
+        
+        # Check if velocity data is available
+        has_velocity = hasattr(self, 'smoothed_velocity') and self.smoothed_velocity is not None
+        if has_velocity:
+            velocity_data = self.smoothed_velocity
+            # Convert velocity sampling rate if needed (assuming velocity is at vm_rate)
+            if hasattr(self, 'vm_rate') and self.vm_rate != ci_rate:
+                # Resample velocity to match ci_rate if needed
+                # For now, assume they're aligned or close enough
+                pass
+        
+        for peak_idx in all_center_peak_times:
+            start_idx = peak_idx - plot_window_samples
+            end_idx = peak_idx + plot_window_samples + 1
+            
+            # Check if the window is within bounds for all signal types
+            valid_window = True
+            for cell_type, signals in all_signals_dict.items():
+                if len(signals) > 0:
+                    signal_length = len(signals[0])  # Assuming all neurons have same length
+                    if start_idx < 0 or end_idx >= signal_length:
+                        valid_window = False
+                        break
+            
+            # Also check velocity bounds if available
+            if has_velocity and valid_window:
+                if start_idx < 0 or end_idx >= len(velocity_data):
+                    valid_window = False
+            
+            if valid_window:
+                valid_peak_count += 1
+                
+                # For each cell type, average ALL neurons at this time point
+                for cell_type, signals in all_signals_dict.items():
+                    if len(signals) > 0:
+                        # Extract traces from ALL neurons of this cell type
+                        traces_at_peak = []
+                        for neuron_signal in signals:
+                            trace = neuron_signal[start_idx:end_idx]
+                            traces_at_peak.append(trace)
+                        
+                        # Average across all neurons of this cell type at this peak time
+                        avg_trace_at_peak = np.mean(traces_at_peak, axis=0)
+                        all_cell_type_traces[cell_type].append(avg_trace_at_peak)
+                    else:
+                        # If no neurons of this type, add zeros
+                        trace_length = 2 * plot_window_samples + 1
+                        all_cell_type_traces[cell_type].append(np.zeros(trace_length))
+                
+                # Extract velocity trace at this peak time
+                if has_velocity:
+                    velocity_trace = velocity_data[start_idx:end_idx]
+                    all_velocity_traces.append(velocity_trace)
+        
+        if valid_peak_count == 0:
+            print(f"No valid {center_cell_type} peaks found within signal bounds.")
+            return None, None
+        
+        # Calculate final average traces across all peak events
+        final_avg_traces = {}
+        final_sem_traces = {}
+        
+        for cell_type in all_signals_dict.keys():
+            if all_cell_type_traces[cell_type]:
+                final_avg_traces[cell_type] = np.mean(all_cell_type_traces[cell_type], axis=0)
+                final_sem_traces[cell_type] = np.std(all_cell_type_traces[cell_type], axis=0) / np.sqrt(len(all_cell_type_traces[cell_type]))
+            else:
+                trace_length = 2 * plot_window_samples + 1
+                final_avg_traces[cell_type] = np.zeros(trace_length)
+                final_sem_traces[cell_type] = np.zeros(trace_length)
+        
+        # Calculate average velocity trace
+        avg_velocity_trace = None
+        sem_velocity_trace = None
+        if has_velocity and all_velocity_traces:
+            avg_velocity_trace = np.mean(all_velocity_traces, axis=0)
+            sem_velocity_trace = np.std(all_velocity_traces, axis=0) / np.sqrt(len(all_velocity_traces))
+        
+        # Create time axis
+        time_axis = np.linspace(-time_window, time_window, 2 * plot_window_samples + 1)
+        
+        # Create summary statistics
+        stats = {
+            f'total_{center_cell_type.lower()}_peaks': len(all_center_peak_times),
+            'valid_peaks_analyzed': valid_peak_count,
+            'n_traces_averaged': valid_peak_count,
+            'has_velocity': has_velocity
+        }
+        
+        # Add neuron counts for each cell type
+        for cell_type, signals in all_signals_dict.items():
+            stats[f'n_{cell_type.lower()}_neurons'] = len(signals)
+        
+        # Create the plot
+        plot_title = (f"{title or f'{center_cell_type}-Centered Population Analysis'}\n"
+                      f"All neurons averaged at {center_cell_type} peak times (n={valid_peak_count} peaks)")
+        
+        # Calculate neuron signal range for left y-axis
+        all_neuron_values = []
+        for cell_type in final_avg_traces:
+            all_neuron_values.extend(final_avg_traces[cell_type])
+            # Also include SEM bounds
+            all_neuron_values.extend(final_avg_traces[cell_type] + final_sem_traces[cell_type])
+            all_neuron_values.extend(final_avg_traces[cell_type] - final_sem_traces[cell_type])
+        
+        if all_neuron_values:
+            neuron_min = min(all_neuron_values)
+            neuron_max = max(all_neuron_values)
+            # Add padding for better visualization
+            neuron_padding = (neuron_max - neuron_min) * 0.15
+            neuron_y_min = neuron_min - neuron_padding
+            neuron_y_max = neuron_max + neuron_padding
+        else:
+            neuron_y_min, neuron_y_max = -1, 1
+        
+        p = figure(width=1000, height=400,
+                   title=plot_title,
+                   x_axis_label=f"Time relative to {center_cell_type} peak (s)",
+                   y_axis_label="Average Calcium Signal",
+                   y_range=(neuron_y_min, neuron_y_max),  # Explicitly set left y-axis range
+                   tools="pan,box_zoom,wheel_zoom,reset,save")
+        
+        # Remove grid for cleaner look
+        p.grid.grid_line_color = None
+        
+        # Define colors for each cell type
+        colors = {'D1': 'blue', 'D2': 'red', 'CHI': 'green'}
+        
+        # Plot traces for each cell type (on left y-axis)
+        for cell_type in all_signals_dict.keys():
+            if cell_type in final_avg_traces:
+                color = colors.get(cell_type, 'black')
+                line_width = 3 if cell_type == center_cell_type else 2
+                
+                # Main line (explicitly on default y-axis)
+                p.line(time_axis, final_avg_traces[cell_type], line_width=line_width, color=color, 
+                       legend_label=f"{cell_type} Population Avg (n={stats[f'n_{cell_type.lower()}_neurons']} neurons)")
+                
+                # SEM patch (explicitly on default y-axis)
+                p.patch(np.concatenate([time_axis, time_axis[::-1]]), 
+                        np.concatenate([final_avg_traces[cell_type] - final_sem_traces[cell_type], 
+                                      (final_avg_traces[cell_type] + final_sem_traces[cell_type])[::-1]]),
+                        alpha=0.2, color=color)
+        
+        # Add velocity trace with secondary y-axis if available
+        if has_velocity and avg_velocity_trace is not None:
+            # Calculate velocity range for secondary y-axis
+            velocity_values = list(avg_velocity_trace)
+            velocity_values.extend(avg_velocity_trace + sem_velocity_trace)
+            velocity_values.extend(avg_velocity_trace - sem_velocity_trace)
+            
+            vel_min = min(velocity_values)
+            vel_max = max(velocity_values)
+            vel_padding = (vel_max - vel_min) * 0.15
+            vel_y_min = vel_min - vel_padding
+            vel_y_max = vel_max + vel_padding
+            
+            # Add secondary y-axis for velocity
+            p.extra_y_ranges = {"velocity_axis": Range1d(start=vel_y_min, end=vel_y_max)}
+            velocity_axis = LinearAxis(y_range_name="velocity_axis", axis_label="Velocity (cm/s)")
+            velocity_axis.axis_label_text_color = "orange"
+            velocity_axis.major_label_text_color = "orange"
+            velocity_axis.axis_line_color = "orange"
+            velocity_axis.major_tick_line_color = "orange"
+            velocity_axis.minor_tick_line_color = "orange"
+            p.add_layout(velocity_axis, 'right')
+            
+            # Plot velocity trace (explicitly on velocity y-axis)
+            p.line(time_axis, avg_velocity_trace, line_width=2, color='orange', 
+                   y_range_name="velocity_axis", alpha=0.8,
+                   legend_label="Smoothed Velocity")
+            
+            # Add velocity SEM patch (explicitly on velocity y-axis)
+            p.patch(np.concatenate([time_axis, time_axis[::-1]]), 
+                    np.concatenate([avg_velocity_trace - sem_velocity_trace, 
+                                  (avg_velocity_trace + sem_velocity_trace)[::-1]]),
+                    alpha=0.1, color='orange', y_range_name="velocity_axis")
+        
+        # Add vertical line at peak time (t=0) - spans the neuron y-axis range
+        p.line([0, 0], [neuron_y_min, neuron_y_max], 
+               line_width=3, color='black', line_dash='dashed', alpha=0.8,
+               legend_label="Peak Time (t=0)")
+        
+        # Configure legend
+        p.legend.location = "top_right"
+        p.legend.click_policy = "hide"
+        
+        # Print summary statistics
+        print(f"\n{center_cell_type}-Centered Population Analysis Summary:")
+        print(f"Total {center_cell_type} peaks found: {stats[f'total_{center_cell_type.lower()}_peaks']}")
+        print(f"Valid peaks analyzed: {stats['valid_peaks_analyzed']}")
+        for cell_type, signals in all_signals_dict.items():
+            print(f"{cell_type} neurons included: {len(signals)}")
+        if has_velocity:
+            print(f"Velocity data included: Yes (smoothed)")
+        else:
+            print(f"Velocity data included: No")
+        
+        # Output the plot
+        self.output_bokeh_plot(p, save_path=save_path, title=plot_title, notebook=notebook, 
+                             overwrite=overwrite, font_size=font_size)
+        
+        return p, stats
+
+    def plot_population_centered_activity(self, center_cell_type='D1', signal_type='zsc',
+                                         time_window=3.0, save_path=None, title=None, 
+                                         notebook=False, overwrite=False, font_size=None):
+        """
+        Plot population-centered activity analysis where ALL neurons from each cell type
+        are averaged at the center cell type peak times (no activity filtering).
+        
+        This function averages ALL neurons of each type at the same time points (center peaks),
+        providing a population-level view of neural activity.
+        
+        Parameters:
+        -----------
+        center_cell_type : str
+            The cell type to center analysis on ('D1', 'D2', or 'CHI')
+        signal_type : str
+            Type of signal to use ('zsc' for z-score normalized, 'denoised' for denoised signals)
+        time_window : float
+            Time window in seconds before and after each peak for plotting
+        save_path : str, optional
+            Path to save the HTML file
+        title : str, optional
+            Custom title for the plot
+        notebook : bool
+            Whether to display in notebook
+        overwrite : bool
+            Whether to overwrite existing file
+        font_size : str, optional
+            Font size for plot text elements
+        
+        Returns:
+        --------
+        tuple
+            (bokeh.plotting.figure, dict) - The created figure and summary statistics
+        """
+        # Get signals based on type
+        if signal_type == 'zsc':
+            d1_signals = self.d1_zsc
+            d2_signals = self.d2_zsc
+            chi_signals = self.chi_zsc
+            signal_description = 'Z-score Normalized'
+        elif signal_type == 'denoised':
+            d1_signals = self.d1_denoised
+            d2_signals = self.d2_denoised
+            chi_signals = self.chi_denoised
+            signal_description = 'Denoised'
+        else:
+            raise ValueError("signal_type must be 'zsc' or 'denoised'")
+        
+        # Get peak indices
+        d1_peak_indices = self.d1_peak_indices if hasattr(self, 'd1_peak_indices') else []
+        d2_peak_indices = self.d2_peak_indices if hasattr(self, 'd2_peak_indices') else []
+        chi_peak_indices = self.chi_peak_indices if hasattr(self, 'chi_peak_indices') else []
+        
+        # Prepare signals and peak indices based on center cell type
+        all_signals_dict = {
+            'D1': d1_signals,
+            'D2': d2_signals, 
+            'CHI': chi_signals
+        }
+        
+        if center_cell_type == 'D1':
+            center_signals = d1_signals
+            center_peak_indices = d1_peak_indices
+        elif center_cell_type == 'D2':
+            center_signals = d2_signals
+            center_peak_indices = d2_peak_indices
+        elif center_cell_type == 'CHI':
+            center_signals = chi_signals
+            center_peak_indices = chi_peak_indices
+        else:
+            raise ValueError("center_cell_type must be 'D1', 'D2', or 'CHI'")
+        
+        # Generate title if not provided
+        if title is None:
+            title = f"{center_cell_type}-Centered Population Analysis: All Neurons Averaged ({signal_description})"
+        
+        # Call the core function
+        return self._plot_population_centered_activity_core(
+            center_cell_type=center_cell_type,
+            center_signals=center_signals,
+            center_peak_indices=center_peak_indices,
+            all_signals_dict=all_signals_dict,
+            ci_rate=self.ci_rate,
+            time_window=time_window,
+            save_path=save_path,
+            title=title,
+            notebook=notebook,
+            overwrite=overwrite,
+            font_size=font_size
+        )
+
+    def plot_all_population_centered_analyses(self, signal_type='zsc', time_window=3.0,
+                                             save_path=None, notebook=False, overwrite=False, font_size=None):
+        """
+        Comprehensive function to plot all three population-centered analyses (D1, D2, CHI) for comparison.
+        
+        This version averages ALL neurons of each type (no activity filtering) at the center cell type peak times,
+        providing a population-level view of neural coordination.
+        
+        Parameters:
+        -----------
+        signal_type : str
+            Type of signal to use ('zsc' for z-score normalized, 'denoised' for denoised signals)
+        time_window : float
+            Time window in seconds before and after each peak for plotting
+        save_path : str, optional
+            Path to save the combined HTML file
+        notebook : bool
+            Whether to display in notebook
+        overwrite : bool
+            Whether to overwrite existing file
+        font_size : str, optional
+            Font size for plot text elements
+        
+        Returns:
+        --------
+        dict
+            Dictionary containing plots and statistics for all three analyses
+        """
+        from bokeh.layouts import column
+        from bokeh.io import output_file, save
+        
+        results = {}
+        signal_description = 'Z-score' if signal_type == 'zsc' else 'Denoised'
+        
+        # D1-centered population analysis
+        print(f"Running D1-centered population analysis ({signal_description})...")
+        d1_plot, d1_stats = self.plot_population_centered_activity(
+            center_cell_type='D1',
+            signal_type=signal_type,
+            time_window=time_window,
+            save_path=None,  # Don't save individual plots
+            title=f"D1-Centered Population Analysis: All Neurons Averaged ({signal_description})",
+            notebook=False,  # Don't display individual plots
+            overwrite=overwrite,
+            font_size=font_size
+        )
+        results['d1_population'] = {'plot': d1_plot, 'stats': d1_stats}
+        
+        # D2-centered population analysis
+        print(f"\nRunning D2-centered population analysis ({signal_description})...")
+        d2_plot, d2_stats = self.plot_population_centered_activity(
+            center_cell_type='D2',
+            signal_type=signal_type,
+            time_window=time_window,
+            save_path=None,  # Don't save individual plots
+            title=f"D2-Centered Population Analysis: All Neurons Averaged ({signal_description})",
+            notebook=False,  # Don't display individual plots
+            overwrite=overwrite,
+            font_size=font_size
+        )
+        results['d2_population'] = {'plot': d2_plot, 'stats': d2_stats}
+        
+        # CHI-centered population analysis
+        print(f"\nRunning CHI-centered population analysis ({signal_description})...")
+        chi_plot, chi_stats = self.plot_population_centered_activity(
+            center_cell_type='CHI',
+            signal_type=signal_type,
+            time_window=time_window,
+            save_path=None,  # Don't save individual plots
+            title=f"CHI-Centered Population Analysis: All Neurons Averaged ({signal_description})",
+            notebook=False,  # Don't display individual plots
+            overwrite=overwrite,
+            font_size=font_size
+        )
+        results['chi_population'] = {'plot': chi_plot, 'stats': chi_stats}
+        
+        # Print comparative summary
+        print("\n" + "="*80)
+        print(f"POPULATION-LEVEL COMPARATIVE ANALYSIS SUMMARY ({signal_description})")
+        print("="*80)
+        
+        if d1_stats and d2_stats and chi_stats:
+            print(f"D1-centered: {d1_stats['valid_peaks_analyzed']} D1 peaks analyzed")
+            print(f"D2-centered: {d2_stats['valid_peaks_analyzed']} D2 peaks analyzed")
+            print(f"CHI-centered: {chi_stats['valid_peaks_analyzed']} CHI peaks analyzed")
+            
+            print(f"\nNeuron counts:")
+            print(f"  D1 neurons: {d1_stats['n_d1_neurons']}")
+            print(f"  D2 neurons: {d1_stats['n_d2_neurons']}")
+            print(f"  CHI neurons: {d1_stats['n_chi_neurons']}")
+            
+            print(f"\nNote: All neurons of each type were included in averaging (no activity filtering)")
+        
+        # Create and save combined analysis
+        if all([d1_plot, d2_plot, chi_plot]):
+            combined_layout = column(d1_plot, d2_plot, chi_plot)
+            combined_title = f"All Population-Centered Analyses ({signal_description})"
+            
+            # Output the combined plot
+            self.output_bokeh_plot(combined_layout, save_path=save_path, title=combined_title, 
+                                 notebook=notebook, overwrite=overwrite, font_size=font_size)
+            
+            results['combined_plot'] = combined_layout
+            
+            if save_path:
+                print(f"\nCombined population analysis saved to: {save_path}")
+        
+        return results
+
+    # Convenience wrapper functions for population analysis
+    def plot_d1_population_analysis(self, signal_type='zsc', save_path=None, time_window=3.0,
+                                   notebook=False, overwrite=False, font_size=None):
+        """
+        Convenience function to plot D1-centered population analysis.
+        
+        Parameters:
+        -----------
+        signal_type : str
+            Type of signal to use ('zsc' for z-score normalized, 'denoised' for denoised signals)
+        save_path : str, optional
+            Path to save the HTML file
+        time_window : float
+            Time window in seconds before and after each peak for plotting
+        notebook : bool
+            Whether to display in notebook
+        overwrite : bool
+            Whether to overwrite existing file
+        font_size : str, optional
+            Font size for plot text elements
+        
+        Returns:
+        --------
+        tuple
+            (bokeh.plotting.figure, dict) - The created figure and summary statistics
+        """
+        return self.plot_population_centered_activity(
+            center_cell_type='D1',
+            signal_type=signal_type,
+            time_window=time_window,
+            save_path=save_path,
+            title=f"D1-Centered Population Analysis: All Neurons Averaged ({'Z-score' if signal_type == 'zsc' else 'Denoised'})",
+            notebook=notebook,
+            overwrite=overwrite,
+            font_size=font_size
+        )
+
+    def plot_d2_population_analysis(self, signal_type='zsc', save_path=None, time_window=3.0,
+                                   notebook=False, overwrite=False, font_size=None):
+        """
+        Convenience function to plot D2-centered population analysis.
+        
+        Parameters:
+        -----------
+        signal_type : str
+            Type of signal to use ('zsc' for z-score normalized, 'denoised' for denoised signals)
+        save_path : str, optional
+            Path to save the HTML file
+        time_window : float
+            Time window in seconds before and after each peak for plotting
+        notebook : bool
+            Whether to display in notebook
+        overwrite : bool
+            Whether to overwrite existing file
+        font_size : str, optional
+            Font size for plot text elements
+        
+        Returns:
+        --------
+        tuple
+            (bokeh.plotting.figure, dict) - The created figure and summary statistics
+        """
+        return self.plot_population_centered_activity(
+            center_cell_type='D2',
+            signal_type=signal_type,
+            time_window=time_window,
+            save_path=save_path,
+            title=f"D2-Centered Population Analysis: All Neurons Averaged ({'Z-score' if signal_type == 'zsc' else 'Denoised'})",
+            notebook=notebook,
+            overwrite=overwrite,
+            font_size=font_size
+        )
+
+    def plot_chi_population_analysis(self, signal_type='zsc', save_path=None, time_window=3.0,
+                                    notebook=False, overwrite=False, font_size=None):
+        """
+        Convenience function to plot CHI-centered population analysis.
+        
+        Parameters:
+        -----------
+        signal_type : str
+            Type of signal to use ('zsc' for z-score normalized, 'denoised' for denoised signals)
+        save_path : str, optional
+            Path to save the HTML file
+        time_window : float
+            Time window in seconds before and after each peak for plotting
+        notebook : bool
+            Whether to display in notebook
+        overwrite : bool
+            Whether to overwrite existing file
+        font_size : str, optional
+            Font size for plot text elements
+        
+        Returns:
+        --------
+        tuple
+            (bokeh.plotting.figure, dict) - The created figure and summary statistics
+        """
+        return self.plot_population_centered_activity(
+            center_cell_type='CHI',
+            signal_type=signal_type,
+            time_window=time_window,
+            save_path=save_path,
+            title=f"CHI-Centered Population Analysis: All Neurons Averaged ({'Z-score' if signal_type == 'zsc' else 'Denoised'})",
+            notebook=notebook,
+            overwrite=overwrite,
+            font_size=font_size
+        )
