@@ -4676,7 +4676,8 @@ class CellTypeTank(CITank):
 
     def _plot_population_centered_activity_core(self, center_cell_type, center_signals, center_peak_indices,
                                                all_signals_dict, ci_rate=None, time_window=3.0,
-                                               save_path=None, title=None, notebook=False, overwrite=False, font_size=None):
+                                               save_path=None, title=None, notebook=False, overwrite=False, font_size=None,
+                                               baseline_correct=False, correction_factors=None):
         """
         Core function for plotting population-centered activity analysis where ALL neurons from each cell type
         are averaged at the center cell type peak times (no activity filtering).
@@ -4708,6 +4709,10 @@ class CellTypeTank(CITank):
             Whether to overwrite existing file
         font_size : str, optional
             Font size for plot text elements
+        baseline_correct : bool
+            Whether to apply baseline correction
+        correction_factors : dict, optional
+            Dictionary of correction factors for each cell type {'D1': factor, 'D2': factor, 'CHI': factor}
         
         Returns:
         --------
@@ -4720,6 +4725,9 @@ class CellTypeTank(CITank):
         
         if ci_rate is None:
             ci_rate = self.ci_rate
+        
+        if correction_factors is None:
+            correction_factors = {'D1': 0, 'D2': 0, 'CHI': 0}
         
         # Convert time window to samples
         plot_window_samples = int(time_window * ci_rate)
@@ -4806,6 +4814,13 @@ class CellTypeTank(CITank):
             if all_cell_type_traces[cell_type]:
                 final_avg_traces[cell_type] = np.mean(all_cell_type_traces[cell_type], axis=0)
                 final_sem_traces[cell_type] = np.std(all_cell_type_traces[cell_type], axis=0) / np.sqrt(len(all_cell_type_traces[cell_type]))
+                
+                # Apply baseline correction if requested
+                if baseline_correct and cell_type in correction_factors:
+                    correction_factor = correction_factors[cell_type]
+                    final_avg_traces[cell_type] += correction_factor
+                    # Note: SEM doesn't need correction as it's a relative measure
+                    print(f"Applied baseline correction to {cell_type}: {correction_factor:.4f}")
             else:
                 trace_length = 2 * plot_window_samples + 1
                 final_avg_traces[cell_type] = np.zeros(trace_length)
@@ -4826,8 +4841,13 @@ class CellTypeTank(CITank):
             f'total_{center_cell_type.lower()}_peaks': len(all_center_peak_times),
             'valid_peaks_analyzed': valid_peak_count,
             'n_traces_averaged': valid_peak_count,
-            'has_velocity': has_velocity
+            'has_velocity': has_velocity,
+            'baseline_corrected': baseline_correct
         }
+        
+        # Add baseline correction info to stats
+        if baseline_correct:
+            stats['correction_factors'] = correction_factors.copy()
         
         # Add neuron counts for each cell type
         for cell_type, signals in all_signals_dict.items():
@@ -4836,6 +4856,8 @@ class CellTypeTank(CITank):
         # Create the plot
         plot_title = (f"{title or f'{center_cell_type}-Centered Population Analysis'}\n"
                       f"All neurons averaged at {center_cell_type} peak times (n={valid_peak_count} peaks)")
+        if baseline_correct:
+            plot_title += " - Baseline Corrected"
         
         # Calculate neuron signal range for left y-axis
         all_neuron_values = []
@@ -4874,9 +4896,16 @@ class CellTypeTank(CITank):
                 color = colors.get(cell_type, 'black')
                 line_width = 3 if cell_type == center_cell_type else 2
                 
+                # Create legend label with baseline correction info
+                legend_label = f"{cell_type} Population Avg (n={stats[f'n_{cell_type.lower()}_neurons']} neurons)"
+                if baseline_correct and cell_type in correction_factors:
+                    correction = correction_factors[cell_type]
+                    if correction != 0:
+                        legend_label += f" [Corrected: {correction:+.3f}]"
+                
                 # Main line (explicitly on default y-axis)
                 p.line(time_axis, final_avg_traces[cell_type], line_width=line_width, color=color, 
-                       legend_label=f"{cell_type} Population Avg (n={stats[f'n_{cell_type.lower()}_neurons']} neurons)")
+                       legend_label=legend_label)
                 
                 # SEM patch (explicitly on default y-axis)
                 p.patch(np.concatenate([time_axis, time_axis[::-1]]), 
@@ -4946,7 +4975,8 @@ class CellTypeTank(CITank):
 
     def plot_population_centered_activity(self, center_cell_type='D1', signal_type='zsc',
                                          time_window=3.0, save_path=None, title=None, 
-                                         notebook=False, overwrite=False, font_size=None):
+                                         notebook=False, overwrite=False, font_size=None,
+                                         baseline_correct=False, correction_factors=None):
         """
         Plot population-centered activity analysis where ALL neurons from each cell type
         are averaged at the center cell type peak times (no activity filtering).
@@ -4972,6 +5002,10 @@ class CellTypeTank(CITank):
             Whether to overwrite existing file
         font_size : str, optional
             Font size for plot text elements
+        baseline_correct : bool
+            Whether to apply baseline correction
+        correction_factors : dict, optional
+            Dictionary of correction factors for each cell type {'D1': factor, 'D2': factor, 'CHI': factor}
         
         Returns:
         --------
@@ -5032,11 +5066,14 @@ class CellTypeTank(CITank):
             title=title,
             notebook=notebook,
             overwrite=overwrite,
-            font_size=font_size
+            font_size=font_size,
+            baseline_correct=baseline_correct,
+            correction_factors=correction_factors
         )
 
     def plot_all_population_centered_analyses(self, signal_type='zsc', time_window=3.0,
-                                             save_path=None, notebook=False, overwrite=False, font_size=None):
+                                             save_path=None, notebook=False, overwrite=False, font_size=None,
+                                             baseline_correct=True, baseline_window=(-3.0, -1.0)):
         """
         Comprehensive function to plot all three population-centered analyses (D1, D2, CHI) for comparison.
         
@@ -5057,6 +5094,10 @@ class CellTypeTank(CITank):
             Whether to overwrite existing file
         font_size : str, optional
             Font size for plot text elements
+        baseline_correct : bool
+            Whether to apply baseline correction to unify baseline levels across cell types
+        baseline_window : tuple
+            Time window (start, end) in seconds for baseline calculation (relative to peak time)
         
         Returns:
         --------
@@ -5065,12 +5106,112 @@ class CellTypeTank(CITank):
         """
         from bokeh.layouts import column
         from bokeh.io import output_file, save
+        import numpy as np
         
         results = {}
         signal_description = 'Z-score' if signal_type == 'zsc' else 'Denoised'
         
+        # First pass: collect all traces to calculate global baseline correction
+        all_traces = {'D1': [], 'D2': [], 'CHI': []}
+        
+        if baseline_correct:
+            print(f"Calculating baseline correction factors...")
+            
+            # Get signals based on type
+            if signal_type == 'zsc':
+                d1_signals = self.d1_zsc
+                d2_signals = self.d2_zsc
+                chi_signals = self.chi_zsc
+            elif signal_type == 'denoised':
+                d1_signals = self.d1_denoised
+                d2_signals = self.d2_denoised
+                chi_signals = self.chi_denoised
+            else:
+                raise ValueError("signal_type must be 'zsc' or 'denoised'")
+            
+            # Get peak indices
+            d1_peak_indices = self.d1_peak_indices if hasattr(self, 'd1_peak_indices') else []
+            d2_peak_indices = self.d2_peak_indices if hasattr(self, 'd2_peak_indices') else []
+            chi_peak_indices = self.chi_peak_indices if hasattr(self, 'chi_peak_indices') else []
+            
+            all_signals_dict = {
+                'D1': d1_signals,
+                'D2': d2_signals, 
+                'CHI': chi_signals
+            }
+            
+            all_peak_indices_dict = {
+                'D1': d1_peak_indices,
+                'D2': d2_peak_indices,
+                'CHI': chi_peak_indices
+            }
+            
+            # Calculate average traces for each cell type across all analysis types
+            for center_type in ['D1', 'D2', 'CHI']:
+                center_peak_indices = all_peak_indices_dict[center_type]
+                
+                # Collect all center peak times
+                all_center_peak_times = []
+                for neuron_idx, peaks in enumerate(center_peak_indices):
+                    for peak_idx in peaks:
+                        all_center_peak_times.append(peak_idx)
+                
+                if all_center_peak_times:
+                    plot_window_samples = int(time_window * self.ci_rate)
+                    
+                    # Collect traces for each cell type at center peak times
+                    for cell_type, signals in all_signals_dict.items():
+                        if len(signals) > 0:
+                            cell_type_traces = []
+                            for peak_idx in all_center_peak_times:
+                                start_idx = peak_idx - plot_window_samples
+                                end_idx = peak_idx + plot_window_samples + 1
+                                
+                                # Check bounds
+                                if start_idx >= 0 and end_idx < len(signals[0]):
+                                    # Average all neurons of this cell type at this peak time
+                                    traces_at_peak = [neuron_signal[start_idx:end_idx] for neuron_signal in signals]
+                                    avg_trace_at_peak = np.mean(traces_at_peak, axis=0)
+                                    cell_type_traces.append(avg_trace_at_peak)
+                            
+                            if cell_type_traces:
+                                # Calculate final average trace for this cell type in this analysis
+                                final_avg_trace = np.mean(cell_type_traces, axis=0)
+                                all_traces[cell_type].append(final_avg_trace)
+            
+            # Calculate baseline values for each cell type
+            baseline_corrections = {}
+            time_axis = np.linspace(-time_window, time_window, 2 * int(time_window * self.ci_rate) + 1)
+            baseline_mask = (time_axis >= baseline_window[0]) & (time_axis <= baseline_window[1])
+            
+            for cell_type in ['D1', 'D2', 'CHI']:
+                if all_traces[cell_type]:
+                    # Calculate average baseline across all analysis types for this cell type
+                    all_baselines = []
+                    for trace in all_traces[cell_type]:
+                        baseline_value = np.mean(trace[baseline_mask])
+                        all_baselines.append(baseline_value)
+                    baseline_corrections[cell_type] = np.mean(all_baselines)
+                else:
+                    baseline_corrections[cell_type] = 0.0
+            
+            # Calculate the target baseline (minimum baseline to shift all to)
+            target_baseline = min(baseline_corrections.values()) if baseline_corrections else 0.0
+            
+            print(f"Baseline values: D1={baseline_corrections.get('D1', 0):.4f}, "
+                  f"D2={baseline_corrections.get('D2', 0):.4f}, CHI={baseline_corrections.get('CHI', 0):.4f}")
+            print(f"Target baseline: {target_baseline:.4f}")
+            
+            # Calculate correction factors
+            correction_factors = {}
+            for cell_type in ['D1', 'D2', 'CHI']:
+                correction_factors[cell_type] = target_baseline - baseline_corrections.get(cell_type, 0)
+                print(f"{cell_type} correction factor: {correction_factors[cell_type]:.4f}")
+        else:
+            correction_factors = {'D1': 0, 'D2': 0, 'CHI': 0}
+        
         # D1-centered population analysis
-        print(f"Running D1-centered population analysis ({signal_description})...")
+        print(f"\nRunning D1-centered population analysis ({signal_description})...")
         d1_plot, d1_stats = self.plot_population_centered_activity(
             center_cell_type='D1',
             signal_type=signal_type,
@@ -5079,7 +5220,9 @@ class CellTypeTank(CITank):
             title=f"D1-Centered Population Analysis: All Neurons Averaged ({signal_description})",
             notebook=False,  # Don't display individual plots
             overwrite=overwrite,
-            font_size=font_size
+            font_size=font_size,
+            baseline_correct=baseline_correct,
+            correction_factors=correction_factors
         )
         results['d1_population'] = {'plot': d1_plot, 'stats': d1_stats}
         
@@ -5093,7 +5236,9 @@ class CellTypeTank(CITank):
             title=f"D2-Centered Population Analysis: All Neurons Averaged ({signal_description})",
             notebook=False,  # Don't display individual plots
             overwrite=overwrite,
-            font_size=font_size
+            font_size=font_size,
+            baseline_correct=baseline_correct,
+            correction_factors=correction_factors
         )
         results['d2_population'] = {'plot': d2_plot, 'stats': d2_stats}
         
@@ -5107,13 +5252,17 @@ class CellTypeTank(CITank):
             title=f"CHI-Centered Population Analysis: All Neurons Averaged ({signal_description})",
             notebook=False,  # Don't display individual plots
             overwrite=overwrite,
-            font_size=font_size
+            font_size=font_size,
+            baseline_correct=baseline_correct,
+            correction_factors=correction_factors
         )
         results['chi_population'] = {'plot': chi_plot, 'stats': chi_stats}
         
         # Print comparative summary
         print("\n" + "="*80)
         print(f"POPULATION-LEVEL COMPARATIVE ANALYSIS SUMMARY ({signal_description})")
+        if baseline_correct:
+            print("*** BASELINE CORRECTED FOR UNIFIED COMPARISON ***")
         print("="*80)
         
         if d1_stats and d2_stats and chi_stats:
@@ -5127,11 +5276,15 @@ class CellTypeTank(CITank):
             print(f"  CHI neurons: {d1_stats['n_chi_neurons']}")
             
             print(f"\nNote: All neurons of each type were included in averaging (no activity filtering)")
+            if baseline_correct:
+                print(f"Baseline correction applied using window {baseline_window} seconds relative to peak")
         
         # Create and save combined analysis
         if all([d1_plot, d2_plot, chi_plot]):
             combined_layout = column(d1_plot, d2_plot, chi_plot)
             combined_title = f"All Population-Centered Analyses ({signal_description})"
+            if baseline_correct:
+                combined_title += " - Baseline Corrected"
             
             # Output the combined plot
             self.output_bokeh_plot(combined_layout, save_path=save_path, title=combined_title, 
@@ -5251,4 +5404,85 @@ class CellTypeTank(CITank):
             notebook=notebook,
             overwrite=overwrite,
             font_size=font_size
+        )
+
+    def plot_all_population_centered_analyses_unified_baseline(self, signal_type='zsc', time_window=3.0,
+                                                              baseline_window=(-3.0, -1.0),
+                                                              save_path=None, notebook=False, overwrite=False, font_size=None):
+        """
+        Convenience function to plot all population-centered analyses with unified baseline correction.
+        
+        This function automatically applies baseline correction to ensure all cell types (D1, D2, CHI) 
+        have the same baseline level for easy comparison.
+        
+        Parameters:
+        -----------
+        signal_type : str
+            Type of signal to use ('zsc' for z-score normalized, 'denoised' for denoised signals)
+        time_window : float
+            Time window in seconds before and after each peak for plotting
+        baseline_window : tuple
+            Time window (start, end) in seconds for baseline calculation (relative to peak time)
+        save_path : str, optional
+            Path to save the combined HTML file
+        notebook : bool
+            Whether to display in notebook
+        overwrite : bool
+            Whether to overwrite existing file
+        font_size : str, optional
+            Font size for plot text elements
+        
+        Returns:
+        --------
+        dict
+            Dictionary containing plots and statistics for all three analyses with unified baselines
+        """
+        print("Creating population-centered analyses with unified baseline...")
+        return self.plot_all_population_centered_analyses(
+            signal_type=signal_type,
+            time_window=time_window,
+            save_path=save_path,
+            notebook=notebook,
+            overwrite=overwrite,
+            font_size=font_size,
+            baseline_correct=True,
+            baseline_window=baseline_window
+        )
+
+    def plot_all_population_centered_analyses_no_baseline_correction(self, signal_type='zsc', time_window=3.0,
+                                                                   save_path=None, notebook=False, overwrite=False, font_size=None):
+        """
+        Convenience function to plot all population-centered analyses without baseline correction.
+        
+        This function creates the original analyses without any baseline modification.
+        
+        Parameters:
+        -----------
+        signal_type : str
+            Type of signal to use ('zsc' for z-score normalized, 'denoised' for denoised signals)
+        time_window : float
+            Time window in seconds before and after each peak for plotting
+        save_path : str, optional
+            Path to save the combined HTML file
+        notebook : bool
+            Whether to display in notebook
+        overwrite : bool
+            Whether to overwrite existing file
+        font_size : str, optional
+            Font size for plot text elements
+        
+        Returns:
+        --------
+        dict
+            Dictionary containing plots and statistics for all three analyses without baseline correction
+        """
+        print("Creating population-centered analyses without baseline correction...")
+        return self.plot_all_population_centered_analyses(
+            signal_type=signal_type,
+            time_window=time_window,
+            save_path=save_path,
+            notebook=notebook,
+            overwrite=overwrite,
+            font_size=font_size,
+            baseline_correct=False
         )
