@@ -561,7 +561,7 @@ class VirmenTank:
         import os
         from bokeh.plotting import figure
         from bokeh.layouts import LayoutDOM
-        from bokeh.io import output_notebook, output_file, reset_output, export_svg, save, show, curdoc
+        from bokeh.io import output_notebook, output_file, reset_output, export_svg, export_png, save, show, curdoc
 
         def set_figures_backend(obj, backend):
             """Recursively set the output_backend of all figure objects"""
@@ -603,14 +603,16 @@ class VirmenTank:
                 if font_size is not None:
                     set_font_sizes(plot, font_size)
                 
-                if save_path.split(".")[-1] == 'html':
+                file_extension = save_path.split(".")[-1].lower()
+                
+                if file_extension == 'html':
                     output_file(save_path, title=title)
                     curdoc().clear()
                     curdoc().add_root(plot)
                     save(curdoc())
                     print("File saved as html.")
                     curdoc().clear()
-                elif save_path.split(".")[-1] == 'svg':
+                elif file_extension == 'svg':
                     # set all figures to SVG backend
                     set_figures_backend(plot, 'svg')
                     
@@ -620,8 +622,15 @@ class VirmenTank:
                     
                     # set back to canvas backend
                     set_figures_backend(plot, 'canvas')
+                elif file_extension == 'png':
+                    # set all figures to canvas backend for PNG export
+                    set_figures_backend(plot, 'canvas')
+                    
+                    # export PNG
+                    export_png(plot, filename=save_path)
+                    print("Plot successfully saved as png.")
                 else:
-                    raise ValueError("Invalid file type.")
+                    raise ValueError("Invalid file type. Supported formats are: html, svg, png")
 
         if notebook:
             reset_output()
