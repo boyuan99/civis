@@ -146,7 +146,7 @@ def trajectory_bkapp_v6(doc):
                 raise ValueError(
                     f"Invalid maze type. Expected 'TurnV1', but got '{VirmenTank.determine_maze_type(file)}'")
             else:
-                vm = VirmenTank(session_name, height=35)
+                vm = VirmenTank(session_name)
 
             trials = vm.virmen_trials
 

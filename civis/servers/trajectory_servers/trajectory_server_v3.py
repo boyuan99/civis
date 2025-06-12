@@ -63,7 +63,7 @@ def trajectory_bkapp_v3(doc):
         else:
             file = config['VirmenFilePath'] + session_name + ".txt"
 
-        vm = VirmenTank(file, height=35)
+        vm = VirmenTank(file)
         trials = vm.virmen_trials
         starts = [x/vm.vm_rate for x in vm.trials_start_indices]
 

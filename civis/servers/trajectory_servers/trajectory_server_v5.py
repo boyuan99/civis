@@ -76,7 +76,7 @@ def trajectory_bkapp_v5(doc):
                 raise ValueError(
                     f"Invalid maze type. Expected 'Straight50', but got '{VirmenTank.determine_maze_type(file)}'")
             else:
-                vm = VirmenTank(file, height=35)
+                vm = VirmenTank(file)
 
             trials = vm.virmen_trials
             starts = [x / vm.vm_rate for x in vm.trials_start_indices]
