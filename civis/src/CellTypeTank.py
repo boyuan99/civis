@@ -4599,8 +4599,10 @@ class CellTypeTank(CITank):
             
             return layout
         
-        def analyze_and_plot_connectivity(self, save_dir=None, use_rising_edges=True, 
-                                        create_plots=True, notebook=False, overwrite=False, font_size=None):
+        def analyze_and_plot_connectivity(self, save_dir=None, timing_filename=None, summary_filename=None,
+                                        timing_save_path=None, summary_save_path=None,
+                                        use_rising_edges=True, create_plots=True, 
+                                        notebook=False, overwrite=False, font_size=None):
             """
             Complete connectivity analysis workflow with optional plotting
             (Equivalent to the standalone analyze_neural_connectivity_optimized function)
@@ -4608,7 +4610,17 @@ class CellTypeTank(CITank):
             Parameters:
             -----------
             save_dir : str, optional
-                Directory to save results and plots
+                Directory to save results and plots (used if individual save_path parameters are not provided)
+            timing_filename : str, optional
+                Custom filename for timing relationships plot (e.g., 'my_timing_analysis.html')
+                If None, defaults to 'peak_timing_relationships.html'
+            summary_filename : str, optional
+                Custom filename for connectivity summary plot (e.g., 'my_connectivity_summary.html')
+                If None, defaults to 'connectivity_summary.html'
+            timing_save_path : str, optional
+                Full path for timing relationships plot (overrides save_dir and timing_filename)
+            summary_save_path : str, optional
+                Full path for connectivity summary plot (overrides save_dir and summary_filename)
             use_rising_edges : bool
                 Whether to use rising edges instead of peak indices
             create_plots : bool
@@ -4633,12 +4645,25 @@ class CellTypeTank(CITank):
             if create_plots:
                 print("Creating connectivity analysis plots...")
                 
-                # Set save paths
-                if save_dir:
-                    timing_path = os.path.join(save_dir, 'peak_timing_relationships.html')
-                    summary_path = os.path.join(save_dir, 'connectivity_summary.html')
+                # Set save paths with flexible naming options
+                if timing_save_path:
+                    # Use provided full path
+                    timing_path = timing_save_path
+                elif save_dir:
+                    # Use directory with custom or default filename
+                    filename = timing_filename if timing_filename else 'peak_timing_relationships.html'
+                    timing_path = os.path.join(save_dir, filename)
                 else:
                     timing_path = None
+                
+                if summary_save_path:
+                    # Use provided full path
+                    summary_path = summary_save_path
+                elif save_dir:
+                    # Use directory with custom or default filename
+                    filename = summary_filename if summary_filename else 'connectivity_summary.html'
+                    summary_path = os.path.join(save_dir, filename)
+                else:
                     summary_path = None
                 
                 # Create timing relationships plot
