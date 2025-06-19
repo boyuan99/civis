@@ -4702,7 +4702,7 @@ class CellTypeTank(CITank):
     def _plot_population_centered_activity_core(self, center_cell_type, center_signals, center_peak_indices,
                                                all_signals_dict, ci_rate=None, time_window=3.0,
                                                save_path=None, title=None, notebook=False, overwrite=False, font_size=None,
-                                               baseline_correct=False, correction_factors=None):
+                                               baseline_correct=False, correction_factors=None, exclude_indices=None):
         """
         Core function for plotting population-centered activity analysis where ALL neurons from each cell type
         are averaged at the center cell type peak times (no activity filtering).
@@ -4738,6 +4738,9 @@ class CellTypeTank(CITank):
             Whether to apply baseline correction
         correction_factors : dict, optional
             Dictionary of correction factors for each cell type {'D1': factor, 'D2': factor, 'CHI': factor}
+        exclude_indices : array-like, optional
+            Binary array or list of indices to exclude from analysis. If binary array, indices where value is 1 (or True) will be excluded.
+            If list of indices, those specific indices will be excluded. Can be used to exclude timepoints during licking, movement, etc.
         
         Returns:
         --------
@@ -4757,11 +4760,24 @@ class CellTypeTank(CITank):
         # Convert time window to samples
         plot_window_samples = int(time_window * ci_rate)
         
-        # Collect all center peak time indices
+        # Process exclude_indices to create exclusion set
+        exclusion_set = set()
+        if exclude_indices is not None:
+            exclude_indices = np.array(exclude_indices)
+            if exclude_indices.dtype == bool or all(val in [0, 1, True, False] for val in exclude_indices):
+                # Binary array - get indices where value is True/1
+                exclusion_set = set(np.where(exclude_indices)[0])
+            else:
+                # List of indices
+                exclusion_set = set(exclude_indices)
+            print(f"Excluding {len(exclusion_set)} time indices from {center_cell_type} analysis")
+        
+        # Collect all center peak time indices, excluding those in exclusion_set
         all_center_peak_times = []
         for neuron_idx, peaks in enumerate(center_peak_indices):
             for peak_idx in peaks:
-                all_center_peak_times.append(peak_idx)
+                if peak_idx not in exclusion_set:
+                    all_center_peak_times.append(peak_idx)
         
         if not all_center_peak_times:
             print(f"No {center_cell_type} peaks found for analysis.")
@@ -4867,7 +4883,8 @@ class CellTypeTank(CITank):
             'valid_peaks_analyzed': valid_peak_count,
             'n_traces_averaged': valid_peak_count,
             'has_velocity': has_velocity,
-            'baseline_corrected': baseline_correct
+            'baseline_corrected': baseline_correct,
+            'excluded_indices_count': len(exclusion_set) if exclude_indices is not None else 0
         }
         
         # Add baseline correction info to stats
@@ -5001,7 +5018,7 @@ class CellTypeTank(CITank):
     def plot_population_centered_activity(self, center_cell_type='D1', signal_type='zsc',
                                          time_window=3.0, save_path=None, title=None, 
                                          notebook=False, overwrite=False, font_size=None,
-                                         baseline_correct=False, correction_factors=None):
+                                         baseline_correct=False, correction_factors=None, exclude_indices=None):
         """
         Plot population-centered activity analysis where ALL neurons from each cell type
         are averaged at the center cell type peak times (no activity filtering).
@@ -5031,6 +5048,9 @@ class CellTypeTank(CITank):
             Whether to apply baseline correction
         correction_factors : dict, optional
             Dictionary of correction factors for each cell type {'D1': factor, 'D2': factor, 'CHI': factor}
+        exclude_indices : array-like, optional
+            Binary array or list of indices to exclude from analysis. If binary array, indices where value is 1 (or True) will be excluded.
+            If list of indices, those specific indices will be excluded. Can be used to exclude timepoints during licking, movement, etc.
         
         Returns:
         --------
@@ -5093,12 +5113,13 @@ class CellTypeTank(CITank):
             overwrite=overwrite,
             font_size=font_size,
             baseline_correct=baseline_correct,
-            correction_factors=correction_factors
+            correction_factors=correction_factors,
+            exclude_indices=exclude_indices
         )
 
     def plot_all_population_centered_analyses(self, signal_type='zsc', time_window=3.0,
                                              save_path=None, notebook=False, overwrite=False, font_size=None,
-                                             baseline_correct=True, baseline_window=(-3.0, -1.0)):
+                                             baseline_correct=True, baseline_window=(-3.0, -1.0), exclude_indices=None):
         """
         Comprehensive function to plot all three population-centered analyses (D1, D2, CHI) for comparison.
         
@@ -5123,6 +5144,9 @@ class CellTypeTank(CITank):
             Whether to apply baseline correction to unify baseline levels across cell types
         baseline_window : tuple
             Time window (start, end) in seconds for baseline calculation (relative to peak time)
+        exclude_indices : array-like, optional
+            Binary array or list of indices to exclude from analysis. If binary array, indices where value is 1 (or True) will be excluded.
+            If list of indices, those specific indices will be excluded. Can be used to exclude timepoints during licking, movement, etc.
         
         Returns:
         --------
@@ -5135,6 +5159,18 @@ class CellTypeTank(CITank):
         
         results = {}
         signal_description = 'Z-score' if signal_type == 'zsc' else 'Denoised'
+        
+        # Process exclude_indices to create exclusion set
+        exclusion_set = set()
+        if exclude_indices is not None:
+            exclude_indices = np.array(exclude_indices)
+            if exclude_indices.dtype == bool or all(val in [0, 1, True, False] for val in exclude_indices):
+                # Binary array - get indices where value is True/1
+                exclusion_set = set(np.where(exclude_indices)[0])
+            else:
+                # List of indices
+                exclusion_set = set(exclude_indices)
+            print(f"Excluding {len(exclusion_set)} time indices from analysis")
         
         # First pass: collect all traces to calculate global baseline correction
         all_traces = {'D1': [], 'D2': [], 'CHI': []}
@@ -5175,11 +5211,12 @@ class CellTypeTank(CITank):
             for center_type in ['D1', 'D2', 'CHI']:
                 center_peak_indices = all_peak_indices_dict[center_type]
                 
-                # Collect all center peak times
+                # Collect all center peak times, excluding those in exclusion_set
                 all_center_peak_times = []
                 for neuron_idx, peaks in enumerate(center_peak_indices):
                     for peak_idx in peaks:
-                        all_center_peak_times.append(peak_idx)
+                        if peak_idx not in exclusion_set:
+                            all_center_peak_times.append(peak_idx)
                 
                 if all_center_peak_times:
                     plot_window_samples = int(time_window * self.ci_rate)
@@ -5247,7 +5284,8 @@ class CellTypeTank(CITank):
             overwrite=overwrite,
             font_size=font_size,
             baseline_correct=baseline_correct,
-            correction_factors=correction_factors
+            correction_factors=correction_factors,
+            exclude_indices=exclude_indices
         )
         results['d1_population'] = {'plot': d1_plot, 'stats': d1_stats}
         
@@ -5263,7 +5301,8 @@ class CellTypeTank(CITank):
             overwrite=overwrite,
             font_size=font_size,
             baseline_correct=baseline_correct,
-            correction_factors=correction_factors
+            correction_factors=correction_factors,
+            exclude_indices=exclude_indices
         )
         results['d2_population'] = {'plot': d2_plot, 'stats': d2_stats}
         
@@ -5279,7 +5318,8 @@ class CellTypeTank(CITank):
             overwrite=overwrite,
             font_size=font_size,
             baseline_correct=baseline_correct,
-            correction_factors=correction_factors
+            correction_factors=correction_factors,
+            exclude_indices=exclude_indices
         )
         results['chi_population'] = {'plot': chi_plot, 'stats': chi_stats}
         
@@ -5288,6 +5328,8 @@ class CellTypeTank(CITank):
         print(f"POPULATION-LEVEL COMPARATIVE ANALYSIS SUMMARY ({signal_description})")
         if baseline_correct:
             print("*** BASELINE CORRECTED FOR UNIFIED COMPARISON ***")
+        if exclude_indices is not None:
+            print(f"*** {len(exclusion_set)} TIME INDICES EXCLUDED FROM ANALYSIS ***")
         print("="*80)
         
         if d1_stats and d2_stats and chi_stats:
@@ -5303,6 +5345,8 @@ class CellTypeTank(CITank):
             print(f"\nNote: All neurons of each type were included in averaging (no activity filtering)")
             if baseline_correct:
                 print(f"Baseline correction applied using window {baseline_window} seconds relative to peak")
+            if exclude_indices is not None:
+                print(f"Excluded {len(exclusion_set)} time indices from peak analysis")
         
         # Create and save combined analysis
         if all([d1_plot, d2_plot, chi_plot]):
@@ -5310,6 +5354,8 @@ class CellTypeTank(CITank):
             combined_title = f"All Population-Centered Analyses ({signal_description})"
             if baseline_correct:
                 combined_title += " - Baseline Corrected"
+            if exclude_indices is not None:
+                combined_title += f" - Excluded {len(exclusion_set)} indices"
             
             # Output the combined plot
             self.output_bokeh_plot(combined_layout, save_path=save_path, title=combined_title, 
@@ -5433,7 +5479,7 @@ class CellTypeTank(CITank):
 
     def plot_all_population_centered_analyses_unified_baseline(self, signal_type='zsc', time_window=3.0,
                                                               baseline_window=(-3.0, -1.0),
-                                                              save_path=None, notebook=False, overwrite=False, font_size=None):
+                                                              save_path=None, notebook=False, overwrite=False, font_size=None, exclude_indices=None):
         """
         Convenience function to plot all population-centered analyses with unified baseline correction.
         
@@ -5456,6 +5502,9 @@ class CellTypeTank(CITank):
             Whether to overwrite existing file
         font_size : str, optional
             Font size for plot text elements
+        exclude_indices : array-like, optional
+            Binary array or list of indices to exclude from analysis. If binary array, indices where value is 1 (or True) will be excluded.
+            If list of indices, those specific indices will be excluded. Can be used to exclude timepoints during licking, movement, etc.
         
         Returns:
         --------
@@ -5471,11 +5520,12 @@ class CellTypeTank(CITank):
             overwrite=overwrite,
             font_size=font_size,
             baseline_correct=True,
-            baseline_window=baseline_window
+            baseline_window=baseline_window,
+            exclude_indices=exclude_indices
         )
 
     def plot_all_population_centered_analyses_no_baseline_correction(self, signal_type='zsc', time_window=3.0,
-                                                                   save_path=None, notebook=False, overwrite=False, font_size=None):
+                                                                   save_path=None, notebook=False, overwrite=False, font_size=None, exclude_indices=None):
         """
         Convenience function to plot all population-centered analyses without baseline correction.
         
@@ -5495,6 +5545,9 @@ class CellTypeTank(CITank):
             Whether to overwrite existing file
         font_size : str, optional
             Font size for plot text elements
+        exclude_indices : array-like, optional
+            Binary array or list of indices to exclude from analysis. If binary array, indices where value is 1 (or True) will be excluded.
+            If list of indices, those specific indices will be excluded. Can be used to exclude timepoints during licking, movement, etc.
         
         Returns:
         --------
@@ -5509,5 +5562,6 @@ class CellTypeTank(CITank):
             notebook=notebook,
             overwrite=overwrite,
             font_size=font_size,
-            baseline_correct=False
+            baseline_correct=False,
+            exclude_indices=exclude_indices
         )
