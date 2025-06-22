@@ -3,7 +3,7 @@ import numpy as np
 import h5py
 import json
 import os
-from .VirmenTank import VirmenTank
+from civis.src.VirmenTank import VirmenTank
 from scipy.signal import savgol_filter
 
 

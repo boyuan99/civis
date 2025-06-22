@@ -7,11 +7,13 @@ This package provides tools for visualizing and analyzing CI (Calcium Imaging) d
 __version__ = "0.1.0"
 
 from . import servers
-from .src.CITank import CITank
-from .src.VirmenTank import VirmenTank
-from .src.ElecTank import ElecTank
+from civis.src.CITank import CITank
+from civis.src.VirmenTank import VirmenTank
+from civis.src.ElecTank import ElecTank
+from civis.src.CellTypeTank import CellTypeTank
+from civis.src.MultiSessionAnalyzer import MultiSessionAnalyzer
 
-__all__ = ['servers', 'CITank', 'ElecTank', 'VirmenTank']
+__all__ = ['servers', 'CITank', 'ElecTank', 'VirmenTank', 'CellTypeTank', 'MultiSessionAnalyzer']
 
 import logging
 logging.getLogger(__name__).addHandler(logging.NullHandler())

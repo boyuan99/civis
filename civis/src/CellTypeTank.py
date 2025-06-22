@@ -1,7 +1,7 @@
 import os
 import numpy as np
 import pandas as pd
-from .CITank import CITank
+from civis.src.CITank import CITank
 
 class CellTypeTank(CITank):
     """

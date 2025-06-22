@@ -1,7 +1,7 @@
 import numpy as np
 import tdt
 import os
-from .VirmenTank import VirmenTank
+from civis.src.VirmenTank import VirmenTank
 
 
 class ElecTank(VirmenTank):
