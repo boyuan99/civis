@@ -1986,6 +1986,432 @@ class CITank(VirmenTank):
         
         return layout
 
+    def find_synchronous_events(self, time_window=5, min_neurons=3, min_event_interval=None, 
+                              peak_indices=None, return_details=True):
+        """
+        Find time points where many neurons are active together (synchronous events).
+        
+        Parameters:
+        -----------
+        time_window : int
+            Time window size in samples to consider neurons as synchronous
+        min_neurons : int  
+            Minimum number of neurons that must be active to consider it a synchronous event
+        min_event_interval : int, optional
+            Minimum interval between events in samples. If None, defaults to time_window * 2
+            This prevents detection of events that are too close in time
+        peak_indices : list, optional
+            List of peak indices for each neuron. If None, uses self.peak_indices
+        return_details : bool
+            Whether to return detailed information about each event
+            
+        Returns:
+        --------
+        dict
+            Dictionary containing:
+            - 'event_times': array of event time points (in samples)
+            - 'event_strengths': array of number of neurons participating in each event
+            - 'event_details': list of detailed info for each event (if return_details=True)
+            - 'total_events': total number of synchronous events found
+            - 'parameters': parameters used for detection
+        """
+        # Use provided peak_indices or default to self.peak_indices
+        if peak_indices is None:
+            if not hasattr(self, 'peak_indices') or self.peak_indices is None:
+                raise ValueError("peak_indices not available. Run _find_peaks_in_traces() first.")
+            peak_indices = self.peak_indices
+        
+        # Set default minimum event interval if not provided
+        if min_event_interval is None:
+            min_event_interval = time_window * 2
+        
+        # Create a time series of spike counts
+        max_time = len(self.t) if hasattr(self, 't') else max(max(peaks) for peaks in peak_indices if len(peaks) > 0)
+        spike_count_series = np.zeros(max_time, dtype=int)
+        
+        # Count spikes at each time point
+        for neuron_idx, peaks in enumerate(peak_indices):
+            for peak_time in peaks:
+                if peak_time < max_time:
+                    spike_count_series[peak_time] += 1
+        
+        # Find synchronous events using sliding window
+        synchronous_events = []
+        event_times = []
+        event_strengths = []
+        
+        # Slide window across the time series
+        for t in range(max_time - time_window + 1):
+            window_spike_count = np.sum(spike_count_series[t:t + time_window])
+            
+            if window_spike_count >= min_neurons:
+                # Find the exact time point with maximum activity in this window
+                window_spikes = spike_count_series[t:t + time_window]
+                peak_time_in_window = np.argmax(window_spikes)
+                actual_event_time = t + peak_time_in_window
+                actual_spike_count = window_spikes[peak_time_in_window]
+                
+                # Check if this is a new event (not too close to previous ones)
+                if not event_times or (actual_event_time - event_times[-1]) >= min_event_interval:
+                    event_times.append(actual_event_time)
+                    event_strengths.append(actual_spike_count)
+                    
+                    if return_details:
+                        # Find which neurons participated in this event
+                        participating_neurons = []
+                        for neuron_idx, peaks in enumerate(peak_indices):
+                            # Check if this neuron has a peak within the time window around the event
+                            nearby_peaks = peaks[(peaks >= actual_event_time - time_window//2) & 
+                                               (peaks <= actual_event_time + time_window//2)]
+                            if len(nearby_peaks) > 0:
+                                participating_neurons.append({
+                                    'neuron_id': neuron_idx,
+                                    'peak_times': nearby_peaks.tolist()
+                                })
+                        
+                        synchronous_events.append({
+                            'event_time': actual_event_time,
+                            'event_time_seconds': actual_event_time / self.ci_rate if hasattr(self, 'ci_rate') else actual_event_time,
+                            'strength': actual_spike_count,
+                            'participating_neurons': participating_neurons,
+                            'time_window_used': time_window
+                        })
+        
+        results = {
+            'event_times': np.array(event_times),
+            'event_strengths': np.array(event_strengths),
+            'total_events': len(event_times),
+            'parameters': {
+                'time_window': time_window,
+                'min_neurons': min_neurons,
+                'min_event_interval': min_event_interval,
+                'total_neurons_analyzed': len(peak_indices)
+            }
+        }
+        
+        if return_details:
+            results['event_details'] = synchronous_events
+            
+        return results
+
+    def plot_synchronous_events(self, synchronous_events=None, time_window=5, min_neurons=3,
+                              min_event_interval=None, show_top_events=10, signal_to_plot='C_zsc', 
+                              save_path=None, title=None, notebook=False, 
+                              overwrite=False, font_size=None):
+        """
+        Visualize synchronous neural activity events.
+        
+        Parameters:
+        -----------
+        synchronous_events : dict, optional
+            Results from find_synchronous_events(). If None, will compute automatically
+        time_window : int
+            Time window for event detection (used if synchronous_events is None)
+        min_neurons : int
+            Minimum neurons for event detection (used if synchronous_events is None)
+        min_event_interval : int, optional
+            Minimum interval between events in samples (used if synchronous_events is None)
+        show_top_events : int
+            Number of top events to highlight in the plot
+        signal_to_plot : str
+            Which signal to use for background ('C_zsc', 'C_raw', 'C_denoised')
+        save_path : str, optional
+            Path to save the plot
+        title : str, optional
+            Title for the plot
+        notebook : bool
+            Whether to display in notebook
+        overwrite : bool
+            Whether to overwrite existing file
+        font_size : str, optional
+            Font size for plot elements
+            
+        Returns:
+        --------
+        bokeh.layouts.layout
+            The created visualization layout
+        """
+        from bokeh.plotting import figure
+        from bokeh.layouts import column, row
+        from bokeh.models import ColumnDataSource, Span, HoverTool, ColorBar, LinearColorMapper
+        from bokeh.palettes import Reds9
+        
+        # Get synchronous events if not provided
+        if synchronous_events is None:
+            synchronous_events = self.find_synchronous_events(
+                time_window=time_window, 
+                min_neurons=min_neurons,
+                min_event_interval=min_event_interval,
+                return_details=True
+            )
+        
+        if synchronous_events['total_events'] == 0:
+            print("No synchronous events found with the given parameters.")
+            return None
+        
+        # Set default title
+        if title is None:
+            title = f"Synchronous Neural Activity Events (n={synchronous_events['total_events']})"
+        
+        # Get the signal to plot
+        if signal_to_plot == 'C_zsc' and hasattr(self, 'C_zsc'):
+            signal = self.C_zsc
+        elif signal_to_plot == 'C_denoised' and hasattr(self, 'C_denoised'):
+            signal = self.C_denoised
+        elif hasattr(self, 'C_raw'):
+            signal = self.C_raw
+        else:
+            raise ValueError("No suitable signal found for plotting")
+        
+        # Create time axis
+        time_axis = self.t if hasattr(self, 't') else np.arange(signal.shape[1]) / self.ci_rate
+        
+        # 1. Overview plot showing all events
+        p1 = figure(width=1000, height=300, 
+                   title="Population Activity and Synchronous Events",
+                   x_axis_label="Time (s)", 
+                   y_axis_label="Population Activity")
+        
+        # Plot population average
+        population_avg = np.mean(signal, axis=0)
+        p1.line(time_axis, population_avg, line_width=2, color='blue', alpha=0.7, legend_label="Population Average")
+        
+        # Add event markers
+        event_times_sec = synchronous_events['event_times'] / self.ci_rate
+        event_strengths = synchronous_events['event_strengths']
+        
+        # Create color mapping for event strength
+        max_strength = np.max(event_strengths)
+        min_strength = np.min(event_strengths)
+        
+        # Normalize strengths for color mapping
+        normalized_strengths = (event_strengths - min_strength) / (max_strength - min_strength)
+        colors = [Reds9[min(8, int(strength * 8))] for strength in normalized_strengths]
+        
+        # Add event scatter plot
+        event_source = ColumnDataSource(data=dict(
+            x=event_times_sec,
+            y=[population_avg[int(t)] for t in synchronous_events['event_times']],
+            strength=event_strengths,
+            colors=colors
+        ))
+        
+        scatter = p1.scatter('x', 'y', source=event_source, size=10, color='colors', alpha=0.8)
+        
+        # Add hover tool
+        hover = HoverTool(renderers=[scatter], tooltips=[
+            ('Time', '@x{0.00} s'),
+            ('Strength', '@strength neurons'),
+            ('Population Activity', '@y{0.000}')
+        ])
+        p1.add_tools(hover)
+        
+        p1.legend.location = "top_left"
+        p1.legend.click_policy = "hide"
+        
+        # 2. Velocity plot with event markers (NEW)
+        pv = figure(width=1000, height=200, 
+                   title="Velocity and Synchronous Events",
+                   x_axis_label="Time (s)", 
+                   y_axis_label="Velocity",
+                   x_range=p1.x_range)  # Link x-axis with population plot
+        
+        # Plot velocity if available
+        if hasattr(self, 'smoothed_velocity') and self.smoothed_velocity is not None:
+            pv.line(time_axis, self.smoothed_velocity, line_width=2, color='green', alpha=0.7, legend_label="Velocity")
+        elif hasattr(self, 'velocity') and self.velocity is not None:
+            pv.line(time_axis, self.velocity, line_width=2, color='green', alpha=0.7, legend_label="Velocity")
+        else:
+            # Create dummy velocity line if no velocity data
+            pv.line(time_axis, np.zeros_like(time_axis), line_width=2, color='green', alpha=0.7, legend_label="No Velocity Data")
+        
+        # Add vertical lines for synchronous events
+        for event_time in event_times_sec:
+            event_line = Span(location=event_time, dimension='height', 
+                            line_color='red', line_width=1, line_dash='dashed', line_alpha=0.5)
+            pv.add_layout(event_line)
+        
+        pv.legend.location = "top_left"
+        pv.legend.click_policy = "hide"
+        
+        # 3. Complete neural raster plot with event markers (NEW)
+        p_raster = figure(width=1000, height=500,
+                         title="Complete Neural Raster Plot with Synchronous Events",
+                         x_axis_label="Time (s)",
+                         y_axis_label="Neuron ID",
+                         x_range=p1.x_range)  # Link x-axis with population plot
+        
+        # Create raster data for all neurons across entire time period
+        raster_data = {'x': [], 'y': [], 'colors': []}
+        
+        # Create a set of event times for quick lookup
+        event_times_set = set(synchronous_events['event_times'])
+        
+        # Plot spikes for all neurons
+        for neuron_idx, peaks in enumerate(self.peak_indices):
+            for peak in peaks:
+                peak_time_sec = peak / self.ci_rate
+                raster_data['x'].append(peak_time_sec)
+                raster_data['y'].append(neuron_idx)
+                
+                # Color code spikes that are close to synchronous events
+                is_event_spike = False
+                for event_time in synchronous_events['event_times']:
+                    if abs(peak - event_time) <= time_window:
+                        is_event_spike = True
+                        break
+                
+                if is_event_spike:
+                    raster_data['colors'].append('red')
+                else:
+                    raster_data['colors'].append('black')
+        
+        # Add raster plot
+        if raster_data['x']:  # Only plot if we have data
+            raster_source = ColumnDataSource(data=raster_data)
+            p_raster.scatter('x', 'y', source=raster_source, size=2, color='colors', alpha=0.6)
+        
+        # Add vertical lines for synchronous events
+        for event_time in event_times_sec:
+            event_line = Span(location=event_time, dimension='height', 
+                            line_color='red', line_width=2, line_dash='dashed', line_alpha=0.7)
+            p_raster.add_layout(event_line)
+        
+        # 4. Event strength histogram (moved to bottom)
+        p2 = figure(width=500, height=300, 
+                   title="Distribution of Event Strengths",
+                   x_axis_label="Number of Participating Neurons",
+                   y_axis_label="Count")
+        
+        hist, edges = np.histogram(event_strengths, bins=20)
+        p2.quad(top=hist, bottom=0, left=edges[:-1], right=edges[1:], 
+               fill_color='orange', alpha=0.7, line_color='orange')
+        
+        # 5. Event timeline (moved to bottom)
+        p4 = figure(width=500, height=300,
+                   title="Event Timeline", 
+                   x_axis_label="Time (s)",
+                   y_axis_label="Event Strength")
+        
+        p4.scatter(event_times_sec, event_strengths, size=8, color='purple', alpha=0.7)
+        p4.line(event_times_sec, event_strengths, line_width=1, color='purple', alpha=0.5)
+        
+        # Add summary statistics
+        mean_strength = np.mean(event_strengths)
+        p4.line([event_times_sec[0], event_times_sec[-1]], [mean_strength, mean_strength], 
+               line_color='red', line_dash='dashed', line_width=2, legend_label=f"Mean: {mean_strength:.1f}")
+        
+        p4.legend.location = "top_right"
+        
+        # Combine plots in the new layout
+        layout = column(
+            p1,           # Population activity overview
+            pv,           # Velocity plot
+            p_raster,     # Complete neural raster plot
+            row(p2, p4)   # Event statistics at the bottom
+        )
+        
+        # Print summary
+        print(f"\nSynchronous Events Summary:")
+        print(f"Total events found: {synchronous_events['total_events']}")
+        print(f"Time window used: {synchronous_events['parameters']['time_window']} samples")
+        print(f"Minimum neurons required: {synchronous_events['parameters']['min_neurons']}")
+        print(f"Minimum event interval: {synchronous_events['parameters']['min_event_interval']} samples ({synchronous_events['parameters']['min_event_interval']/self.ci_rate:.2f}s)")
+        print(f"Average event strength: {np.mean(event_strengths):.1f} neurons")
+        print(f"Maximum event strength: {np.max(event_strengths)} neurons")
+        print(f"Event rate: {synchronous_events['total_events'] / (time_axis[-1] / 60):.2f} events/minute")
+        
+        # Output the plot
+        self.output_bokeh_plot(layout, save_path=save_path, title=title, 
+                             notebook=notebook, overwrite=overwrite, font_size=font_size)
+        
+        return layout
+
+    def analyze_synchronous_events_statistics(self, synchronous_events=None, time_window=5, min_neurons=3, min_event_interval=None):
+        """
+        Analyze statistical properties of synchronous events.
+        
+        Parameters:
+        -----------
+        synchronous_events : dict, optional
+            Results from find_synchronous_events(). If None, will compute automatically
+        time_window : int
+            Time window for event detection (used if synchronous_events is None)
+        min_neurons : int
+            Minimum neurons for event detection (used if synchronous_events is None)
+        min_event_interval : int, optional
+            Minimum interval between events in samples (used if synchronous_events is None)
+            
+        Returns:
+        --------
+        dict
+            Dictionary containing statistical analysis results
+        """
+        # Get synchronous events if not provided
+        if synchronous_events is None:
+            synchronous_events = self.find_synchronous_events(
+                time_window=time_window, 
+                min_neurons=min_neurons,
+                min_event_interval=min_event_interval,
+                return_details=True
+            )
+        
+        if synchronous_events['total_events'] == 0:
+            return {'error': 'No synchronous events found'}
+        
+        event_times = synchronous_events['event_times']
+        event_strengths = synchronous_events['event_strengths']
+        
+        # Calculate inter-event intervals
+        if len(event_times) > 1:
+            inter_event_intervals = np.diff(event_times) / self.ci_rate  # Convert to seconds
+        else:
+            inter_event_intervals = np.array([])
+        
+        # Calculate statistics
+        stats = {
+            'total_events': synchronous_events['total_events'],
+            'event_rate_per_minute': synchronous_events['total_events'] / (len(self.t) / self.ci_rate / 60),
+            'strength_statistics': {
+                'mean': np.mean(event_strengths),
+                'median': np.median(event_strengths),
+                'std': np.std(event_strengths),
+                'min': np.min(event_strengths), 
+                'max': np.max(event_strengths)
+            },
+            'inter_event_intervals': {
+                'mean_seconds': np.mean(inter_event_intervals) if len(inter_event_intervals) > 0 else 0,
+                'median_seconds': np.median(inter_event_intervals) if len(inter_event_intervals) > 0 else 0,
+                'std_seconds': np.std(inter_event_intervals) if len(inter_event_intervals) > 0 else 0
+            },
+            'temporal_distribution': {
+                'first_event_time_seconds': event_times[0] / self.ci_rate,
+                'last_event_time_seconds': event_times[-1] / self.ci_rate,
+                'total_duration_seconds': len(self.t) / self.ci_rate
+            }
+        }
+        
+        # Analyze participating neurons
+        if 'event_details' in synchronous_events:
+            all_participating_neurons = set()
+            neuron_participation_count = {}
+            
+            for event in synchronous_events['event_details']:
+                for neuron_info in event['participating_neurons']:
+                    neuron_id = neuron_info['neuron_id']
+                    all_participating_neurons.add(neuron_id)
+                    neuron_participation_count[neuron_id] = neuron_participation_count.get(neuron_id, 0) + 1
+            
+            stats['neuron_participation'] = {
+                'total_participating_neurons': len(all_participating_neurons),
+                'participation_percentage': len(all_participating_neurons) / len(self.peak_indices) * 100,
+                'most_active_neuron_id': max(neuron_participation_count, key=neuron_participation_count.get),
+                'most_active_neuron_events': max(neuron_participation_count.values()),
+                'average_events_per_participating_neuron': np.mean(list(neuron_participation_count.values()))
+            }
+        
+        return stats
+
 
 if __name__ == "__main__":
     print("Starting CivisServer")
