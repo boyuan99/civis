@@ -19,12 +19,58 @@ from civis.src.CellTypeTank import CellTypeTank
 from civis.src.CITank import CITank
 from civis.src.ElecTank import ElecTank
 from civis.src.VirmenTank import VirmenTank
+from civis.src.CompositeTank import CompositeTank
 
 
 class MultiSessionAnalyzer:
     """
     Multi-session neural data analyzer that can handle multiple sessions
     and perform cross-session analysis of neural activity.
+    
+    Key Features:
+    ------------
+    1. **Session Management**: Load and manage multiple CellTypeTank sessions
+    2. **Cross-Session Analysis**: Compare individual sessions independently 
+    3. **Merged Analysis**: Combine all sessions into one large neural population
+    4. **Persistent Merged Data**: Store merged neuron signals and indices as class attributes
+    5. **Index Mapping**: Complete traceability from global to original session indices
+    
+    Usage Patterns:
+    --------------
+    # Option 1: Traditional cross-session comparison
+    analyzer = MultiSessionAnalyzer(sessions_config)
+    analyzer.compare_neuron_counts_across_sessions()
+    analyzer.analyze_cross_session_activity_patterns()
+    
+    # Option 2: Persistent merged analysis (NEW)
+    analyzer = MultiSessionAnalyzer(sessions_config) 
+    analyzer.merge_all_sessions()  # Creates persistent merged data
+    analyzer.merged_neuron_centered_analysis()  # Uses persistent data
+    analyzer.merged_connectivity_analysis()     # Uses persistent data
+    
+    # Option 3: Direct access to merged signals
+    analyzer.merge_all_sessions()
+    print(f"Total neurons: {analyzer.all_neuron_zsc.shape[0]}")
+    d1_signals = analyzer.all_d1_zsc  # Direct access to D1 neurons
+    
+    Persistent Merged Data Attributes:
+    ---------------------------------
+    Signal data:
+    - all_neuron_raw, all_neuron_zsc, all_neuron_denoised, etc.
+    - all_d1_raw, all_d1_zsc, all_d2_raw, all_d2_zsc, all_chi_raw, all_chi_zsc, etc.
+    
+    Index mapping:
+    - all_d1_indices, all_d2_indices, all_chi_indices (global indices)
+    - global_to_session_map: {global_idx: {'session': name, 'local_idx': idx, 'cell_type': type}}
+    - original_indices_map: {session_name: {'d1': [indices], 'd2': [indices], 'chi': [indices]}}
+    
+    Peak data:
+    - all_peak_indices, all_d1_peak_indices, all_d2_peak_indices, all_chi_peak_indices
+    
+    State tracking:
+    - is_merged: bool indicating if merge has been performed
+    - merged_sessions_list: list of sessions included in merge
+    - merged_metadata: comprehensive metadata about merged data
     """
     
     def __init__(self, sessions_config: List[Dict[str, Any]], analyzer_type: str = 'CellTypeTank'):
@@ -50,6 +96,85 @@ class MultiSessionAnalyzer:
         
         # Cross-session analysis results storage
         self.cross_session_results = {}
+        
+        # Merged neuron data attributes - Raw signal data (global indices)
+        self.all_neuron_raw = None          # Merged raw signals (all neurons × timepoints)
+        self.all_neuron_zsc = None          # Merged z-score normalized signals
+        self.all_neuron_denoised = None     # Merged denoised signals
+        self.all_neuron_deconvolved = None  # Merged deconvolved signals
+        self.all_neuron_baseline = None     # Merged baseline signals
+        self.all_neuron_reraw = None        # Merged reconstructed raw signals
+        
+        # Cell type global indices (remapped after merging)
+        self.all_d1_indices = None          # Global indices of D1 neurons
+        self.all_d2_indices = None          # Global indices of D2 neurons  
+        self.all_chi_indices = None         # Global indices of CHI neurons
+        
+        # Cell type specific signals (extracted using global indices)
+        self.all_d1_raw = None              # D1 neuron signals: all_neuron_raw[all_d1_indices]
+        self.all_d1_zsc = None              # D1 z-score signals
+        self.all_d1_denoised = None         # D1 denoised signals
+        self.all_d1_deconvolved = None      # D1 deconvolved signals
+        self.all_d1_baseline = None         # D1 baseline signals
+        self.all_d1_reraw = None            # D1 reconstructed signals
+        
+        self.all_d2_raw = None              # D2 neuron signals
+        self.all_d2_zsc = None
+        self.all_d2_denoised = None
+        self.all_d2_deconvolved = None
+        self.all_d2_baseline = None
+        self.all_d2_reraw = None
+        
+        self.all_chi_raw = None             # CHI neuron signals  
+        self.all_chi_zsc = None
+        self.all_chi_denoised = None
+        self.all_chi_deconvolved = None
+        self.all_chi_baseline = None
+        self.all_chi_reraw = None
+        
+        # Peak detection results organized by global neuron index
+        self.all_peak_indices = None        # List[List]: all_peak_indices[global_idx] = [peak timepoints]
+        self.all_rising_edges_starts = None # List[List]: all_rising_edges_starts[global_idx] = [rising edges]
+        
+        # Peak detection results organized by cell type
+        self.all_d1_peak_indices = None     # Peak indices for all D1 neurons
+        self.all_d2_peak_indices = None     # Peak indices for all D2 neurons
+        self.all_chi_peak_indices = None    # Peak indices for all CHI neurons
+        
+        self.all_d1_rising_edges_starts = None  # Rising edge data for D1 neurons
+        self.all_d2_rising_edges_starts = None  # Rising edge data for D2 neurons
+        self.all_chi_rising_edges_starts = None # Rising edge data for CHI neurons
+        
+        # Index mapping and tracking attributes
+        self.original_indices_map = {}       # {session_name: {'d1': [original_indices], 'd2': [...], 'chi': [...]}}
+        self.global_to_session_map = {}      # {global_idx: {'session': session_name, 'local_idx': orig_idx, 'cell_type': 'D1'}}
+        self.session_neuron_ranges = {}     # {session_name: {'start': 0, 'end': 100, 'count': 100}}
+        self.celltype_session_distribution = {} # {'d1': {'session1': [global_indices], 'session2': [...]}, ...}
+        
+        # Spatial and morphological attributes (rearranged by global index)
+        self.all_centroids = None           # Neuron centroids ordered by global index
+        self.all_spatial_components = None  # Spatial components matrix (A) rearranged
+        self.all_coordinates = None         # Neuron coordinates rearranged
+        
+        # Behavioral and velocity data
+        self.all_velocity_data = None       # Representative/merged velocity data
+        self.all_smoothed_velocity = None   # Representative/merged smoothed velocity
+        
+        # Metadata and state tracking
+        self.merged_metadata = {}           # Metadata about merged data
+        self.session_boundaries = {}        # Session boundary information
+        self.session_offsets = {}           # Session offset information
+        self.merged_signal_type = None      # Signal type used for current merge
+        self.merged_sessions_list = []      # List of sessions included in merge
+        
+        # State and control attributes
+        self.is_merged = False              # Boolean indicating if merge has been performed
+        self.merge_timestamp = None         # Timestamp of last merge operation
+        self.auto_update_merged = False     # Whether to auto-update merge when sessions change
+        
+        # Cache and performance attributes
+        self._merged_analyzer_cache = None  # Cached merged analyzer instance
+        self._merge_data_cache = None       # Cached merge data dictionary
         
     def _load_sessions(self):
         """Load all sessions based on configuration."""
@@ -81,7 +206,8 @@ class MultiSessionAnalyzer:
             'CellTypeTank': CellTypeTank,
             'CITank': CITank,
             'ElecTank': ElecTank,
-            'VirmenTank': VirmenTank
+            'VirmenTank': VirmenTank,
+            'CompositeTank': CompositeTank
         }
         
         if self.analyzer_type not in analyzer_classes:
@@ -159,6 +285,16 @@ class MultiSessionAnalyzer:
                 'vm_rate': 20,
                 'session_duration': 30 * 60,
                 'maze_type': None
+            }
+        elif self.analyzer_type == 'CompositeTank':
+            default_values = {
+                'ci_rate': 20,
+                'vm_rate': 20,
+                'resample_fs': 200,
+                'session_duration': 30 * 60,
+                'maze_type': None,
+                'notch_fs': [60],
+                'notch_Q': 30
             }
         else:
             # Fallback defaults
@@ -773,6 +909,371 @@ class MultiSessionAnalyzer:
         else:
             print(f"Session {session_name} not found")
     
+    def merge_all_sessions(self, signal_type: str = 'auto', overwrite: bool = False) -> bool:
+        """
+        Merge all loaded sessions into unified neuron data with proper index mapping.
+        
+        Parameters:
+        -----------
+        signal_type : str
+            Signal type to prioritize for merging ('auto', 'zsc', 'denoised', 'raw')
+        overwrite : bool
+            Whether to overwrite existing merged data
+            
+        Returns:
+        --------
+        bool
+            True if merge was successful, False otherwise
+        """
+        if self.analyzer_type != 'CellTypeTank':
+            print("Data merging is currently only supported for CellTypeTank analyzer")
+            return False
+            
+        if not self.loaded_sessions:
+            print("No sessions loaded for merging")
+            return False
+            
+        if self.is_merged and not overwrite:
+            print("Merged data already exists. Use overwrite=True to regenerate.")
+            return True
+        
+        print(f"Starting merge of {len(self.loaded_sessions)} sessions...")
+        
+        try:
+            # Clear existing merged data
+            self._clear_merged_data()
+            
+            # Perform the merge
+            success = self._execute_merge(signal_type)
+            
+            if success:
+                self.is_merged = True
+                self.merge_timestamp = pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')
+                self.merged_sessions_list = self.loaded_sessions.copy()
+                print(f"Successfully merged {len(self.loaded_sessions)} sessions")
+                print(f"Total neurons: {self.merged_metadata.get('total_neurons', 0)}")
+                print(f"D1: {self.merged_metadata.get('d1_count', 0)}, "
+                      f"D2: {self.merged_metadata.get('d2_count', 0)}, "
+                      f"CHI: {self.merged_metadata.get('chi_count', 0)}")
+                return True
+            else:
+                print("Failed to merge sessions")
+                return False
+                
+        except Exception as e:
+            print(f"Error during merge: {str(e)}")
+            self._clear_merged_data()
+            return False
+    
+    def _clear_merged_data(self):
+        """Clear all merged data attributes."""
+        # Clear signal data
+        self.all_neuron_raw = None
+        self.all_neuron_zsc = None
+        self.all_neuron_denoised = None
+        self.all_neuron_deconvolved = None
+        self.all_neuron_baseline = None
+        self.all_neuron_reraw = None
+        
+        # Clear cell type indices
+        self.all_d1_indices = None
+        self.all_d2_indices = None
+        self.all_chi_indices = None
+        
+        # Clear cell type signals
+        for cell_type in ['d1', 'd2', 'chi']:
+            for signal_name in ['raw', 'zsc', 'denoised', 'deconvolved', 'baseline', 'reraw']:
+                setattr(self, f'all_{cell_type}_{signal_name}', None)
+        
+        # Clear peak and edge data
+        self.all_peak_indices = None
+        self.all_rising_edges_starts = None
+        self.all_d1_peak_indices = None
+        self.all_d2_peak_indices = None
+        self.all_chi_peak_indices = None
+        self.all_d1_rising_edges_starts = None
+        self.all_d2_rising_edges_starts = None
+        self.all_chi_rising_edges_starts = None
+        
+        # Clear mapping data
+        self.original_indices_map = {}
+        self.global_to_session_map = {}
+        self.session_neuron_ranges = {}
+        self.celltype_session_distribution = {'d1': {}, 'd2': {}, 'chi': {}}
+        
+        # Clear spatial data
+        self.all_centroids = None
+        self.all_spatial_components = None
+        self.all_coordinates = None
+        
+        # Clear velocity data
+        self.all_velocity_data = None
+        self.all_smoothed_velocity = None
+        
+        # Clear metadata
+        self.merged_metadata = {}
+        self.session_boundaries = {}
+        self.session_offsets = {}
+        self.merged_signal_type = None
+        self.merged_sessions_list = []
+        
+        # Reset state
+        self.is_merged = False
+        self.merge_timestamp = None
+        self._merged_analyzer_cache = None
+        self._merge_data_cache = None
+    
+    def _execute_merge(self, signal_type: str) -> bool:
+        """
+        Execute the actual merging process.
+        
+        Parameters:
+        -----------
+        signal_type : str
+            Signal type to use for merging
+            
+        Returns:
+        --------
+        bool
+            True if merge was successful
+        """
+        all_sessions_signals = []
+        current_neuron_offset = 0
+        
+        # Initialize tracking structures
+        combined_cell_indices = {'d1': [], 'd2': [], 'chi': []}
+        combined_peak_indices = {'d1': [], 'd2': [], 'chi': []}
+        combined_rising_edges = {'d1': [], 'd2': [], 'chi': []}
+        all_peak_indices_list = []
+        all_rising_edges_list = []
+        all_centroids_list = []
+        all_coordinates_list = []
+        all_spatial_components_list = []
+        
+        # Process each session
+        for session_idx, session_name in enumerate(self.loaded_sessions):
+            session = self.sessions[session_name]
+            
+            # Get signals with priority order
+            signals, actual_signal_type = self._get_session_signals(session, signal_type)
+            if signals is None:
+                print(f"Warning: No signals found for session {session_name}")
+                continue
+                
+            # Set signal type from first valid session
+            if self.merged_signal_type is None:
+                self.merged_signal_type = actual_signal_type
+            
+            all_sessions_signals.append(signals)
+            n_neurons_this_session = signals.shape[0]
+            
+            # Store session boundaries and ranges
+            self.session_boundaries[session_name] = {
+                'neuron_start': current_neuron_offset,
+                'neuron_end': current_neuron_offset + n_neurons_this_session,
+                'n_neurons': n_neurons_this_session,
+                'n_timepoints': signals.shape[1]
+            }
+            
+            self.session_neuron_ranges[session_name] = {
+                'start': current_neuron_offset,
+                'end': current_neuron_offset + n_neurons_this_session,
+                'count': n_neurons_this_session
+            }
+            
+            # Store original indices mapping
+            self.original_indices_map[session_name] = {}
+            
+            # Process cell types and create index mappings
+            cell_types = ['d1', 'd2', 'chi']
+            for cell_type in cell_types:
+                indices_attr = f'{cell_type}_indices'
+                peaks_attr = f'{cell_type}_peak_indices'
+                edges_attr = f'{cell_type}_rising_edges_starts'
+                
+                if hasattr(session, indices_attr):
+                    original_indices = getattr(session, indices_attr)
+                    if original_indices is not None and len(original_indices) > 0:
+                        # Store original indices
+                        self.original_indices_map[session_name][cell_type] = original_indices.tolist() if hasattr(original_indices, 'tolist') else list(original_indices)
+                        
+                        # Create global indices
+                        global_indices = [idx + current_neuron_offset for idx in original_indices]
+                        combined_cell_indices[cell_type].extend(global_indices)
+                        
+                        # Store cell type session distribution
+                        if cell_type not in self.celltype_session_distribution:
+                            self.celltype_session_distribution[cell_type] = {}
+                        self.celltype_session_distribution[cell_type][session_name] = global_indices
+                        
+                        # Create global to session mapping
+                        for local_idx, global_idx in zip(original_indices, global_indices):
+                            self.global_to_session_map[global_idx] = {
+                                'session': session_name,
+                                'local_idx': int(local_idx),
+                                'cell_type': cell_type.upper()
+                            }
+                        
+                        # Process peak indices
+                        if hasattr(session, peaks_attr):
+                            peak_indices = getattr(session, peaks_attr)
+                            if peak_indices is not None:
+                                combined_peak_indices[cell_type].extend(peak_indices)
+                        
+                        # Process rising edges
+                        if hasattr(session, edges_attr):
+                            rising_edges = getattr(session, edges_attr)
+                            if rising_edges is not None:
+                                combined_rising_edges[cell_type].extend(rising_edges)
+            
+            # Collect spatial data
+            if hasattr(session, 'centroids') and session.centroids is not None:
+                all_centroids_list.append(session.centroids)
+            if hasattr(session, 'Coor') and session.Coor is not None:
+                all_coordinates_list.extend(session.Coor)
+            if hasattr(session, 'A') and session.A is not None:
+                all_spatial_components_list.append(session.A)
+            
+            # Get velocity data from first available session
+            if self.all_velocity_data is None:
+                if hasattr(session, 'smoothed_velocity') and session.smoothed_velocity is not None:
+                    self.all_velocity_data = session.smoothed_velocity
+                    self.all_smoothed_velocity = session.smoothed_velocity
+            
+            current_neuron_offset += n_neurons_this_session
+        
+        # Combine all signals
+        if not all_sessions_signals:
+            print("No valid signals found for merging")
+            return False
+            
+        # Merge signals along neuron axis
+        self.all_neuron_raw = np.concatenate(all_sessions_signals, axis=0)
+        
+        # Set all signal types (use same data for all if specific type not available)
+        signal_types = ['zsc', 'denoised', 'deconvolved', 'baseline', 'reraw']
+        for sig_type in signal_types:
+            if sig_type == self.merged_signal_type.split('_')[-1]:  # Remove 'C_' prefix if present
+                setattr(self, f'all_neuron_{sig_type}', self.all_neuron_raw)
+            else:
+                setattr(self, f'all_neuron_{sig_type}', self.all_neuron_raw)  # Use same data as fallback
+        
+        # Store cell type indices as numpy arrays
+        self.all_d1_indices = np.array(combined_cell_indices['d1']) if combined_cell_indices['d1'] else np.array([])
+        self.all_d2_indices = np.array(combined_cell_indices['d2']) if combined_cell_indices['d2'] else np.array([])
+        self.all_chi_indices = np.array(combined_cell_indices['chi']) if combined_cell_indices['chi'] else np.array([])
+        
+        # Extract cell type specific signals
+        self._extract_celltype_signals()
+        
+        # Organize peak indices by global neuron index
+        self._organize_peak_indices(combined_peak_indices, combined_rising_edges)
+        
+        # Combine spatial data
+        if all_centroids_list:
+            self.all_centroids = np.concatenate(all_centroids_list, axis=0)
+        if all_coordinates_list:
+            self.all_coordinates = all_coordinates_list
+        if all_spatial_components_list:
+            self.all_spatial_components = np.concatenate(all_spatial_components_list, axis=0)
+        
+        # Update metadata
+        self._update_merged_metadata()
+        
+        return True
+    
+    def _get_session_signals(self, session, signal_type: str):
+        """
+        Get signals from a session with priority order.
+        
+        Returns:
+        --------
+        tuple
+            (signals_array, actual_signal_type_used)
+        """
+        if signal_type == 'auto':
+            # Priority order: zsc > denoised > raw
+            priority_order = [
+                ('C_zsc', 'zsc'),
+                ('C_denoised', 'denoised'), 
+                ('C_raw', 'raw')
+            ]
+        else:
+            # Try specific type first, then fallback to others
+            attr_name = f'C_{signal_type}' if not signal_type.startswith('C_') else signal_type
+            priority_order = [(attr_name, signal_type)]
+            # Add fallbacks
+            fallbacks = [('C_zsc', 'zsc'), ('C_denoised', 'denoised'), ('C_raw', 'raw')]
+            for fallback in fallbacks:
+                if fallback not in priority_order:
+                    priority_order.append(fallback)
+        
+        for attr_name, type_name in priority_order:
+            if hasattr(session, attr_name):
+                signals = getattr(session, attr_name)
+                if signals is not None:
+                    return signals, type_name
+        
+        return None, None
+    
+    def _extract_celltype_signals(self):
+        """Extract cell type specific signals using global indices."""
+        for cell_type in ['d1', 'd2', 'chi']:
+            indices = getattr(self, f'all_{cell_type}_indices')
+            if indices is not None and len(indices) > 0:
+                # Extract signals for each type
+                for signal_type in ['raw', 'zsc', 'denoised', 'deconvolved', 'baseline', 'reraw']:
+                    all_signals = getattr(self, f'all_neuron_{signal_type}')
+                    if all_signals is not None:
+                        setattr(self, f'all_{cell_type}_{signal_type}', all_signals[indices])
+    
+    def _organize_peak_indices(self, combined_peak_indices, combined_rising_edges):
+        """Organize peak indices by global neuron index and by cell type."""
+        total_neurons = self.all_neuron_raw.shape[0] if self.all_neuron_raw is not None else 0
+        
+        # Initialize lists for all neurons
+        self.all_peak_indices = [[] for _ in range(total_neurons)]
+        self.all_rising_edges_starts = [[] for _ in range(total_neurons)]
+        
+        # Store cell type peak indices
+        self.all_d1_peak_indices = combined_peak_indices['d1']
+        self.all_d2_peak_indices = combined_peak_indices['d2'] 
+        self.all_chi_peak_indices = combined_peak_indices['chi']
+        
+        self.all_d1_rising_edges_starts = combined_rising_edges['d1']
+        self.all_d2_rising_edges_starts = combined_rising_edges['d2']
+        self.all_chi_rising_edges_starts = combined_rising_edges['chi']
+        
+        # Fill global peak indices array
+        for cell_type in ['d1', 'd2', 'chi']:
+            indices = getattr(self, f'all_{cell_type}_indices')
+            peaks = getattr(self, f'all_{cell_type}_peak_indices')
+            edges = getattr(self, f'all_{cell_type}_rising_edges_starts')
+            
+            if indices is not None and peaks is not None:
+                for i, global_idx in enumerate(indices):
+                    if i < len(peaks) and global_idx < total_neurons:
+                        self.all_peak_indices[global_idx] = peaks[i] if peaks[i] is not None else []
+                        
+            if indices is not None and edges is not None:
+                for i, global_idx in enumerate(indices):
+                    if i < len(edges) and global_idx < total_neurons:
+                        self.all_rising_edges_starts[global_idx] = edges[i] if edges[i] is not None else []
+    
+    def _update_merged_metadata(self):
+        """Update merged metadata with current state."""
+        self.merged_metadata = {
+            'total_neurons': self.all_neuron_raw.shape[0] if self.all_neuron_raw is not None else 0,
+            'total_timepoints': self.all_neuron_raw.shape[1] if self.all_neuron_raw is not None else 0,
+            'total_sessions': len(self.loaded_sessions),
+            'd1_count': len(self.all_d1_indices) if self.all_d1_indices is not None else 0,
+            'd2_count': len(self.all_d2_indices) if self.all_d2_indices is not None else 0,
+            'chi_count': len(self.all_chi_indices) if self.all_chi_indices is not None else 0,
+            'signal_type_used': self.merged_signal_type,
+            'sessions_included': self.loaded_sessions.copy(),
+            'merge_timestamp': self.merge_timestamp
+        }
+    
     def _merge_session_data(self) -> Dict[str, Any]:
         """
         Merge data from all sessions into a single combined dataset.
@@ -1054,6 +1555,7 @@ class MultiSessionAnalyzer:
         """
         Perform neuron-centered analysis on merged data from all sessions.
         This treats all neurons from all sessions as one large population.
+        Uses persistent merged data if available, otherwise merges sessions first.
         
         Parameters:
         -----------
@@ -1083,24 +1585,26 @@ class MultiSessionAnalyzer:
             print("Merged neuron-centered analysis is only available for CellTypeTank analyzer")
             return None, {}
         
-        # Get merged data
-        merged_data = self._merge_session_data()
-        if not merged_data or 'combined_signals' not in merged_data:
-            print("Failed to merge session data")
-            return None, {}
+        # Check if data is merged, if not merge it first
+        if not self.is_merged:
+            print("Merging sessions for neuron-centered analysis...")
+            success = self.merge_all_sessions()
+            if not success:
+                print("Failed to merge sessions")
+                return None, {}
         
-        # Create properly initialized analyzer with merged data
-        temp_analyzer = self._create_merged_analyzer(merged_data)
+        # Get merged analyzer instance using persistent data
+        temp_analyzer = self.get_merged_analyzer_instance()
         if temp_analyzer is None:
             print("Failed to create merged analyzer")
             return None, {}
         
         # Determine signal type to use
-        signal_type_to_use = merged_data['signal_type'] if signal_type == 'auto' else signal_type
+        signal_type_to_use = self.merged_signal_type if signal_type == 'auto' else signal_type
         
         # Set default title
         if title is None:
-            title = f"Merged Neuron-Centered Analysis: {center_cell_type} from {len(self.loaded_sessions)} Sessions"
+            title = f"Merged Neuron-Centered Analysis: {center_cell_type} from {len(self.merged_sessions_list)} Sessions"
         
         # Perform the analysis
         try:
@@ -1115,16 +1619,17 @@ class MultiSessionAnalyzer:
                 font_size=font_size
             )
             
-            # Add merger information to stats
+            # Add merger information to stats using persistent metadata
             stats['merger_info'] = {
-                'sessions_merged': merged_data['sessions_included'],
-                'total_sessions': merged_data['total_sessions'],
-                'total_neurons_merged': merged_data['metadata']['total_neurons'],
-                'signal_type_used': signal_type_to_use
+                'sessions_merged': self.merged_sessions_list,
+                'total_sessions': len(self.merged_sessions_list),
+                'total_neurons_merged': self.merged_metadata.get('total_neurons', 0),
+                'signal_type_used': signal_type_to_use,
+                'merge_timestamp': self.merge_timestamp
             }
             
-            print(f"Merged analysis completed with {len(merged_data['sessions_included'])} sessions")
-            print(f"Total neurons analyzed: {merged_data['metadata']['total_neurons']}")
+            print(f"Merged analysis completed with {len(self.merged_sessions_list)} sessions")
+            print(f"Total neurons analyzed: {self.merged_metadata.get('total_neurons', 0)}")
             
             return plot, stats
             
@@ -1141,6 +1646,7 @@ class MultiSessionAnalyzer:
         """
         Perform population-centered analysis on merged data from all sessions.
         This averages ALL neurons of each type from all sessions.
+        Uses persistent merged data if available, otherwise merges sessions first.
         
         Parameters:
         -----------
@@ -1172,24 +1678,26 @@ class MultiSessionAnalyzer:
             print("Merged population analysis is only available for CellTypeTank analyzer")
             return None, {}
         
-        # Get merged data
-        merged_data = self._merge_session_data()
-        if not merged_data or 'combined_signals' not in merged_data:
-            print("Failed to merge session data")
-            return None, {}
+        # Check if data is merged, if not merge it first
+        if not self.is_merged:
+            print("Merging sessions for population analysis...")
+            success = self.merge_all_sessions()
+            if not success:
+                print("Failed to merge sessions")
+                return None, {}
         
-        # Create properly initialized analyzer with merged data
-        temp_analyzer = self._create_merged_analyzer(merged_data)
+        # Get merged analyzer instance using persistent data
+        temp_analyzer = self.get_merged_analyzer_instance()
         if temp_analyzer is None:
             print("Failed to create merged analyzer")
             return None, {}
         
         # Determine signal type to use
-        signal_type_to_use = merged_data['signal_type'] if signal_type == 'auto' else signal_type
+        signal_type_to_use = self.merged_signal_type if signal_type == 'auto' else signal_type
         
         # Set default title
         if title is None:
-            title = f"Merged Population Analysis: {center_cell_type} from {len(self.loaded_sessions)} Sessions"
+            title = f"Merged Population Analysis: {center_cell_type} from {len(self.merged_sessions_list)} Sessions"
         
         # Perform the analysis
         try:
@@ -1205,16 +1713,17 @@ class MultiSessionAnalyzer:
                 baseline_correct=baseline_correct
             )
             
-            # Add merger information to stats
+            # Add merger information to stats using persistent metadata
             stats['merger_info'] = {
-                'sessions_merged': merged_data['sessions_included'],
-                'total_sessions': merged_data['total_sessions'],
-                'total_neurons_merged': merged_data['metadata']['total_neurons'],
-                'signal_type_used': signal_type_to_use
+                'sessions_merged': self.merged_sessions_list,
+                'total_sessions': len(self.merged_sessions_list),
+                'total_neurons_merged': self.merged_metadata.get('total_neurons', 0),
+                'signal_type_used': signal_type_to_use,
+                'merge_timestamp': self.merge_timestamp
             }
             
-            print(f"Merged population analysis completed with {len(merged_data['sessions_included'])} sessions")
-            print(f"Total neurons analyzed: {merged_data['metadata']['total_neurons']}")
+            print(f"Merged population analysis completed with {len(self.merged_sessions_list)} sessions")
+            print(f"Total neurons analyzed: {self.merged_metadata.get('total_neurons', 0)}")
             
             return plot, stats
             
@@ -1227,6 +1736,7 @@ class MultiSessionAnalyzer:
                                            overwrite: bool = False, font_size: Optional[str] = None):
         """
         Perform all neuron-centered analyses (D1, D2, CHI) on merged data from all sessions.
+        Uses persistent merged data if available, otherwise merges sessions first.
         
         Parameters:
         -----------
@@ -1252,20 +1762,22 @@ class MultiSessionAnalyzer:
             print("Merged neuron-centered analyses are only available for CellTypeTank analyzer")
             return {}
         
-        # Get merged data
-        merged_data = self._merge_session_data()
-        if not merged_data or 'combined_signals' not in merged_data:
-            print("Failed to merge session data")
-            return {}
+        # Check if data is merged, if not merge it first
+        if not self.is_merged:
+            print("Merging sessions for all neuron-centered analyses...")
+            success = self.merge_all_sessions()
+            if not success:
+                print("Failed to merge sessions")
+                return {}
         
-        # Create properly initialized analyzer with merged data
-        temp_analyzer = self._create_merged_analyzer(merged_data)
+        # Get merged analyzer instance using persistent data
+        temp_analyzer = self.get_merged_analyzer_instance()
         if temp_analyzer is None:
             print("Failed to create merged analyzer")
             return {}
         
         # Determine signal type to use
-        signal_type_to_use = merged_data['signal_type'] if signal_type == 'auto' else signal_type
+        signal_type_to_use = self.merged_signal_type if signal_type == 'auto' else signal_type
         
         # Perform the analysis
         try:
@@ -1278,20 +1790,21 @@ class MultiSessionAnalyzer:
                 font_size=font_size
             )
             
-            # Add merger information to all results
+            # Add merger information to all results using persistent metadata
             merger_info = {
-                'sessions_merged': merged_data['sessions_included'],
-                'total_sessions': merged_data['total_sessions'],
-                'total_neurons_merged': merged_data['metadata']['total_neurons'],
-                'signal_type_used': signal_type_to_use
+                'sessions_merged': self.merged_sessions_list,
+                'total_sessions': len(self.merged_sessions_list),
+                'total_neurons_merged': self.merged_metadata.get('total_neurons', 0),
+                'signal_type_used': signal_type_to_use,
+                'merge_timestamp': self.merge_timestamp
             }
             
             for key in results:
                 if isinstance(results[key], dict) and 'stats' in results[key]:
                     results[key]['stats']['merger_info'] = merger_info
             
-            print(f"Merged all neuron-centered analyses completed with {len(merged_data['sessions_included'])} sessions")
-            print(f"Total neurons analyzed: {merged_data['metadata']['total_neurons']}")
+            print(f"Merged all neuron-centered analyses completed with {len(self.merged_sessions_list)} sessions")
+            print(f"Total neurons analyzed: {self.merged_metadata.get('total_neurons', 0)}")
             
             return results
             
@@ -1305,6 +1818,7 @@ class MultiSessionAnalyzer:
                                       overwrite: bool = False, font_size: Optional[str] = None):
         """
         Perform spike-velocity analysis on merged data from all sessions.
+        Uses persistent merged data if available, otherwise merges sessions first.
         
         Parameters:
         -----------
@@ -1334,29 +1848,31 @@ class MultiSessionAnalyzer:
             print("Merged spike-velocity analysis is only available for CellTypeTank analyzer")
             return []
         
-        # Get merged data
-        merged_data = self._merge_session_data()
-        if not merged_data or 'combined_signals' not in merged_data:
-            print("Failed to merge session data")
-            return []
+        # Check if data is merged, if not merge it first
+        if not self.is_merged:
+            print("Merging sessions for spike-velocity analysis...")
+            success = self.merge_all_sessions()
+            if not success:
+                print("Failed to merge sessions")
+                return []
         
-        # Create properly initialized analyzer with merged data
-        temp_analyzer = self._create_merged_analyzer(merged_data)
+        # Get merged analyzer instance using persistent data
+        temp_analyzer = self.get_merged_analyzer_instance()
         if temp_analyzer is None:
             print("Failed to create merged analyzer")
             return []
         
-        # Use provided or merged peak indices
+        # Use provided or persistent merged peak indices
         if d1_peak_indices is None:
-            d1_peak_indices = merged_data['combined_peak_indices']['d1']
+            d1_peak_indices = self.all_d1_peak_indices
         if d2_peak_indices is None:
-            d2_peak_indices = merged_data['combined_peak_indices']['d2']
+            d2_peak_indices = self.all_d2_peak_indices
         if chi_peak_indices is None:
-            chi_peak_indices = merged_data['combined_peak_indices']['chi']
+            chi_peak_indices = self.all_chi_peak_indices
         
         # Set default title
         if title is None:
-            title = f"Merged Spike-Velocity Analysis from {len(self.loaded_sessions)} Sessions"
+            title = f"Merged Spike-Velocity Analysis from {len(self.merged_sessions_list)} Sessions"
         
         # Perform the analysis
         try:
@@ -1371,7 +1887,7 @@ class MultiSessionAnalyzer:
                 font_size=font_size
             )
             
-            print(f"Merged spike-velocity analysis completed with {len(merged_data['sessions_included'])} sessions")
+            print(f"Merged spike-velocity analysis completed with {len(self.merged_sessions_list)} sessions")
             return plots
             
         except Exception as e:
@@ -1383,6 +1899,7 @@ class MultiSessionAnalyzer:
                                    font_size: Optional[str] = None):
         """
         Perform connectivity analysis on merged data from all sessions.
+        Uses persistent merged data if available, otherwise merges sessions first.
         
         Parameters:
         -----------
@@ -1404,14 +1921,16 @@ class MultiSessionAnalyzer:
             print("Merged connectivity analysis is only available for CellTypeTank analyzer")
             return {}
         
-        # Get merged data
-        merged_data = self._merge_session_data()
-        if not merged_data or 'combined_signals' not in merged_data:
-            print("Failed to merge session data")
-            return {}
+        # Check if data is merged, if not merge it first
+        if not self.is_merged:
+            print("Merging sessions for connectivity analysis...")
+            success = self.merge_all_sessions()
+            if not success:
+                print("Failed to merge sessions")
+                return {}
         
-        # Create properly initialized analyzer with merged data
-        temp_analyzer = self._create_merged_analyzer(merged_data)
+        # Get merged analyzer instance using persistent data
+        temp_analyzer = self.get_merged_analyzer_instance()
         if temp_analyzer is None:
             print("Failed to create merged analyzer")
             return {}
@@ -1430,14 +1949,16 @@ class MultiSessionAnalyzer:
                 font_size=font_size
             )
             
-            # Add merger information
+            # Add merger information from persistent metadata
             results['merger_info'] = {
-                'sessions_merged': merged_data['sessions_included'],
-                'total_sessions': merged_data['total_sessions'],
-                'total_neurons_merged': merged_data['metadata']['total_neurons']
+                'sessions_merged': self.merged_sessions_list,
+                'total_sessions': len(self.merged_sessions_list),
+                'total_neurons_merged': self.merged_metadata.get('total_neurons', 0),
+                'merge_timestamp': self.merge_timestamp,
+                'signal_type_used': self.merged_signal_type
             }
             
-            print(f"Merged connectivity analysis completed with {len(merged_data['sessions_included'])} sessions")
+            print(f"Merged connectivity analysis completed with {len(self.merged_sessions_list)} sessions")
             return results
             
         except Exception as e:
@@ -1720,20 +2241,33 @@ class MultiSessionAnalyzer:
                     individual_session_data[cell_type].extend(values)
                     session_labels[cell_type].extend([session_name] * len(values))
         
-        # Get merged data
-        merged_data = self._merge_session_data()
-        if not merged_data or 'combined_signals' not in merged_data:
-            print("Failed to merge session data")
-            return {}
+        # Check if data is merged, if not merge it first
+        if not self.is_merged:
+            print("Merging sessions for statistical comparison...")
+            success = self.merge_all_sessions()
+            if not success:
+                print("Failed to merge sessions")
+                return {}
         
         merged_values = {'d1': [], 'd2': [], 'chi': []}
         
-        # Calculate values for merged data
-        signal = merged_data['combined_signals']
+        # Calculate values for merged data using persistent attributes
+        # Get appropriate merged signal based on signal_type
+        if signal_type == 'zsc' and self.all_neuron_zsc is not None:
+            signal = self.all_neuron_zsc
+        elif signal_type == 'denoised' and self.all_neuron_denoised is not None:
+            signal = self.all_neuron_denoised
+        elif self.all_neuron_raw is not None:
+            signal = self.all_neuron_raw
+        else:
+            print("No merged signal data available")
+            return {}
+        
+        # Use persistent cell type indices
         cell_types_info = {
-            'd1': merged_data['combined_cell_indices']['d1'],
-            'd2': merged_data['combined_cell_indices']['d2'],
-            'chi': merged_data['combined_cell_indices']['chi']
+            'd1': self.all_d1_indices,
+            'd2': self.all_d2_indices,
+            'chi': self.all_chi_indices
         }
         
         for cell_type, indices in cell_types_info.items():
@@ -1747,14 +2281,14 @@ class MultiSessionAnalyzer:
                 elif metric == 'std_activity':
                     values = np.std(cell_signals, axis=1)
                 elif metric == 'spike_rate':
-                    # Calculate spike rate using merged peak indices
+                    # Calculate spike rate using persistent merged peak indices
                     values = []
-                    peak_indices = merged_data['combined_peak_indices'][cell_type]
+                    peak_indices = getattr(self, f'all_{cell_type}_peak_indices')
                     if peak_indices is not None and len(peak_indices) > 0:
                         # Use average session duration
                         avg_duration_min = np.mean([
                             self.sessions[session_name].session_duration / 60 
-                            for session_name in self.loaded_sessions
+                            for session_name in self.merged_sessions_list
                         ])
                         for peaks in peak_indices:
                             spike_rate = len(peaks) / avg_duration_min if len(peaks) > 0 else 0
@@ -1849,13 +2383,23 @@ class MultiSessionAnalyzer:
         
         os.makedirs(save_dir, exist_ok=True)
         
+        # Ensure data is merged first
+        if not self.is_merged:
+            print("Merging sessions for comprehensive analysis...")
+            success = self.merge_all_sessions(signal_type=signal_type)
+            if not success:
+                print("Failed to merge sessions")
+                return {'error': 'Failed to merge sessions'}
+        
         print("Starting comprehensive merged analysis...")
-        print(f"Analyzing {len(self.loaded_sessions)} sessions combined")
+        print(f"Analyzing {len(self.merged_sessions_list)} sessions combined")
+        print(f"Total neurons: {self.merged_metadata.get('total_neurons', 0)}")
         
         results = {
-            'sessions_included': self.loaded_sessions.copy(),
+            'sessions_included': self.merged_sessions_list.copy(),
             'save_directory': save_dir,
-            'analyses_performed': []
+            'analyses_performed': [],
+            'merged_metadata': self.merged_metadata.copy()
         }
         
         # 1. Merged neuron-centered analyses
@@ -1935,18 +2479,19 @@ class MultiSessionAnalyzer:
             report_content = []
             report_content.append("# Comprehensive Merged Multi-Session Analysis Report\n")
             report_content.append(f"**Analysis Date**: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-            report_content.append(f"**Sessions Analyzed**: {len(self.loaded_sessions)}\n")
-            report_content.append(f"**Sessions**: {', '.join(self.loaded_sessions)}\n")
+            report_content.append(f"**Sessions Analyzed**: {len(self.merged_sessions_list)}\n")
+            report_content.append(f"**Sessions**: {', '.join(self.merged_sessions_list)}\n")
             report_content.append(f"**Signal Type Used**: {signal_type}\n\n")
             
-            # Get merged data info
-            merged_data = self._merge_session_data()
-            if merged_data:
+            # Get merged data info from persistent metadata
+            if self.merged_metadata:
                 report_content.append("## Merged Dataset Summary\n")
-                report_content.append(f"- Total neurons: {merged_data['metadata']['total_neurons']}\n")
-                report_content.append(f"- D1 neurons: {merged_data['metadata']['d1_neurons']}\n")
-                report_content.append(f"- D2 neurons: {merged_data['metadata']['d2_neurons']}\n")
-                report_content.append(f"- CHI neurons: {merged_data['metadata']['chi_neurons']}\n\n")
+                report_content.append(f"- Total neurons: {self.merged_metadata.get('total_neurons', 0)}\n")
+                report_content.append(f"- D1 neurons: {self.merged_metadata.get('d1_count', 0)}\n")
+                report_content.append(f"- D2 neurons: {self.merged_metadata.get('d2_count', 0)}\n")
+                report_content.append(f"- CHI neurons: {self.merged_metadata.get('chi_count', 0)}\n")
+                report_content.append(f"- Signal type used: {self.merged_signal_type}\n")
+                report_content.append(f"- Merge timestamp: {self.merge_timestamp}\n\n")
             
             report_content.append("## Analyses Performed\n")
             for analysis in results['analyses_performed']:
@@ -1977,12 +2522,340 @@ class MultiSessionAnalyzer:
         
         return results
 
+    # Query and utility methods for merged data
+    def get_neuron_original_session(self, global_idx: int) -> str:
+        """
+        Get the original session name for a global neuron index.
+        
+        Parameters:
+        -----------
+        global_idx : int
+            Global neuron index
+            
+        Returns:
+        --------
+        str
+            Session name or None if index not found
+        """
+        if not self.is_merged:
+            print("Data not merged yet. Call merge_all_sessions() first.")
+            return None
+            
+        mapping = self.global_to_session_map.get(global_idx)
+        return mapping['session'] if mapping else None
+    
+    def get_neuron_original_index(self, global_idx: int) -> int:
+        """
+        Get the original local index for a global neuron index.
+        
+        Parameters:
+        -----------
+        global_idx : int
+            Global neuron index
+            
+        Returns:
+        --------
+        int
+            Original local index or None if not found
+        """
+        if not self.is_merged:
+            print("Data not merged yet. Call merge_all_sessions() first.")
+            return None
+            
+        mapping = self.global_to_session_map.get(global_idx)
+        return mapping['local_idx'] if mapping else None
+    
+    def get_neuron_cell_type(self, global_idx: int) -> str:
+        """
+        Get the cell type for a global neuron index.
+        
+        Parameters:
+        -----------
+        global_idx : int
+            Global neuron index
+            
+        Returns:
+        --------
+        str
+            Cell type ('D1', 'D2', 'CHI') or None if not found
+        """
+        if not self.is_merged:
+            print("Data not merged yet. Call merge_all_sessions() first.")
+            return None
+            
+        mapping = self.global_to_session_map.get(global_idx)
+        return mapping['cell_type'] if mapping else None
+    
+    def get_global_indices_by_session(self, session_name: str) -> List[int]:
+        """
+        Get all global indices for neurons from a specific session.
+        
+        Parameters:
+        -----------
+        session_name : str
+            Name of the session
+            
+        Returns:
+        --------
+        List[int]
+            List of global indices
+        """
+        if not self.is_merged:
+            print("Data not merged yet. Call merge_all_sessions() first.")
+            return []
+            
+        if session_name not in self.session_neuron_ranges:
+            return []
+            
+        ranges = self.session_neuron_ranges[session_name]
+        return list(range(ranges['start'], ranges['end']))
+    
+    def get_global_indices_by_celltype_and_session(self, cell_type: str, session_name: str) -> List[int]:
+        """
+        Get global indices for specific cell type from specific session.
+        
+        Parameters:
+        -----------
+        cell_type : str
+            Cell type ('d1', 'd2', 'chi')
+        session_name : str
+            Session name
+            
+        Returns:
+        --------
+        List[int]
+            List of global indices
+        """
+        if not self.is_merged:
+            print("Data not merged yet. Call merge_all_sessions() first.")
+            return []
+            
+        cell_type_lower = cell_type.lower()
+        if (cell_type_lower in self.celltype_session_distribution and 
+            session_name in self.celltype_session_distribution[cell_type_lower]):
+            return self.celltype_session_distribution[cell_type_lower][session_name]
+        return []
+    
+    def get_merged_info_summary(self) -> Dict[str, Any]:
+        """
+        Get a comprehensive summary of merged data.
+        
+        Returns:
+        --------
+        dict
+            Summary information about merged data
+        """
+        if not self.is_merged:
+            return {'status': 'Not merged', 'message': 'Call merge_all_sessions() first'}
+        
+        summary = {
+            'status': 'Merged',
+            'merge_timestamp': self.merge_timestamp,
+            'total_sessions': len(self.merged_sessions_list),
+            'sessions_included': self.merged_sessions_list,
+            'signal_type_used': self.merged_signal_type,
+            'total_neurons': self.merged_metadata.get('total_neurons', 0),
+            'neuron_breakdown': {
+                'D1': self.merged_metadata.get('d1_count', 0),
+                'D2': self.merged_metadata.get('d2_count', 0),
+                'CHI': self.merged_metadata.get('chi_count', 0)
+            },
+            'session_neuron_counts': {},
+            'session_celltype_breakdown': {}
+        }
+        
+        # Add per-session breakdown
+        for session_name in self.merged_sessions_list:
+            if session_name in self.session_neuron_ranges:
+                summary['session_neuron_counts'][session_name] = self.session_neuron_ranges[session_name]['count']
+            
+            # Cell type breakdown per session
+            session_breakdown = {}
+            for cell_type in ['d1', 'd2', 'chi']:
+                indices = self.get_global_indices_by_celltype_and_session(cell_type, session_name)
+                session_breakdown[cell_type.upper()] = len(indices)
+            summary['session_celltype_breakdown'][session_name] = session_breakdown
+        
+        return summary
+    
+    def validate_merged_data_integrity(self) -> Dict[str, Any]:
+        """
+        Validate the integrity of merged data and index mappings.
+        
+        Returns:
+        --------
+        dict
+            Validation results
+        """
+        if not self.is_merged:
+            return {'status': 'error', 'message': 'Data not merged yet'}
+        
+        validation = {
+            'status': 'passed',
+            'errors': [],
+            'warnings': [],
+            'checks_performed': []
+        }
+        
+        # Check 1: Total neuron count consistency
+        validation['checks_performed'].append('total_neuron_count')
+        expected_total = sum(self.session_neuron_ranges[s]['count'] for s in self.merged_sessions_list)
+        actual_total = self.merged_metadata.get('total_neurons', 0)
+        if expected_total != actual_total:
+            validation['errors'].append(f"Total neuron mismatch: expected {expected_total}, got {actual_total}")
+        
+        # Check 2: Cell type index ranges
+        validation['checks_performed'].append('celltype_index_ranges')
+        for cell_type in ['d1', 'd2', 'chi']:
+            indices = getattr(self, f'all_{cell_type}_indices')
+            if indices is not None and len(indices) > 0:
+                if np.max(indices) >= actual_total:
+                    validation['errors'].append(f"{cell_type.upper()} indices exceed total neuron count")
+                if np.min(indices) < 0:
+                    validation['errors'].append(f"{cell_type.upper()} has negative indices")
+        
+        # Check 3: Global to session mapping completeness
+        validation['checks_performed'].append('mapping_completeness')
+        mapped_indices = set(self.global_to_session_map.keys())
+        expected_indices = set(range(actual_total))
+        missing_indices = expected_indices - mapped_indices
+        if missing_indices:
+            validation['warnings'].append(f"Missing mappings for {len(missing_indices)} neurons")
+        
+        # Check 4: Peak indices alignment
+        validation['checks_performed'].append('peak_indices_alignment')
+        if self.all_peak_indices and len(self.all_peak_indices) != actual_total:
+            validation['errors'].append(f"Peak indices list length mismatch: {len(self.all_peak_indices)} vs {actual_total}")
+        
+        # Set final status
+        if validation['errors']:
+            validation['status'] = 'failed'
+        elif validation['warnings']:
+            validation['status'] = 'passed_with_warnings'
+        
+        return validation
+    
+    def get_merged_analyzer_instance(self):
+        """
+        Get a CellTypeTank analyzer instance populated with merged data.
+        This replaces the old _create_merged_analyzer method and uses persistent data.
+        
+        Returns:
+        --------
+        CellTypeTank
+            Analyzer instance with merged data
+        """
+        if not self.is_merged:
+            print("Data not merged yet. Call merge_all_sessions() first.")
+            return None
+        
+        # Return cached instance if available
+        if self._merged_analyzer_cache is not None:
+            return self._merged_analyzer_cache
+        
+        # Create new analyzer instance
+        if not self.loaded_sessions:
+            return None
+        
+        # Use first session as template
+        template_session = self.sessions[self.loaded_sessions[0]]
+        
+        # Create new instance properly
+        temp_analyzer = CellTypeTank.__new__(CellTypeTank)
+        
+        # Copy essential attributes from template
+        essential_attrs = [
+            'session_name', 'ci_rate', 'vm_rate', 'session_duration', 'config',
+            'output_bokeh_plot', 'maze_type'
+        ]
+        
+        for attr in essential_attrs:
+            if hasattr(template_session, attr):
+                setattr(temp_analyzer, attr, getattr(template_session, attr))
+        
+        # Set merged session name
+        temp_analyzer.session_name = f"Merged_{len(self.merged_sessions_list)}_Sessions"
+        
+        # Set signal data using persistent merged data
+        temp_analyzer.C_raw = self.all_neuron_raw
+        temp_analyzer.C_zsc = self.all_neuron_zsc if self.all_neuron_zsc is not None else self.all_neuron_raw
+        temp_analyzer.C_denoised = self.all_neuron_denoised if self.all_neuron_denoised is not None else self.all_neuron_raw
+        temp_analyzer.C_deconvolved = self.all_neuron_deconvolved if self.all_neuron_deconvolved is not None else self.all_neuron_raw
+        temp_analyzer.C_baseline = self.all_neuron_baseline if self.all_neuron_baseline is not None else self.all_neuron_raw
+        temp_analyzer.C_reraw = self.all_neuron_reraw if self.all_neuron_reraw is not None else self.all_neuron_raw
+        
+        # Set cell type indices
+        temp_analyzer.d1_indices = self.all_d1_indices
+        temp_analyzer.d2_indices = self.all_d2_indices
+        temp_analyzer.chi_indices = self.all_chi_indices
+        
+        # Set peak indices
+        temp_analyzer.d1_peak_indices = self.all_d1_peak_indices
+        temp_analyzer.d2_peak_indices = self.all_d2_peak_indices
+        temp_analyzer.chi_peak_indices = self.all_chi_peak_indices
+        
+        # Set rising edges
+        temp_analyzer.d1_rising_edges_starts = self.all_d1_rising_edges_starts
+        temp_analyzer.d2_rising_edges_starts = self.all_d2_rising_edges_starts
+        temp_analyzer.chi_rising_edges_starts = self.all_chi_rising_edges_starts
+        
+        # Set cell-type-specific signals
+        if self.all_d1_indices is not None and len(self.all_d1_indices) > 0:
+            temp_analyzer.d1_raw = self.all_d1_raw
+            temp_analyzer.d1_zsc = self.all_d1_zsc if self.all_d1_zsc is not None else self.all_d1_raw
+            temp_analyzer.d1_denoised = self.all_d1_denoised if self.all_d1_denoised is not None else self.all_d1_raw
+            temp_analyzer.d1_deconvolved = self.all_d1_deconvolved if self.all_d1_deconvolved is not None else self.all_d1_raw
+            temp_analyzer.d1_baseline = self.all_d1_baseline if self.all_d1_baseline is not None else self.all_d1_raw
+            temp_analyzer.d1_reraw = self.all_d1_reraw if self.all_d1_reraw is not None else self.all_d1_raw
+        
+        if self.all_d2_indices is not None and len(self.all_d2_indices) > 0:
+            temp_analyzer.d2_raw = self.all_d2_raw
+            temp_analyzer.d2_zsc = self.all_d2_zsc if self.all_d2_zsc is not None else self.all_d2_raw
+            temp_analyzer.d2_denoised = self.all_d2_denoised if self.all_d2_denoised is not None else self.all_d2_raw
+            temp_analyzer.d2_deconvolved = self.all_d2_deconvolved if self.all_d2_deconvolved is not None else self.all_d2_raw
+            temp_analyzer.d2_baseline = self.all_d2_baseline if self.all_d2_baseline is not None else self.all_d2_raw
+            temp_analyzer.d2_reraw = self.all_d2_reraw if self.all_d2_reraw is not None else self.all_d2_raw
+        
+        if self.all_chi_indices is not None and len(self.all_chi_indices) > 0:
+            temp_analyzer.chi_raw = self.all_chi_raw
+            temp_analyzer.chi_zsc = self.all_chi_zsc if self.all_chi_zsc is not None else self.all_chi_raw
+            temp_analyzer.chi_denoised = self.all_chi_denoised if self.all_chi_denoised is not None else self.all_chi_raw
+            temp_analyzer.chi_deconvolved = self.all_chi_deconvolved if self.all_chi_deconvolved is not None else self.all_chi_raw
+            temp_analyzer.chi_baseline = self.all_chi_baseline if self.all_chi_baseline is not None else self.all_chi_raw
+            temp_analyzer.chi_reraw = self.all_chi_reraw if self.all_chi_reraw is not None else self.all_chi_raw
+        
+        # Set velocity data
+        if self.all_smoothed_velocity is not None:
+            temp_analyzer.smoothed_velocity = self.all_smoothed_velocity
+        else:
+            # Create dummy velocity data if needed
+            temp_analyzer.smoothed_velocity = np.zeros(self.all_neuron_raw.shape[1]) if self.all_neuron_raw is not None else np.array([])
+        
+        # Set spatial attributes
+        if self.all_spatial_components is not None:
+            temp_analyzer.A = self.all_spatial_components
+        else:
+            temp_analyzer.A = np.zeros((self.merged_metadata.get('total_neurons', 0), 100, 100))
+            
+        if self.all_centroids is not None:
+            temp_analyzer.centroids = self.all_centroids
+        else:
+            temp_analyzer.centroids = np.zeros((self.merged_metadata.get('total_neurons', 0), 2))
+            
+        if self.all_coordinates is not None:
+            temp_analyzer.Coor = self.all_coordinates
+        else:
+            temp_analyzer.Coor = [np.array([0, 0]) for _ in range(self.merged_metadata.get('total_neurons', 0))]
+        
+        # Set peak indices attribute used by some methods
+        temp_analyzer.peak_indices = self.all_peak_indices if self.all_peak_indices is not None else []
+        temp_analyzer.rising_edges_starts = self.all_rising_edges_starts if self.all_rising_edges_starts is not None else []
+        
+        # Cache the analyzer instance
+        self._merged_analyzer_cache = temp_analyzer
+        
+        return temp_analyzer
+
 
 if __name__ == "__main__":
-    sessions_config = [
-        {'session_name': '391_06012025'},{'session_name': '391_05152025'}, {'session_name': '391_05062025'}, {'session_name': '392_05082025'}
-    ]
-
-    analyzer = MultiSessionAnalyzer(sessions_config, analyzer_type='CellTypeTank')
-
-    neuron_counts_df = analyzer.compare_neuron_counts_across_sessions()
+    pass
