@@ -3472,20 +3472,21 @@ class CellTypeTank(CITank):
             print(f"D2 neurons: {len(self.tank.d2_peak_indices)} cells, total {sum(len(peaks) for peaks in self.tank.d2_peak_indices)} peaks")
             print(f"CHI neurons: {len(self.tank.chi_peak_indices)} cells, total {sum(len(peaks) for peaks in self.tank.chi_peak_indices)} peaks")
 
-            
             # Store analysis results - initialize all properties that will be set by analysis methods
-            self.binary_signals = self.create_binary_signals_from_peaks(window_size=5, use_rising_edges=use_rising_edges)
-            self.conditional_probs = self.calculate_conditional_probabilities(time_windows=[5, 10, 20, 50])
-            self.cross_correlations = self.calculate_cross_correlations_from_peaks(max_lag=100)
-            self.coactivation_patterns = self.identify_coactivation_patterns_from_peaks(min_duration=3)
-            self.peak_timing_relationships = self.calculate_peak_timing_relationships()
-            self.mutual_information = self.calculate_mutual_information_from_peaks(bins=10)
-            self.network = self.create_connectivity_network(threshold=0.1)
+            self.binary_signals = None
+            self.conditional_probs = None
+            self.cross_correlations = None
+            self.coactivation_patterns = None
+            self.peak_timing_relationships = None
+            self.mutual_information = None
+            self.network = None
+            self.analysis_results = None
             
-            self.generate_summary_report()
-            self.analysis_results = self.get_analysis_results()
+            # Store parameters for later use
+            self.use_rising_edges = use_rising_edges
+            self.save_dir = save_dir
             
-            print("Full neural connectivity analysis completed!")
+            print("Neural Connectivity Analyzer ready. Call individual analysis methods to generate results.")
         
         def get_analysis_results(self):
             """
@@ -3504,6 +3505,276 @@ class CellTypeTank(CITank):
                 'mutual_information': self.mutual_information,
                 'network': self.network
             }
+        
+        def run_binary_signals_analysis(self, window_size=5):
+            """
+            Run binary signals analysis step
+            
+            Parameters:
+            -----------
+            window_size : int
+                Duration window size for activation events (in samples)
+            
+            Returns:
+            --------
+            dict : Binary signals results
+            """
+            print("Running binary signals analysis...")
+            self.binary_signals = self.create_binary_signals_from_peaks(window_size=window_size, use_rising_edges=self.use_rising_edges)
+            print("Binary signals analysis completed!")
+            return self.binary_signals
+        
+        def run_conditional_probabilities_analysis(self, time_windows=[5, 10, 20, 50], method='individual'):
+            """
+            Run conditional probabilities analysis step
+            
+            Parameters:
+            -----------
+            time_windows : list
+                Different time window sizes (in samples)
+            method : str
+                'individual' - calculate probabilities between individual neurons
+                'population' - calculate probabilities between cell type populations
+            
+            Returns:
+            --------
+            dict : Conditional probability results
+            """
+            print("Running conditional probabilities analysis...")
+            if self.binary_signals is None:
+                print("Binary signals not available. Running binary signals analysis first...")
+                self.run_binary_signals_analysis()
+            
+            self.conditional_probs = self.calculate_conditional_probabilities(time_windows=time_windows, method=method)
+            print("Conditional probabilities analysis completed!")
+            return self.conditional_probs
+        
+        def run_cross_correlations_analysis(self, max_lag=100):
+            """
+            Run cross-correlations analysis step
+            
+            Parameters:
+            -----------
+            max_lag : int
+                Maximum lag for cross-correlation analysis
+            
+            Returns:
+            --------
+            dict : Cross-correlation results
+            """
+            print("Running cross-correlations analysis...")
+            if self.binary_signals is None:
+                print("Binary signals not available. Running binary signals analysis first...")
+                self.run_binary_signals_analysis()
+            
+            self.cross_correlations = self.calculate_cross_correlations_from_peaks(max_lag=max_lag)
+            print("Cross-correlations analysis completed!")
+            return self.cross_correlations
+        
+        def run_coactivation_patterns_analysis(self, min_duration=3):
+            """
+            Run coactivation patterns analysis step
+            
+            Parameters:
+            -----------
+            min_duration : int
+                Minimum duration for coactivation patterns
+            
+            Returns:
+            --------
+            dict : Coactivation patterns results
+            """
+            print("Running coactivation patterns analysis...")
+            if self.binary_signals is None:
+                print("Binary signals not available. Running binary signals analysis first...")
+                self.run_binary_signals_analysis()
+            
+            self.coactivation_patterns = self.identify_coactivation_patterns_from_peaks(min_duration=min_duration)
+            print("Coactivation patterns analysis completed!")
+            return self.coactivation_patterns
+        
+        def run_peak_timing_analysis(self):
+            """
+            Run peak timing relationships analysis step
+            
+            Returns:
+            --------
+            dict : Peak timing relationships results
+            """
+            print("Running peak timing relationships analysis...")
+            self.peak_timing_relationships = self.calculate_peak_timing_relationships()
+            print("Peak timing relationships analysis completed!")
+            return self.peak_timing_relationships
+        
+        def run_mutual_information_analysis(self, bins=10):
+            """
+            Run mutual information analysis step
+            
+            Parameters:
+            -----------
+            bins : int
+                Number of bins for mutual information calculation
+            
+            Returns:
+            --------
+            dict : Mutual information results
+            """
+            print("Running mutual information analysis...")
+            if self.binary_signals is None:
+                print("Binary signals not available. Running binary signals analysis first...")
+                self.run_binary_signals_analysis()
+            
+            self.mutual_information = self.calculate_mutual_information_from_peaks(bins=bins)
+            print("Mutual information analysis completed!")
+            return self.mutual_information
+        
+        def run_connectivity_network_analysis(self, threshold=0.1, use_individual_neurons=False):
+            """
+            Run connectivity network analysis step
+            
+            Parameters:
+            -----------
+            threshold : float
+                Connection strength threshold
+            use_individual_neurons : bool
+                If True, create network with individual neurons as nodes
+                If False, create network with cell types as nodes (default)
+            
+            Returns:
+            --------
+            networkx.Graph : Network graph object
+            """
+            print("Running connectivity network analysis...")
+            if self.conditional_probs is None:
+                print("Conditional probabilities not available. Running conditional probabilities analysis first...")
+                self.run_conditional_probabilities_analysis()
+            
+            self.network = self.create_connectivity_network(threshold=threshold, use_individual_neurons=use_individual_neurons)
+            print("Connectivity network analysis completed!")
+            return self.network
+        
+        def run_all_analyses(self, window_size=5, time_windows=[5, 10, 20, 50], max_lag=100, 
+                           min_duration=3, bins=10, threshold=0.1, use_individual_neurons=False):
+            """
+            Run all analysis steps in sequence
+            
+            Parameters:
+            -----------
+            window_size : int
+                Duration window size for activation events
+            time_windows : list
+                Different time window sizes for conditional probabilities
+            max_lag : int
+                Maximum lag for cross-correlation analysis
+            min_duration : int
+                Minimum duration for coactivation patterns
+            bins : int
+                Number of bins for mutual information calculation
+            threshold : float
+                Connection strength threshold
+            use_individual_neurons : bool
+                Whether to use individual neurons in network analysis
+            
+            Returns:
+            --------
+            dict : Complete analysis results
+            """
+            print("Running all neural connectivity analyses...")
+            
+            # Run all analysis steps
+            self.run_binary_signals_analysis(window_size=window_size)
+            self.run_conditional_probabilities_analysis(time_windows=time_windows)
+            self.run_cross_correlations_analysis(max_lag=max_lag)
+            self.run_coactivation_patterns_analysis(min_duration=min_duration)
+            self.run_peak_timing_analysis()
+            self.run_mutual_information_analysis(bins=bins)
+            self.run_connectivity_network_analysis(threshold=threshold, use_individual_neurons=use_individual_neurons)
+            
+            # Generate summary report
+            self.generate_summary_report()
+            self.analysis_results = self.get_analysis_results()
+            
+            print("All neural connectivity analyses completed!")
+            return self.analysis_results
+        
+        def create_timing_plot(self, save_path=None, notebook=False, overwrite=False, font_size=None):
+            """
+            Create and save timing relationships plot
+            
+            Parameters:
+            -----------
+            save_path : str, optional
+                Path to save the plot
+            notebook : bool
+                Whether to display in notebook
+            overwrite : bool
+                Whether to overwrite existing file
+            font_size : str, optional
+                Font size for plot text elements
+            
+            Returns:
+            --------
+            bokeh.layouts.layout : The created plot layout
+            """
+            print("Creating timing relationships plot...")
+            
+            if self.peak_timing_relationships is None:
+                print("Peak timing relationships not available. Running peak timing analysis first...")
+                self.run_peak_timing_analysis()
+            
+            # Set default save path if none provided
+            if save_path is None and self.save_dir:
+                save_path = os.path.join(self.save_dir, 'peak_timing_relationships.html')
+            
+            plot = self.plot_peak_timing_relationships(
+                save_path=save_path,
+                notebook=notebook,
+                overwrite=overwrite,
+                font_size=font_size
+            )
+            
+            print("Timing relationships plot created!")
+            return plot
+        
+        def create_summary_plot(self, save_path=None, notebook=False, overwrite=False, font_size=None):
+            """
+            Create and save connectivity analysis summary plot
+            
+            Parameters:
+            -----------
+            save_path : str, optional
+                Path to save the plot
+            notebook : bool
+                Whether to display in notebook
+            overwrite : bool
+                Whether to overwrite existing file
+            font_size : str, optional
+                Font size for plot text elements
+            
+            Returns:
+            --------
+            bokeh.layouts.layout : The created plot layout
+            """
+            print("Creating connectivity analysis summary plot...")
+            
+            # Ensure all analyses are completed
+            if not hasattr(self, 'analysis_results') or self.analysis_results is None:
+                print("Analysis results not available. Running all analyses first...")
+                self.run_all_analyses()
+            
+            # Set default save path if none provided
+            if save_path is None and self.save_dir:
+                save_path = os.path.join(self.save_dir, 'connectivity_summary.html')
+            
+            plot = self.plot_connectivity_analysis_summary(
+                save_path=save_path,
+                notebook=notebook,
+                overwrite=overwrite,
+                font_size=font_size
+            )
+            
+            print("Connectivity analysis summary plot created!")
+            return plot
         
         def create_binary_signals_from_peaks(self, window_size=5, use_rising_edges=True):
             """
@@ -3568,7 +3839,7 @@ class CellTypeTank(CITank):
             
             return binary_signals
         
-        def calculate_conditional_probabilities(self, time_windows=[5, 10, 20, 50]):
+        def calculate_conditional_probabilities(self, time_windows=[5, 10, 20, 50], method='individual'):
             """
             Calculate conditional activation probabilities
             
@@ -3576,13 +3847,114 @@ class CellTypeTank(CITank):
             -----------
             time_windows : list
                 Different time window sizes (in samples)
+            method : str
+                'individual' - calculate probabilities between individual neurons
+                'population' - calculate probabilities between cell type populations (legacy)
             
             Returns:
             --------
             dict : Conditional probability results
             """
-            print("Calculating conditional activation probabilities...")
+            print(f"Calculating conditional activation probabilities using {method} method...")
             
+            if method == 'individual':
+                return self._calculate_individual_conditional_probabilities(time_windows)
+            elif method == 'population':
+                return self._calculate_population_conditional_probabilities(time_windows)
+            else:
+                raise ValueError("Method must be 'individual' or 'population'")
+        
+        def _calculate_individual_conditional_probabilities(self, time_windows):
+            """Calculate conditional probabilities between individual neurons"""
+            results = {}
+            
+            # Get all neuron signals and their cell type labels
+            all_signals = []
+            neuron_labels = []
+            cell_types = []
+            
+            for cell_type in ['D1', 'D2', 'CHI']:
+                signals = self.binary_signals[cell_type]
+                for i in range(signals.shape[0]):
+                    all_signals.append(signals[i])
+                    neuron_labels.append(f"{cell_type}_{i}")
+                    cell_types.append(cell_type)
+            
+            all_signals = np.array(all_signals)
+            n_neurons = len(all_signals)
+            
+            def calc_conditional_prob_individual(signal_a, signal_b, window_size):
+                """Calculate probability of B activation within window_size time after A activation"""
+                a_events = np.where(signal_a == 1)[0]
+                if len(a_events) == 0:
+                    return 0.0
+                
+                conditional_activations = 0
+                for event in a_events:
+                    # Check time window after the event
+                    start = event + 1
+                    end = min(len(signal_b), event + window_size + 1)
+                    if start < len(signal_b) and np.any(signal_b[start:end]):
+                        conditional_activations += 1
+                
+                return conditional_activations / len(a_events)
+            
+            for window in time_windows:
+                print(f"Processing window size: {window}")
+                
+                # Initialize probability matrix
+                prob_matrix = np.zeros((n_neurons, n_neurons))
+                
+                # Calculate conditional probabilities for all neuron pairs
+                for i in range(n_neurons):
+                    for j in range(n_neurons):
+                        if i != j:  # Skip self-connections
+                            prob_matrix[i, j] = calc_conditional_prob_individual(
+                                all_signals[i], all_signals[j], window
+                            )
+                
+                # Store results
+                window_results = {
+                    'probability_matrix': prob_matrix,
+                    'neuron_labels': neuron_labels,
+                    'cell_types': cell_types,
+                    'n_neurons': n_neurons
+                }
+                
+                # Add cell type aggregated results for compatibility
+                window_results.update(self._aggregate_by_cell_type(prob_matrix, cell_types))
+                
+                results[f'window_{window}'] = window_results
+            
+            return results
+        
+        def _aggregate_by_cell_type(self, prob_matrix, cell_types):
+            """Aggregate individual neuron probabilities by cell type"""
+            aggregated = {}
+            
+            # Create indices for each cell type
+            cell_type_indices = {}
+            for i, cell_type in enumerate(cell_types):
+                if cell_type not in cell_type_indices:
+                    cell_type_indices[cell_type] = []
+                cell_type_indices[cell_type].append(i)
+            
+            # Calculate mean probabilities between cell types
+            for source_type in ['D1', 'D2', 'CHI']:
+                for target_type in ['D1', 'D2', 'CHI']:
+                    if source_type != target_type:
+                        source_indices = cell_type_indices[source_type]
+                        target_indices = cell_type_indices[target_type]
+                        
+                        # Extract submatrix and calculate mean
+                        submatrix = prob_matrix[np.ix_(source_indices, target_indices)]
+                        mean_prob = np.mean(submatrix)
+                        aggregated[f'{source_type}_to_{target_type}'] = mean_prob
+            
+            return aggregated
+        
+        def _calculate_population_conditional_probabilities(self, time_windows):
+            """Legacy method: Calculate conditional probabilities between cell type populations"""
             results = {}
             
             for window in time_windows:
@@ -3626,7 +3998,6 @@ class CellTypeTank(CITank):
                     window_results[f'{source}_to_{target}'] = prob
                 
                 results[f'window_{window}'] = window_results
-            
             
             return results
         
@@ -3898,7 +4269,7 @@ class CellTypeTank(CITank):
             self.mutual_information = results
             return results
         
-        def create_connectivity_network(self, threshold=0.1):
+        def create_connectivity_network(self, threshold=0.1, use_individual_neurons=False):
             """
             Create functional connectivity network
             
@@ -3906,6 +4277,9 @@ class CellTypeTank(CITank):
             -----------
             threshold : float
                 Connection strength threshold
+            use_individual_neurons : bool
+                If True, create network with individual neurons as nodes
+                If False, create network with cell types as nodes (default)
             
             Returns:
             --------
@@ -3916,20 +4290,58 @@ class CellTypeTank(CITank):
             import networkx as nx
             G = nx.DiGraph()
             
+            # Use shortest time window results
+            window_key = list(self.conditional_probs.keys())[0]
+            probs = self.conditional_probs[window_key]
+            
+            if use_individual_neurons and 'probability_matrix' in probs:
+                # Individual neuron network
+                return self._create_individual_neuron_network(probs, threshold)
+            else:
+                # Cell type population network (default)
+                return self._create_population_network(probs, threshold)
+        
+        def _create_individual_neuron_network(self, probs, threshold):
+            """Create network with individual neurons as nodes"""
+            import networkx as nx
+            G = nx.DiGraph()
+            
+            prob_matrix = probs['probability_matrix']
+            neuron_labels = probs['neuron_labels']
+            cell_types = probs['cell_types']
+            
+            # Add nodes for each neuron
+            color_map = {'D1': 'navy', 'D2': 'crimson', 'CHI': 'green'}
+            for i, (label, cell_type) in enumerate(zip(neuron_labels, cell_types)):
+                G.add_node(label, type=cell_type, color=color_map[cell_type], index=i)
+            
+            # Add edges based on probability matrix
+            for i in range(len(neuron_labels)):
+                for j in range(len(neuron_labels)):
+                    if i != j and prob_matrix[i, j] > threshold:
+                        source = neuron_labels[i]
+                        target = neuron_labels[j]
+                        G.add_edge(source, target, weight=prob_matrix[i, j], type='conditional_prob')
+            
+            return G
+        
+        def _create_population_network(self, probs, threshold):
+            """Create network with cell types as nodes"""
+            import networkx as nx
+            G = nx.DiGraph()
+            
             # Add nodes
             G.add_node('D1', type='D1', color='navy')
             G.add_node('D2', type='D2', color='crimson')
             G.add_node('CHI', type='CHI', color='green')
             
             # Add directed edges based on conditional probabilities
-            # Use shortest time window results
-            window_key = list(self.conditional_probs.keys())[0]
-            probs = self.conditional_probs[window_key]
-            
             for connection, prob in probs.items():
-                if prob > threshold:
-                    source, target = connection.split('_to_')
-                    G.add_edge(source, target, weight=prob, type='conditional_prob')
+                if connection.endswith('_to_D1') or connection.endswith('_to_D2') or connection.endswith('_to_CHI'):
+                    # Handle scalar probabilities (both individual aggregated and population methods)
+                    if isinstance(prob, (int, float, np.integer, np.floating)) and prob > threshold:
+                        source, target = connection.split('_to_')
+                        G.add_edge(source, target, weight=prob, type='conditional_prob')
             
             # Add undirected edge weights based on mutual information
             for connection, mi in self.mutual_information.items():
@@ -3963,9 +4375,29 @@ class CellTypeTank(CITank):
             print("\n2. Conditional Activation Probabilities (shortest time window):")
             window_key = list(self.conditional_probs.keys())[0]
             probs = self.conditional_probs[window_key]
-            for connection, prob in probs.items():
-                source, target = connection.split('_to_')
-                print(f"   P({target} activated|{source} activated) = {prob:.3f}")
+            
+            # Handle both individual neuron and population data structures
+            if 'probability_matrix' in probs:
+                # Individual neuron analysis - show aggregated cell type results
+                print("   Cell type aggregated results:")
+                for connection, prob in probs.items():
+                    if connection.endswith('_to_D1') or connection.endswith('_to_D2') or connection.endswith('_to_CHI'):
+                        if isinstance(prob, (int, float, np.integer, np.floating)):
+                            source, target = connection.split('_to_')
+                            print(f"   P({target} activated|{source} activated) = {prob:.3f}")
+                
+                # Show individual neuron matrix summary
+                prob_matrix = probs['probability_matrix']
+                print(f"   Individual neuron matrix: {prob_matrix.shape[0]}x{prob_matrix.shape[1]} neurons")
+                print(f"   Mean probability: {np.mean(prob_matrix):.3f}")
+                print(f"   Max probability: {np.max(prob_matrix):.3f}")
+                print(f"   Connections > 0.1: {np.sum(prob_matrix > 0.1)}")
+            else:
+                # Population analysis - original format
+                for connection, prob in probs.items():
+                    if '_to_' in connection:
+                        source, target = connection.split('_to_')
+                        print(f"   P({target} activated|{source} activated) = {prob:.3f}")
             
             # Cross-correlation peaks
             print("\n3. Cross-correlation Peaks:")
@@ -4223,7 +4655,12 @@ class CellTypeTank(CITank):
                         for j, target in enumerate(cell_types):
                             if source != target:
                                 key = f'{source}_to_{target}'
-                                prob = probs.get(key, 0)
+                                prob_value = probs.get(key, 0)
+                                # Handle both numeric and non-numeric values
+                                if isinstance(prob_value, (int, float, np.integer, np.floating)):
+                                    prob = prob_value
+                                else:
+                                    prob = 0
                             else:
                                 prob = 0  # Self-to-self set to 0
                             
@@ -4297,6 +4734,16 @@ class CellTypeTank(CITank):
                     window_key = list(analyzer.conditional_probs.keys())[0]
                     probs = analyzer.conditional_probs[window_key]
                     
+                    # Extract only numeric probabilities for cell type connections
+                    numeric_probs = {}
+                    for connection, prob in probs.items():
+                        if (connection.endswith('_to_D1') or connection.endswith('_to_D2') or 
+                            connection.endswith('_to_CHI')) and isinstance(prob, (int, float, np.integer, np.floating)):
+                            numeric_probs[connection] = prob
+                    
+                    if not numeric_probs:
+                        return None
+                    
                     p = figure(width=600, height=600,
                               title="Neural Network Connection Strength Diagram",
                               tools=['pan', 'wheel_zoom', 'box_zoom', 'reset'])
@@ -4319,9 +4766,9 @@ class CellTypeTank(CITank):
                               text_font_size='14pt', text_color='white', text_font_style='bold')
                     
                     # Draw connection lines - line width represents connection strength
-                    max_prob = max(probs.values()) if probs.values() else 1
+                    max_prob = max(numeric_probs.values()) if numeric_probs.values() else 1
                     
-                    for connection, prob in probs.items():
+                    for connection, prob in numeric_probs.items():
                         source, target = connection.split('_to_')
                         if prob > 0.1:  # Only show stronger connections
                             x1, y1 = positions[source]
@@ -4497,21 +4944,25 @@ class CellTypeTank(CITank):
                     flow_data = []
                     
                     for connection, cond_prob in cond_probs.items():
-                        source, target = connection.split('_to_')
-                        
-                        # Find corresponding mutual information
-                        mi_key1 = f'{source}_vs_{target}'
-                        mi_key2 = f'{target}_vs_{source}'
-                        
-                        mi_value = mutual_info.get(mi_key1, mutual_info.get(mi_key2, 0))
-                        
-                        flow_data.append({
-                            'connection': connection,
-                            'cond_prob': cond_prob,
-                            'mutual_info': mi_value,
-                            'source': source,
-                            'target': target
-                        })
+                        # Only process cell type connections with numeric probabilities
+                        if (connection.endswith('_to_D1') or connection.endswith('_to_D2') or 
+                            connection.endswith('_to_CHI')) and isinstance(cond_prob, (int, float, np.integer, np.floating)):
+                            
+                            source, target = connection.split('_to_')
+                            
+                            # Find corresponding mutual information
+                            mi_key1 = f'{source}_vs_{target}'
+                            mi_key2 = f'{target}_vs_{source}'
+                            
+                            mi_value = mutual_info.get(mi_key1, mutual_info.get(mi_key2, 0))
+                            
+                            flow_data.append({
+                                'connection': connection,
+                                'cond_prob': cond_prob,
+                                'mutual_info': mi_value,
+                                'source': source,
+                                'target': target
+                            })
                     
                     if not flow_data:
                         return None
@@ -4638,8 +5089,20 @@ class CellTypeTank(CITank):
             """
             print("Running complete neural connectivity analysis workflow...")
             
-            # Run the full analysis
-            results = self.analysis_results
+            # Update use_rising_edges parameter if provided
+            if use_rising_edges != self.use_rising_edges:
+                self.use_rising_edges = use_rising_edges
+                print(f"Updated use_rising_edges parameter to: {use_rising_edges}")
+            
+            # Update save_dir if provided
+            if save_dir is not None:
+                self.save_dir = save_dir
+            
+            # Run all analyses if not already completed
+            if not hasattr(self, 'analysis_results') or self.analysis_results is None:
+                results = self.run_all_analyses()
+            else:
+                results = self.analysis_results
             
             # Create plots if requested
             if create_plots:
@@ -4667,7 +5130,7 @@ class CellTypeTank(CITank):
                     summary_path = None
                 
                 # Create timing relationships plot
-                timing_plot = self.plot_peak_timing_relationships(
+                timing_plot = self.create_timing_plot(
                     save_path=timing_path, 
                     notebook=notebook, 
                     overwrite=overwrite, 
@@ -4675,7 +5138,7 @@ class CellTypeTank(CITank):
                 )
                 
                 # Create summary plot
-                summary_plot = self.plot_connectivity_analysis_summary(
+                summary_plot = self.create_summary_plot(
                     save_path=summary_path, 
                     notebook=notebook, 
                     overwrite=overwrite, 
@@ -4698,7 +5161,533 @@ class CellTypeTank(CITank):
         NeuralConnectivityAnalyzer : Analyzer instance
         """
         return self.NeuralConnectivityAnalyzer(self)
-
+    
+    def plot_connectivity_timing_analysis(self, save_path=None, notebook=False, overwrite=False, font_size=None):
+        """
+        Generate timing relationships analysis plot
+        
+        Parameters:
+        -----------
+        save_path : str, optional
+            Path to save the HTML file
+        notebook : bool
+            Whether to display in notebook
+        overwrite : bool
+            Whether to overwrite existing file
+        font_size : str, optional
+            Font size for plot text elements
+        
+        Returns:
+        --------
+        bokeh.layouts.layout : The created plot layout
+        """
+        connectivity = self.create_connectivity_analyzer()
+        
+        # Set default save path if none provided
+        if save_path is None:
+            save_path = os.path.join(self.config["SummaryPlotsPath"], 
+                                   self.session_name, 
+                                   'connectivity_timing_analysis.html')
+        
+        plot = connectivity.create_timing_plot(
+            save_path=save_path,
+            notebook=notebook,
+            overwrite=overwrite,
+            font_size=font_size
+        )
+        
+        return plot
+    
+    def plot_connectivity_summary_analysis(self, save_path=None, notebook=False, overwrite=False, font_size=None):
+        """
+        Generate connectivity analysis summary plot
+        
+        Parameters:
+        -----------
+        save_path : str, optional
+            Path to save the HTML file
+        notebook : bool
+            Whether to display in notebook
+        overwrite : bool
+            Whether to overwrite existing file
+        font_size : str, optional
+            Font size for plot text elements
+        
+        Returns:
+        --------
+        bokeh.layouts.layout : The created plot layout
+        """
+        connectivity = self.create_connectivity_analyzer()
+        
+        # Set default save path if none provided
+        if save_path is None:
+            save_path = os.path.join(self.config["SummaryPlotsPath"], 
+                                   self.session_name, 
+                                   'connectivity_summary_analysis.html')
+        
+        plot = connectivity.create_summary_plot(
+            save_path=save_path,
+            notebook=notebook,
+            overwrite=overwrite,
+            font_size=font_size
+        )
+        
+        return plot
+    
+    def plot_connectivity_conditional_probabilities(self, time_windows=[5, 10, 20, 50], method='individual',
+                                                 save_path=None, notebook=False, overwrite=False, font_size=None):
+            """
+            Generate conditional probabilities analysis plot
+            
+            Parameters:
+            -----------
+            time_windows : list
+                Different time window sizes (in samples)
+            method : str
+                'individual' - calculate probabilities between individual neurons
+                'population' - calculate probabilities between cell type populations
+            save_path : str, optional
+                Path to save the HTML file
+            notebook : bool
+                Whether to display in notebook
+            overwrite : bool
+                Whether to overwrite existing file
+            font_size : str, optional
+                Font size for plot text elements
+            
+            Returns:
+            --------
+            bokeh.layouts.layout : The created plot layout
+            """
+            connectivity = self.create_connectivity_analyzer()
+            
+            # Run conditional probabilities analysis
+            cond_prob_results = connectivity.run_conditional_probabilities_analysis(
+                time_windows=time_windows, 
+                method=method
+            )
+            
+            # Set default save path if none provided
+            if save_path is None:
+                save_path = os.path.join(self.config["SummaryPlotsPath"], 
+                                       self.session_name, 
+                                       'connectivity_conditional_probabilities.html')
+            
+            # Create a comprehensive visualization showing all time windows
+            from bokeh.plotting import figure
+            from bokeh.layouts import column, row, gridplot
+            import numpy as np
+            
+            # Create subplots for each time window
+            plots = []
+            
+            for window_key in cond_prob_results.keys():
+                probs = cond_prob_results[window_key]
+                
+                # Extract cell type probabilities
+                cell_type_probs = {}
+                for connection, prob in probs.items():
+                    if (connection.endswith('_to_D1') or connection.endswith('_to_D2') or 
+                        connection.endswith('_to_CHI')) and isinstance(prob, (int, float, np.integer, np.floating)):
+                        cell_type_probs[connection] = prob
+                
+                if cell_type_probs:
+                    connections = list(cell_type_probs.keys())
+                    probabilities = list(cell_type_probs.values())
+                    
+                    # Convert window size to time (assuming 20Hz sampling rate)
+                    time_seconds = int(window_key.split('_')[1]) / 20.0
+                    
+                    p = figure(width=400, height=300,
+                              title=f"Window: {window_key} ({time_seconds:.1f}s)",
+                              x_axis_label="Connection Type",
+                              y_axis_label="Probability",
+                              tools="pan,box_zoom,wheel_zoom,reset,save")
+                    
+                    # Color code by source cell type
+                    colors = []
+                    for conn in connections:
+                        if 'CHI_to_' in conn:
+                            colors.append('green')
+                        elif 'D1_to_' in conn:
+                            colors.append('navy')
+                        else:
+                            colors.append('crimson')
+                    
+                    p.vbar(x=connections, top=probabilities, width=0.5, color=colors, alpha=0.7)
+                    p.xaxis.major_label_orientation = 45
+                    
+                    plots.append(p)
+                else:
+                    # Create empty plot if no data
+                    p = figure(width=400, height=300, title=f"Window: {window_key} (No Data)")
+                    p.grid.grid_line_color = None
+                    p.text([0.5], [0.5], ["No data available"], 
+                           text_align="center", text_baseline="middle")
+                    p.axis.visible = False
+                    plots.append(p)
+            
+            # Arrange plots in a grid
+            if len(plots) == 1:
+                layout = column(plots[0])
+            elif len(plots) == 2:
+                layout = row(plots[0], plots[1])
+            elif len(plots) == 3:
+                layout = row(plots[0], plots[1], plots[2])
+            elif len(plots) == 4:
+                layout = gridplot([[plots[0], plots[1]], [plots[2], plots[3]]])
+            else:
+                layout = column(*plots)
+            
+            # Save the plot
+            self.output_bokeh_plot(layout, save_path=save_path, 
+                                  title="Conditional Probabilities Analysis - All Time Windows",
+                                  notebook=notebook, overwrite=overwrite, font_size=font_size)
+            
+            return layout
+    
+    def plot_connectivity_cross_correlations(self, max_lag=100, save_path=None, notebook=False, 
+                                           overwrite=False, font_size=None):
+        """
+        Generate cross-correlations analysis plot
+        
+        Parameters:
+        -----------
+        max_lag : int
+            Maximum lag for cross-correlation analysis
+        save_path : str, optional
+            Path to save the HTML file
+        notebook : bool
+            Whether to display in notebook
+        overwrite : bool
+            Whether to overwrite existing file
+        font_size : str, optional
+            Font size for plot text elements
+        
+        Returns:
+        --------
+        bokeh.layouts.layout : The created plot layout
+        """
+        connectivity = self.create_connectivity_analyzer()
+        
+        # Run cross-correlations analysis
+        cross_corr_results = connectivity.run_cross_correlations_analysis(max_lag=max_lag)
+        
+        # Set default save path if none provided
+        if save_path is None:
+            save_path = os.path.join(self.config["SummaryPlotsPath"], 
+                                   self.session_name, 
+                                   'connectivity_cross_correlations.html')
+        
+        # Create visualization of cross-correlations
+        from bokeh.plotting import figure
+        from bokeh.layouts import column
+        import numpy as np
+        
+        if not cross_corr_results:
+            # Create empty plot if no data
+            p = figure(width=600, height=400, title="No Cross-Correlation Data Available")
+            p.grid.grid_line_color = None
+            p.text([0.5], [0.5], ["No cross-correlation data available"], 
+                   text_align="center", text_baseline="middle")
+            p.axis.visible = False
+            layout = column(p)
+        else:
+            # Create bar plot of peak correlations
+            pairs = list(cross_corr_results.keys())
+            peak_correlations = [cross_corr_results[pair]['peak_correlation'] for pair in pairs]
+            peak_lags = [cross_corr_results[pair]['peak_lag'] for pair in pairs]
+            
+            p = figure(width=800, height=400,
+                      title=f"Cross-Correlation Peak Analysis (Max Lag: {max_lag})",
+                      x_axis_label="Neuron Pair",
+                      y_axis_label="Peak Correlation",
+                      tools="pan,box_zoom,wheel_zoom,reset,save")
+            
+            # Color code by correlation strength
+            colors = ['red' if corr < 0 else 'blue' for corr in peak_correlations]
+            
+            p.vbar(x=pairs, top=peak_correlations, width=0.5, color=colors, alpha=0.7)
+            p.xaxis.major_label_orientation = 45
+            
+            # Add lag information as text
+            p.text(x=pairs, y=peak_correlations, text=[f"lag={lag}" for lag in peak_lags],
+                  text_align="center", text_baseline="bottom", text_font_size="8pt")
+            
+            layout = column(p)
+        
+        # Save the plot
+        self.output_bokeh_plot(layout, save_path=save_path, 
+                              title="Cross-Correlations Analysis",
+                              notebook=notebook, overwrite=overwrite, font_size=font_size)
+        
+        return layout
+    
+    def plot_connectivity_coactivation_patterns(self, min_duration=3, save_path=None, notebook=False,
+                                              overwrite=False, font_size=None):
+        """
+        Generate coactivation patterns analysis plot
+        
+        Parameters:
+        -----------
+        min_duration : int
+            Minimum duration for coactivation patterns
+        save_path : str, optional
+            Path to save the HTML file
+        notebook : bool
+            Whether to display in notebook
+        overwrite : bool
+            Whether to overwrite existing file
+        font_size : str, optional
+            Font size for plot text elements
+        
+        Returns:
+        --------
+        bokeh.layouts.layout : The created plot layout
+        """
+        connectivity = self.create_connectivity_analyzer()
+        
+        # Run coactivation patterns analysis
+        coactivation_results = connectivity.run_coactivation_patterns_analysis(min_duration=min_duration)
+        
+        # Set default save path if none provided
+        if save_path is None:
+            save_path = os.path.join(self.config["SummaryPlotsPath"], 
+                                   self.session_name, 
+                                   'connectivity_coactivation_patterns.html')
+        
+        # Create visualization of coactivation patterns
+        from bokeh.plotting import figure
+        from bokeh.layouts import column
+        import numpy as np
+        
+        if not coactivation_results:
+            # Create empty plot if no data
+            p = figure(width=600, height=400, title="No Coactivation Pattern Data Available")
+            p.grid.grid_line_color = None
+            p.text([0.5], [0.5], ["No coactivation pattern data available"], 
+                   text_align="center", text_baseline="middle")
+            p.axis.visible = False
+            layout = column(p)
+        else:
+            # Create pie chart of coactivation patterns
+            patterns = list(coactivation_results.keys())
+            proportions = [coactivation_results[pattern]['proportion'] for pattern in patterns]
+            
+            # Filter patterns with proportion > 1%
+            significant_patterns = [(p, prop) for p, prop in zip(patterns, proportions) if prop > 0.01]
+            
+            if not significant_patterns:
+                p = figure(width=600, height=400, title="No Significant Coactivation Patterns")
+                p.grid.grid_line_color = None
+                p.text([0.5], [0.5], ["No significant coactivation patterns found"], 
+                       text_align="center", text_baseline="middle")
+                p.axis.visible = False
+                layout = column(p)
+            else:
+                pattern_names, pattern_props = zip(*significant_patterns)
+                
+                p = figure(width=800, height=400,
+                          title=f"Coactivation Patterns (Min Duration: {min_duration})",
+                          x_axis_label="Pattern Type",
+                          y_axis_label="Proportion",
+                          tools="pan,box_zoom,wheel_zoom,reset,save")
+                
+                # Color code patterns
+                colors = ['green', 'blue', 'red', 'orange', 'purple', 'brown', 'pink', 'gray']
+                bar_colors = [colors[i % len(colors)] for i in range(len(pattern_names))]
+                
+                p.vbar(x=pattern_names, top=pattern_props, width=0.5, color=bar_colors, alpha=0.7)
+                p.xaxis.major_label_orientation = 45
+                
+                layout = column(p)
+        
+        # Save the plot
+        self.output_bokeh_plot(layout, save_path=save_path, 
+                              title="Coactivation Patterns Analysis",
+                              notebook=notebook, overwrite=overwrite, font_size=font_size)
+        
+        return layout
+    
+    def plot_connectivity_mutual_information(self, bins=10, save_path=None, notebook=False,
+                                           overwrite=False, font_size=None):
+        """
+        Generate mutual information analysis plot
+        
+        Parameters:
+        -----------
+        bins : int
+            Number of bins for mutual information calculation
+        save_path : str, optional
+            Path to save the HTML file
+        notebook : bool
+            Whether to display in notebook
+        overwrite : bool
+            Whether to overwrite existing file
+        font_size : str, optional
+            Font size for plot text elements
+        
+        Returns:
+        --------
+        bokeh.layouts.layout : The created plot layout
+        """
+        connectivity = self.create_connectivity_analyzer()
+        
+        # Run mutual information analysis
+        mi_results = connectivity.run_mutual_information_analysis(bins=bins)
+        
+        # Set default save path if none provided
+        if save_path is None:
+            save_path = os.path.join(self.config["SummaryPlotsPath"], 
+                                   self.session_name, 
+                                   'connectivity_mutual_information.html')
+        
+        # Create visualization of mutual information
+        from bokeh.plotting import figure
+        from bokeh.layouts import column
+        import numpy as np
+        
+        if not mi_results:
+            # Create empty plot if no data
+            p = figure(width=600, height=400, title="No Mutual Information Data Available")
+            p.grid.grid_line_color = None
+            p.text([0.5], [0.5], ["No mutual information data available"], 
+                   text_align="center", text_baseline="middle")
+            p.axis.visible = False
+            layout = column(p)
+        else:
+            # Create bar plot of mutual information
+            pairs = list(mi_results.keys())
+            mi_values = list(mi_results.values())
+            
+            p = figure(width=800, height=400,
+                      title=f"Mutual Information Analysis (Bins: {bins})",
+                      x_axis_label="Neuron Pair",
+                      y_axis_label="Mutual Information",
+                      tools="pan,box_zoom,wheel_zoom,reset,save")
+            
+            # Color code by MI value
+            colors = ['red' if mi < 0 else 'blue' for mi in mi_values]
+            
+            p.vbar(x=pairs, top=mi_values, width=0.5, color=colors, alpha=0.7)
+            p.xaxis.major_label_orientation = 45
+            
+            layout = column(p)
+        
+        # Save the plot
+        self.output_bokeh_plot(layout, save_path=save_path, 
+                              title="Mutual Information Analysis",
+                              notebook=notebook, overwrite=overwrite, font_size=font_size)
+        
+        return layout
+    
+    def plot_connectivity_time_window_comparison(self, time_windows=[5, 10, 20, 50], method='individual',
+                                               save_path=None, notebook=False, overwrite=False, font_size=None):
+        """
+        Generate a comparison plot showing conditional probabilities across different time windows
+        
+        Parameters:
+        -----------
+        time_windows : list
+            Different time window sizes (in samples)
+        method : str
+            'individual' - calculate probabilities between individual neurons
+            'population' - calculate probabilities between cell type populations
+        save_path : str, optional
+            Path to save the HTML file
+        notebook : bool
+            Whether to display in notebook
+        overwrite : bool
+            Whether to overwrite existing file
+        font_size : str, optional
+            Font size for plot text elements
+        
+        Returns:
+        --------
+        bokeh.layouts.layout : The created plot layout
+        """
+        connectivity = self.create_connectivity_analyzer()
+        
+        # Run conditional probabilities analysis
+        cond_prob_results = connectivity.run_conditional_probabilities_analysis(
+            time_windows=time_windows, 
+            method=method
+        )
+        
+        # Set default save path if none provided
+        if save_path is None:
+            save_path = os.path.join(self.config["SummaryPlotsPath"], 
+                                   self.session_name, 
+                                   'connectivity_time_window_comparison.html')
+        
+        # Create comparison visualization
+        from bokeh.plotting import figure
+        from bokeh.layouts import column
+        import numpy as np
+        
+        # Extract data for comparison
+        window_sizes = []
+        connection_types = set()
+        all_probabilities = {}
+        
+        for window_key in cond_prob_results.keys():
+            window_size = int(window_key.split('_')[1])
+            window_sizes.append(window_size)
+            probs = cond_prob_results[window_key]
+            
+            for connection, prob in probs.items():
+                if (connection.endswith('_to_D1') or connection.endswith('_to_D2') or 
+                    connection.endswith('_to_CHI')) and isinstance(prob, (int, float, np.integer, np.floating)):
+                    connection_types.add(connection)
+                    if connection not in all_probabilities:
+                        all_probabilities[connection] = []
+                    all_probabilities[connection].append(prob)
+        
+        if not all_probabilities:
+            # Create empty plot if no data
+            p = figure(width=600, height=400, title="No Conditional Probability Data Available")
+            p.grid.grid_line_color = None
+            p.text([0.5], [0.5], ["No conditional probability data available"], 
+                   text_align="center", text_baseline="middle")
+            p.axis.visible = False
+            layout = column(p)
+        else:
+            # Create line plot showing how probabilities change with window size
+            p = figure(width=1000, height=600,
+                      title="Conditional Probabilities vs Time Window Size",
+                      x_axis_label="Time Window Size (samples)",
+                      y_axis_label="Conditional Probability",
+                      tools="pan,box_zoom,wheel_zoom,reset,save")
+            
+            # Color scheme for different connection types
+            colors = ['green', 'navy', 'crimson', 'orange', 'purple', 'brown']
+            color_map = {}
+            
+            for i, conn_type in enumerate(sorted(connection_types)):
+                color_map[conn_type] = colors[i % len(colors)]
+                
+                if conn_type in all_probabilities and len(all_probabilities[conn_type]) == len(window_sizes):
+                    # Convert window sizes to time (assuming 20Hz sampling rate)
+                    time_seconds = [ws / 20.0 for ws in window_sizes]
+                    
+                    p.line(time_seconds, all_probabilities[conn_type], 
+                          line_width=3, color=color_map[conn_type], 
+                          legend_label=conn_type, alpha=0.8)
+                    p.circle(time_seconds, all_probabilities[conn_type], 
+                           size=8, color=color_map[conn_type], alpha=0.8)
+            
+            p.legend.location = "top_left"
+            p.legend.click_policy = "hide"
+            
+            layout = column(p)
+        
+        # Save the plot
+        self.output_bokeh_plot(layout, save_path=save_path, 
+                              title="Time Window Comparison Analysis",
+                              notebook=notebook, overwrite=overwrite, font_size=font_size)
+        
+        return layout
+    
     def _plot_population_centered_activity_core(self, center_cell_type, center_signals, center_peak_indices,
                                                all_signals_dict, ci_rate=None, time_window=3.0,
                                                save_path=None, title=None, notebook=False, overwrite=False, font_size=None,
