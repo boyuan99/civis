@@ -3850,6 +3850,7 @@ class CellTypeTank(CITank):
             method : str
                 'individual' - calculate probabilities between individual neurons
                 'population' - calculate probabilities between cell type populations (legacy)
+                'cell_type_proportion' - calculate using average proportion of target neurons activated per source activation
             
             Returns:
             --------
@@ -3861,8 +3862,10 @@ class CellTypeTank(CITank):
                 return self._calculate_individual_conditional_probabilities(time_windows)
             elif method == 'population':
                 return self._calculate_population_conditional_probabilities(time_windows)
+            elif method == 'cell_type_proportion':
+                return self._calculate_cell_type_conditional_probabilities(time_windows)
             else:
-                raise ValueError("Method must be 'individual' or 'population'")
+                raise ValueError("Method must be 'individual', 'population', or 'cell_type_proportion'")
         
         def _calculate_individual_conditional_probabilities(self, time_windows):
             """Calculate conditional probabilities between individual neurons"""
@@ -3882,6 +3885,9 @@ class CellTypeTank(CITank):
             
             all_signals = np.array(all_signals)
             n_neurons = len(all_signals)
+            
+            # Also calculate cell type level conditional probabilities using new method
+            cell_type_probs = self._calculate_cell_type_conditional_probabilities(time_windows)
             
             def calc_conditional_prob_individual(signal_a, signal_b, window_size):
                 """Calculate probability of B activation within window_size time after A activation"""
@@ -3923,6 +3929,72 @@ class CellTypeTank(CITank):
                 
                 # Add cell type aggregated results for compatibility
                 window_results.update(self._aggregate_by_cell_type(prob_matrix, cell_types))
+                
+                # Add new cell type level results
+                if f'window_{window}' in cell_type_probs:
+                    window_results.update(cell_type_probs[f'window_{window}'])
+                
+                results[f'window_{window}'] = window_results
+            
+            return results
+        
+        def _calculate_cell_type_conditional_probabilities(self, time_windows):
+            """Calculate conditional probabilities between cell types using new method:
+            Average proportion of target cell type neurons activated per source cell type activation"""
+            results = {}
+            
+            # Get cell type signals
+            d1_signals = self.binary_signals['D1']  # Shape: (n_d1_neurons, time_points)
+            d2_signals = self.binary_signals['D2']  # Shape: (n_d2_neurons, time_points)
+            chi_signals = self.binary_signals['CHI']  # Shape: (n_chi_neurons, time_points)
+            
+            cell_type_signals = {
+                'D1': d1_signals,
+                'D2': d2_signals, 
+                'CHI': chi_signals
+            }
+            
+            def calc_cell_type_conditional_prob(source_signals, target_signals, window_size):
+                """Calculate P(target_cell_type_activated | source_cell_type_activated)
+                using average proportion of target neurons activated per source activation"""
+                
+                # Find all activation events of source cell type (any neuron in source type)
+                source_population = np.sum(source_signals, axis=0)  # Sum across all source neurons
+                source_events = np.where(source_population > 0)[0]  # Times when any source neuron is active
+                
+                if len(source_events) == 0:
+                    return 0.0
+                
+                total_target_proportion = 0.0
+                for event in source_events:
+                    # Check time window after the event
+                    start = event + 1
+                    end = min(target_signals.shape[1], event + window_size + 1)
+                    if start < target_signals.shape[1]:
+                        # Count how many target neurons are activated in the window
+                        target_activations_in_window = np.sum(target_signals[:, start:end])
+                        # Calculate proportion of target neurons activated
+                        target_proportion = target_activations_in_window / target_signals.shape[0] if target_signals.shape[0] > 0 else 0
+                        total_target_proportion += target_proportion
+                
+                # Return average proportion across all source activations
+                return total_target_proportion / len(source_events)
+            
+            for window in time_windows:
+                print(f"Processing cell type level window size: {window}")
+                
+                window_results = {}
+                
+                # Calculate conditional probabilities for all cell type pairs
+                for source_type in ['D1', 'D2', 'CHI']:
+                    for target_type in ['D1', 'D2', 'CHI']:
+                        if source_type != target_type:
+                            prob = calc_cell_type_conditional_prob(
+                                cell_type_signals[source_type], 
+                                cell_type_signals[target_type], 
+                                window
+                            )
+                            window_results[f'{source_type}_to_{target_type}'] = prob
                 
                 results[f'window_{window}'] = window_results
             
@@ -5246,6 +5318,7 @@ class CellTypeTank(CITank):
             method : str
                 'individual' - calculate probabilities between individual neurons
                 'population' - calculate probabilities between cell type populations
+                'cell_type_proportion' - calculate using average proportion of target neurons activated per source activation
             save_path : str, optional
                 Path to save the HTML file
             notebook : bool
@@ -5593,6 +5666,7 @@ class CellTypeTank(CITank):
         method : str
             'individual' - calculate probabilities between individual neurons
             'population' - calculate probabilities between cell type populations
+            'cell_type_proportion' - calculate using average proportion of target neurons activated per source activation
         save_path : str, optional
             Path to save the HTML file
         notebook : bool
