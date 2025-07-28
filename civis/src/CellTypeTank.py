@@ -3910,13 +3910,12 @@ class CellTypeTank(CITank):
                 # Initialize probability matrix
                 prob_matrix = np.zeros((n_neurons, n_neurons))
                 
-                # Calculate conditional probabilities for all neuron pairs
+                # Calculate conditional probabilities for all neuron pairs (including self-activation)
                 for i in range(n_neurons):
                     for j in range(n_neurons):
-                        if i != j:  # Skip self-connections
-                            prob_matrix[i, j] = calc_conditional_prob_individual(
-                                all_signals[i], all_signals[j], window
-                            )
+                        prob_matrix[i, j] = calc_conditional_prob_individual(
+                            all_signals[i], all_signals[j], window
+                        )
                 
                 # Store results
                 window_results = {
@@ -3982,16 +3981,15 @@ class CellTypeTank(CITank):
             for window in time_windows:
                 window_results = {}
                 
-                # Calculate conditional probabilities for all cell type pairs
+                # Calculate conditional probabilities for all cell type pairs (including self-activation)
                 for source_type in ['D1', 'D2', 'CHI']:
                     for target_type in ['D1', 'D2', 'CHI']:
-                        if source_type != target_type:
-                            prob = calc_cell_type_conditional_prob(
-                                cell_type_signals[source_type], 
-                                cell_type_signals[target_type], 
-                                window
-                            )
-                            window_results[f'{source_type}_to_{target_type}'] = prob
+                        prob = calc_cell_type_conditional_prob(
+                            cell_type_signals[source_type], 
+                            cell_type_signals[target_type], 
+                            window
+                        )
+                        window_results[f'{source_type}_to_{target_type}'] = prob
                 
                 results[f'window_{window}'] = window_results
             
@@ -4008,17 +4006,16 @@ class CellTypeTank(CITank):
                     cell_type_indices[cell_type] = []
                 cell_type_indices[cell_type].append(i)
             
-            # Calculate mean probabilities between cell types
+            # Calculate mean probabilities between cell types (including self-activation)
             for source_type in ['D1', 'D2', 'CHI']:
                 for target_type in ['D1', 'D2', 'CHI']:
-                    if source_type != target_type:
-                        source_indices = cell_type_indices[source_type]
-                        target_indices = cell_type_indices[target_type]
-                        
-                        # Extract submatrix and calculate mean
-                        submatrix = prob_matrix[np.ix_(source_indices, target_indices)]
-                        mean_prob = np.mean(submatrix)
-                        aggregated[f'{source_type}_to_{target_type}'] = mean_prob
+                    source_indices = cell_type_indices[source_type]
+                    target_indices = cell_type_indices[target_type]
+                    
+                    # Extract submatrix and calculate mean
+                    submatrix = prob_matrix[np.ix_(source_indices, target_indices)]
+                    mean_prob = np.mean(submatrix)
+                    aggregated[f'{source_type}_to_{target_type}'] = mean_prob
             
             return aggregated
         
@@ -4056,15 +4053,13 @@ class CellTypeTank(CITank):
                     
                     return conditional_activations / len(a_events)
                 
-                # Calculate conditional probabilities for all pairs
-                pairs = [('D1', 'D2'), ('D1', 'CHI'), ('D2', 'D1'), 
-                        ('D2', 'CHI'), ('CHI', 'D1'), ('CHI', 'D2')]
-                
+                # Calculate conditional probabilities for all pairs (including self-activation)
                 signals = {'D1': d1_active, 'D2': d2_active, 'CHI': chi_active}
                 
-                for source, target in pairs:
-                    prob = calc_conditional_prob(signals[source], signals[target], window)
-                    window_results[f'{source}_to_{target}'] = prob
+                for source_type in ['D1', 'D2', 'CHI']:
+                    for target_type in ['D1', 'D2', 'CHI']:
+                        prob = calc_conditional_prob(signals[source_type], signals[target_type], window)
+                        window_results[f'{source_type}_to_{target_type}'] = prob
                 
                 results[f'window_{window}'] = window_results
             
@@ -4718,16 +4713,13 @@ class CellTypeTank(CITank):
             
             for i, source in enumerate(cell_types):
                 for j, target in enumerate(cell_types):
-                    if source != target:
-                        key = f'{source}_to_{target}'
-                        prob_value = probs.get(key, 0)
-                        # Handle both numeric and non-numeric values
-                        if isinstance(prob_value, (int, float, np.integer, np.floating)):
-                            prob = prob_value
-                        else:
-                            prob = 0
+                    key = f'{source}_to_{target}'
+                    prob_value = probs.get(key, 0)
+                    # Handle both numeric and non-numeric values
+                    if isinstance(prob_value, (int, float, np.integer, np.floating)):
+                        prob = prob_value
                     else:
-                        prob = 0  # Self-to-self set to 0
+                        prob = 0
                     
                     # Format probability value to 3 decimal places
                     prob_formatted = f'{prob:.3f}' if prob > 0 else '0'
@@ -4862,21 +4854,20 @@ class CellTypeTank(CITank):
             cell_types = ['CHI', 'D1', 'D2']
             bidirectional_connections = {}
             
-            # Initialize bidirectional connections
+            # Initialize bidirectional connections (including self-activation)
             for source in cell_types:
                 for target in cell_types:
-                    if source != target:
-                        forward_key = f"{source}_to_{target}"
-                        backward_key = f"{target}_to_{source}"
-                        
-                        # Get probabilities for both directions
-                        forward_prob = numeric_probs.get(forward_key, 0.0)
-                        backward_prob = numeric_probs.get(backward_key, 0.0)
-                        
-                        bidirectional_connections[(source, target)] = {
-                            'forward': forward_prob,
-                            'backward': backward_prob
-                        }
+                    forward_key = f"{source}_to_{target}"
+                    backward_key = f"{target}_to_{source}"
+                    
+                    # Get probabilities for both directions
+                    forward_prob = numeric_probs.get(forward_key, 0.0)
+                    backward_prob = numeric_probs.get(backward_key, 0.0)
+                    
+                    bidirectional_connections[(source, target)] = {
+                        'forward': forward_prob,
+                        'backward': backward_prob
+                    }
             
             # Draw bidirectional arrows
             max_prob = max(numeric_probs.values()) if numeric_probs.values() else 1
@@ -4887,6 +4878,36 @@ class CellTypeTank(CITank):
             for (source, target), probs_dict in bidirectional_connections.items():
                 x1, y1 = positions[source]
                 x2, y2 = positions[target]
+                
+                # Handle self-connections (loops)
+                if source == target:
+                    # Draw self-loop
+                    if probs_dict['forward'] > 0.05:  # Show even weak connections
+                        # Line width proportional to probability
+                        line_width = max(1, probs_dict['forward'] / max_prob * 12)
+                        alpha = 0.3 + (probs_dict['forward'] / max_prob) * 0.7
+                        
+                        # Use source node color for self-loop
+                        source_color = node_colors[source]
+                        
+                        # Create loop coordinates (small circle above the node)
+                        loop_radius = 0.05
+                        loop_x = x1
+                        loop_y = y1 + loop_radius
+                        
+                        # Draw loop as a small circle
+                        from bokeh.models import Ellipse
+                        loop = Ellipse(x=loop_x, y=loop_y, width=loop_radius*2, height=loop_radius*2,
+                                     line_color=source_color, line_width=line_width, fill_alpha=0,
+                                     line_alpha=alpha)
+                        p.add_glyph(loop)
+                        
+                        # Add probability label for self-loop
+                        p.text([loop_x], [loop_y + loop_radius*0.5], [f'{probs_dict["forward"]:.2f}'], 
+                              text_align='center', text_baseline='middle',
+                              text_font_size='9pt', text_color=source_color,
+                              background_fill_color='white', background_fill_alpha=0.8)
+                    continue
                 
                 # Calculate offset for bidirectional arrows
                 dx = x2 - x1
@@ -4963,7 +4984,8 @@ class CellTypeTank(CITank):
             legend_items = [
                 ("CHI Connections", "green"),
                 ("D1 Connections", "navy"),
-                ("D2 Connections", "crimson")
+                ("D2 Connections", "crimson"),
+                ("Self-activation loops", "gray")
             ]
             
             for i, (label, color) in enumerate(legend_items):
