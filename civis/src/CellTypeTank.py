@@ -6027,7 +6027,7 @@ class CellTypeTank(CITank):
                     p.line(time_seconds, all_probabilities[conn_type], 
                           line_width=3, color=color_map[conn_type], 
                           legend_label=conn_type, alpha=0.8)
-                    p.circle(time_seconds, all_probabilities[conn_type], 
+                    p.scatter(time_seconds, all_probabilities[conn_type], 
                            size=8, color=color_map[conn_type], alpha=0.8)
             
             p.legend.location = "top_left"
@@ -6210,6 +6210,37 @@ class CellTypeTank(CITank):
                 final_avg_traces[cell_type] = np.zeros(trace_length)
                 final_sem_traces[cell_type] = np.zeros(trace_length)
         
+        # Calculate peak times for each cell type within the time window
+        print(f"\n=== PEAK TIMING ANALYSIS FOR {center_cell_type}-CENTERED POPULATION ===")
+        time_axis = np.linspace(-time_window, time_window, 2 * plot_window_samples + 1)
+        
+        for cell_type in final_avg_traces.keys():
+            if len(final_avg_traces[cell_type]) > 0:
+                # Find the peak within the time window
+                peak_idx = np.argmax(final_avg_traces[cell_type])
+                peak_time = time_axis[peak_idx]
+                peak_value = final_avg_traces[cell_type][peak_idx]
+                
+                print(f"{cell_type} Population Peak:")
+                print(f"  - Peak Time: {peak_time:.3f} seconds (relative to {center_cell_type} peak)")
+                print(f"  - Peak Value: {peak_value:.4f}")
+                print(f"  - Peak Index: {peak_idx}/{len(time_axis)-1} (time window samples)")
+                
+                # Also find the time when signal first exceeds 50% of peak
+                half_peak = peak_value * 0.5
+                above_half = final_avg_traces[cell_type] > half_peak
+                if np.any(above_half):
+                    first_half_idx = np.where(above_half)[0][0]
+                    last_half_idx = np.where(above_half)[0][-1]
+                    first_half_time = time_axis[first_half_idx]
+                    last_half_time = time_axis[last_half_idx]
+                    duration = last_half_time - first_half_time
+                    print(f"  - Half-peak Duration: {duration:.3f} seconds ({first_half_time:.3f} to {last_half_time:.3f})")
+            else:
+                print(f"{cell_type} Population: No valid traces available")
+        
+        print("=" * 60)
+        
         # Calculate average velocity trace
         avg_velocity_trace = None
         sem_velocity_trace = None
@@ -6238,11 +6269,35 @@ class CellTypeTank(CITank):
         for cell_type, signals in all_signals_dict.items():
             stats[f'n_{cell_type.lower()}_neurons'] = len(signals)
         
+        # Calculate peak times for each cell type first
+        peak_times = {}  # Store peak times for annotation
+        for cell_type in final_avg_traces.keys():
+            if len(final_avg_traces[cell_type]) > 0:
+                # Find the peak within the time window
+                peak_idx = np.argmax(final_avg_traces[cell_type])
+                peak_time = time_axis[peak_idx]
+                peak_value = final_avg_traces[cell_type][peak_idx]
+                peak_times[cell_type] = (peak_time, peak_value)
+        
         # Create the plot
         plot_title = (f"{title or f'{center_cell_type}-Centered Population Analysis'}\n"
                       f"All neurons averaged at {center_cell_type} peak times (n={valid_peak_count} peaks)")
         if baseline_correct:
             plot_title += " - Baseline Corrected"
+        
+        # Add peak timing information to title
+        peak_info = []
+        if peak_times:  # Check if peak_times is not empty
+            for cell_type, (peak_time, peak_value) in peak_times.items():
+                peak_info.append(f"{cell_type}: {peak_time:.2f}s")
+            if peak_info:
+                plot_title += f"\nPeak Times: {', '.join(peak_info)}"
+        
+        # Add velocity peak info if available
+        if has_velocity and avg_velocity_trace is not None:
+            vel_peak_idx = np.argmax(avg_velocity_trace)
+            vel_peak_time = time_axis[vel_peak_idx]
+            plot_title += f", Vel: {vel_peak_time:.2f}s"
         
         # Calculate neuron signal range for left y-axis
         all_neuron_values = []
@@ -6276,18 +6331,16 @@ class CellTypeTank(CITank):
         colors = {'D1': 'blue', 'D2': 'red', 'CHI': 'green'}
         
         # Plot traces for each cell type (on left y-axis)
+        # First, plot all population averages
         for cell_type in all_signals_dict.keys():
-            if cell_type in final_avg_traces:
+            if cell_type in final_avg_traces and len(final_avg_traces[cell_type]) > 0:
                 color = colors.get(cell_type, 'black')
                 line_width = 3 if cell_type == center_cell_type else 2
                 
-                # Create legend label with baseline correction info
-                legend_label = f"{cell_type} Population Avg (n={stats[f'n_{cell_type.lower()}_neurons']} neurons)"
+                # Create legend label for population average
+                legend_label = f"{cell_type} Population Avg"
                 if baseline_correct and cell_type in correction_factors:
-                    correction = correction_factors[cell_type]
-                    if correction != 0:
-                        legend_label += f" [Corrected: {correction:+.3f}]"
-                
+                    correction = correction_factors[cell_type]                
                 # Main line (explicitly on default y-axis)
                 p.line(time_axis, final_avg_traces[cell_type], line_width=line_width, color=color, 
                        legend_label=legend_label)
@@ -6297,6 +6350,21 @@ class CellTypeTank(CITank):
                         np.concatenate([final_avg_traces[cell_type] - final_sem_traces[cell_type], 
                                       (final_avg_traces[cell_type] + final_sem_traces[cell_type])[::-1]]),
                         alpha=0.2, color=color)
+            else:
+                # If no valid traces for this cell type, skip plotting
+                continue
+        
+        # Then, plot all peak markers
+        for cell_type in all_signals_dict.keys():
+            if cell_type in final_avg_traces and len(final_avg_traces[cell_type]) > 0:
+                color = colors.get(cell_type, 'black')
+                
+                # Get peak time for this cell type (already calculated above)
+                peak_time, peak_value = peak_times.get(cell_type, (0, 0))
+                
+                # Add peak marker
+                p.scatter([peak_time], [peak_value], size=8, color=color, fill_color=color, 
+                        legend_label=f"{cell_type} Peak")
         
         # Add velocity trace with secondary y-axis if available
         if has_velocity and avg_velocity_trace is not None:
@@ -6321,25 +6389,84 @@ class CellTypeTank(CITank):
             velocity_axis.minor_tick_line_color = "orange"
             p.add_layout(velocity_axis, 'right')
             
-            # Plot velocity trace (explicitly on velocity y-axis)
+            # Find velocity peak time
+            vel_peak_idx = np.argmax(avg_velocity_trace)
+            vel_peak_time = time_axis[vel_peak_idx]
+            vel_peak_value = avg_velocity_trace[vel_peak_idx]
+            
+            # Plot velocity trace (explicitly on velocity y-axis) - add after population averages
             p.line(time_axis, avg_velocity_trace, line_width=2, color='orange', 
                    y_range_name="velocity_axis", alpha=0.8,
-                   legend_label="Smoothed Velocity")
+                   legend_label=f"Smoothed Velocity [Peak: {vel_peak_time:.2f}s]")
             
             # Add velocity SEM patch (explicitly on velocity y-axis)
             p.patch(np.concatenate([time_axis, time_axis[::-1]]), 
                     np.concatenate([avg_velocity_trace - sem_velocity_trace, 
                                   (avg_velocity_trace + sem_velocity_trace)[::-1]]),
                     alpha=0.1, color='orange', y_range_name="velocity_axis")
+            
+            # Add velocity peak marker - add after all other peaks
+            p.scatter([vel_peak_time], [vel_peak_value], size=8, color='orange', fill_color='orange',
+                    y_range_name="velocity_axis", legend_label="Velocity Peak")
         
         # Add vertical line at peak time (t=0) - spans the neuron y-axis range
         p.line([0, 0], [neuron_y_min, neuron_y_max], 
                line_width=3, color='black', line_dash='dashed', alpha=0.8,
                legend_label="Peak Time (t=0)")
         
-        # Configure legend
+        # Configure legend with custom ordering
         p.legend.location = "top_right"
         p.legend.click_policy = "hide"
+        
+        # Reorder legend items to group population averages first, then peaks
+        legend_items = p.legend.items
+        if legend_items:
+            # Separate items by type
+            population_items = []
+            peak_items = []
+            velocity_items = []
+            other_items = []
+            
+            for item in legend_items:
+                label = item.label.value
+                if "Population Avg" in label:
+                    population_items.append(item)
+                elif "Peak" in label:
+                    peak_items.append(item)
+                elif "Velocity" in label:
+                    velocity_items.append(item)
+                else:
+                    other_items.append(item)
+            
+            # Reorder: population averages first, then peaks, then velocity, then others
+            reordered_items = population_items + peak_items + velocity_items + other_items
+            
+            # Update legend with reordered items
+            p.legend.items = reordered_items
+        
+        # Add peak timing summary text to the plot
+        from bokeh.models import Label
+        
+        # Create summary text
+        summary_text = f"Peak Timing Summary:\n"
+        if peak_times:  # Check if peak_times is not empty
+            for cell_type, (peak_time, peak_value) in peak_times.items():
+                summary_text += f"{cell_type}: {peak_time:.2f}s ({peak_value:.3f})\n"
+        else:
+            summary_text += "No valid peaks found\n"
+        if has_velocity and avg_velocity_trace is not None:
+            vel_peak_idx = np.argmax(avg_velocity_trace)
+            vel_peak_time = time_axis[vel_peak_idx]
+            vel_peak_value = avg_velocity_trace[vel_peak_idx]
+            summary_text += f"Velocity: {vel_peak_time:.2f}s ({vel_peak_value:.1f} cm/s)"
+        
+        # Add text annotation to the plot
+        peak_label = Label(x=time_axis[0] + 0.1, y=neuron_y_max * 0.9, 
+                          text=summary_text, text_font_size='10pt',
+                          text_color='black', background_fill_color='white',
+                          background_fill_alpha=0.8, border_line_color='gray',
+                          border_line_width=1)
+        p.add_layout(peak_label)
         
         # Print summary statistics
         print(f"\n{center_cell_type}-Centered Population Analysis Summary:")
@@ -6690,6 +6817,25 @@ class CellTypeTank(CITank):
                 print(f"Baseline correction applied using window {baseline_window} seconds relative to peak")
             if exclude_indices is not None:
                 print(f"Excluded {len(exclusion_set)} time indices from peak analysis")
+        
+        # Add comprehensive peak timing summary
+        print(f"\n" + "="*60)
+        print(f"COMPREHENSIVE PEAK TIMING SUMMARY")
+        print("="*60)
+        print(f"Time window: ±{time_window} seconds around each center cell type peak")
+        print(f"Signal type: {signal_description}")
+        print(f"Analysis includes all neurons of each type (no activity filtering)")
+        if baseline_correct:
+            print(f"Baseline correction: Applied using window {baseline_window} seconds")
+        if exclude_indices is not None:
+            print(f"Excluded timepoints: {len(exclusion_set)} indices")
+        
+        print(f"\nExpected peak timing patterns:")
+        print(f"- D1-centered analysis: D1 peak should be at t=0, D2/CHI peaks may be delayed")
+        print(f"- D2-centered analysis: D2 peak should be at t=0, D1/CHI peaks may be delayed") 
+        print(f"- CHI-centered analysis: CHI peak should be at t=0, D1/D2 peaks may be delayed")
+        print(f"- Velocity peaks typically occur before neural peaks (anticipatory movement)")
+        print("="*60)
         
         # Create and save combined analysis
         if all([d1_plot, d2_plot, chi_plot]):
