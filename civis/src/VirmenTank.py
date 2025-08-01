@@ -599,6 +599,12 @@ class VirmenTank:
             if os.path.exists(save_path) and not overwrite:
                 print("File already exists and overwrite is set to False.")
             else:
+                # Create directory structure if it doesn't exist
+                directory = os.path.dirname(save_path)
+                if directory and not os.path.exists(directory):
+                    os.makedirs(directory, exist_ok=True)
+                    print(f"Created directory: {directory}")
+                
                 # Set font sizes for all output formats if font_size is specified
                 if font_size is not None:
                     set_font_sizes(plot, font_size)
