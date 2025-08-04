@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title %}Connection Analysis - Flask-Bokeh App{% endblock %}
+
+{% block content %}
+    <h1>Connection Analysis Application - {{ version }}</h1>
+    <a href="/connection/v0/" style="margin-right: 20px;">Basic</a>
+    <a href="/connection/v1/" style="margin-right: 20px;">Correlation-Based</a>
+    <a href="/connection/v2/" style="margin-right: 20px;">Probability-Based</a>
+
+    <button id="toggle-info" style="margin: 10px 0; padding: 8px 16px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">
+        Show Info
+    </button>
+
+    <div id="additional-content" style="display: none; background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0;">
+        {% block additional_content %}
+        {% endblock %}
+    </div>
+
+    <script>
+        document.getElementById('toggle-info').addEventListener('click', function() {
+            const content = document.getElementById('additional-content');
+            const button = this;
+            
+            if (content.style.display === 'none') {
+                content.style.display = 'block';
+                button.textContent = 'Hide Info';
+            } else {
+                content.style.display = 'none';
+                button.textContent = 'Show Info';
+            }
+        });
+    </script>
+
+    {{ script|safe }}
+{% endblock %}

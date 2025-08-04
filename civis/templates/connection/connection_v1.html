@@ -1,0 +1,15 @@
+{% extends "connection/connection_base.html" %}
+
+{% block title %}Connection Analysis - Flask-Bokeh App{% endblock %}
+
+{% set version = "Correlation-Based" %}
+
+{% block additional_content %}
+    <p>Traditional correlation-based neural connectivity analysis using pre-computed correlation matrices</p>
+    <ul>
+        <li><strong>Method:</strong> Pearson correlation between neuron calcium signals</li>
+        <li><strong>Data Source:</strong> Pre-computed correlation matrix (*_cor.npy)</li>
+        <li><strong>Connection Strength:</strong> Correlation coefficient (-1 to 1)</li>
+        <li><strong>Visualization:</strong> Red lines for positive correlation, blue for negative</li>
+    </ul>
+{% endblock %} 

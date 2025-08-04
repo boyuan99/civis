@@ -1,0 +1,15 @@
+{% extends "connection/connection_base.html" %}
+
+{% block title %}Connection Analysis - Flask-Bokeh App{% endblock %}
+
+{% set version = "Basic" %}
+
+{% block additional_content %}
+    <p>Basic neural connectivity visualization with manual file input</p>
+    <ul>
+        <li><strong>Method:</strong> Basic correlation visualization</li>
+        <li><strong>Data Source:</strong> Manual file input (neuron data and correlation matrix)</li>
+        <li><strong>Features:</strong> Simple neuron visualization with correlation lines</li>
+        <li><strong>Usage:</strong> Enter paths to neuron data and correlation matrix files</li>
+    </ul>
+{% endblock %} 

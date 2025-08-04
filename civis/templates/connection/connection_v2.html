@@ -1,0 +1,16 @@
+{% extends "connection/connection_base.html" %}
+
+{% block title %}Connection Analysis - Flask-Bokeh App{% endblock %}
+
+{% set version = "Probability-Based" %}
+
+{% block additional_content %}
+    <p>Advanced probability-based neural connectivity analysis using conditional probability within time windows</p>
+    <ul>
+        <li><strong>Method:</strong> Conditional probability analysis using time windows</li>
+        <li><strong>Data Source:</strong> Real-time calculation from calcium imaging data</li>
+        <li><strong>Connection Strength:</strong> Probability (0 to 1) that neuron B activates within a time window after neuron A activates</li>
+        <li><strong>Visualization:</strong> Color-coded by strength (red=strong, orange=medium, yellow=weak)</li>
+        <li><strong>Features:</strong> Adjustable time window, configurable threshold, cell type filtering</li>
+    </ul>
+{% endblock %}
