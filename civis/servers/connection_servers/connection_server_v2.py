@@ -206,7 +206,8 @@ def connection_bkapp_v2(doc):
         
         # Add centroids with selection highlighting
         circle_renderer = p.scatter(x='x', y='y', source=source, size=10, fill_color='colors',
-                                    line_color='colors', alpha=0.7)
+                                    line_color='colors', alpha=0.7,
+                                    nonselection_alpha=0.7)
         
         # Create selection glyph with larger size and brighter colors
         selection_glyph = circle_renderer.glyph.clone()
