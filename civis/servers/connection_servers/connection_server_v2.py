@@ -16,27 +16,38 @@ sys.path.append(project_root)
 def connection_bkapp_v2(doc):
     from civis.src.CellTypeTank import CellTypeTank
     
-    def load_data(neuron_path_input, time_window_slider, threshold_slider):
+    # Store loaded data globally to avoid reloading on slider changes
+    loaded_data = {'cell_tank': None, 'connectivity_analyzer': None, 'session_name': None}
+    
+    def load_data(session_name, time_window, threshold):
+        """Load data from file if not already loaded or if session changed"""
         try:
-            config_path = os.path.join(project_root, 'config.json')
-            with open(config_path, 'r') as file:
-                config = json.load(file)
+            # Only reload if session name changed or data not loaded
+            if loaded_data['session_name'] != session_name or loaded_data['cell_tank'] is None:
+                config_path = os.path.join(project_root, 'config.json')
+                with open(config_path, 'r') as file:
+                    config = json.load(file)
+                
+                print(f"Loading neuron data {session_name}...")
+                cell_tank = CellTypeTank(session_name)
+                print(f"Successfully loaded: {session_name}")
 
-            session_name = neuron_path_input.value
-            time_window = time_window_slider.value
-            threshold = threshold_slider.value
+                # Create connectivity analyzer
+                print("Creating connectivity analyzer...")
+                connectivity_analyzer = cell_tank.create_connectivity_analyzer()
+                
+                # Run binary signals analysis
+                print("Running binary signals analysis...")
+                connectivity_analyzer.run_binary_signals_analysis(window_size=5)
+                
+                # Store loaded data
+                loaded_data['cell_tank'] = cell_tank
+                loaded_data['connectivity_analyzer'] = connectivity_analyzer
+                loaded_data['session_name'] = session_name
             
-            print(f"Loading neuron data {session_name}...")
-            cell_tank = CellTypeTank(session_name)
-            print(f"Successfully loaded: {session_name}")
-
-            # Create connectivity analyzer
-            print("Creating connectivity analyzer...")
-            connectivity_analyzer = cell_tank.create_connectivity_analyzer()
-            
-            # Run binary signals analysis
-            print("Running binary signals analysis...")
-            connectivity_analyzer.run_binary_signals_analysis(window_size=5)
+            # Get stored data
+            cell_tank = loaded_data['cell_tank']
+            connectivity_analyzer = loaded_data['connectivity_analyzer']
             
             # Run conditional probabilities analysis with the specified time window
             print(f"Running conditional probabilities analysis with time window {time_window}...")
@@ -84,9 +95,39 @@ def connection_bkapp_v2(doc):
 
     view = CDSView(filter=GroupFilter(column_name='categories', group='All'))
     
-    def update_data():
-        # Loads data from file
-        data = load_data(neuron_path_input, time_window_slider, threshold_slider)
+    # Store current visualization data
+    viz_data = {
+        'prob_matrix': None,
+        'neuron_labels': None,
+        'neuron_positions': {},
+        'neuron_colors': {},
+        'neuron_categories': {},
+        'cell_types': None,
+        'time_window': None,
+        'threshold': None
+    }
+    
+    def update_data(load_new=False):
+        """Update visualization with current parameters"""
+        session_name = neuron_path_input.value
+        time_window = time_window_slider.value
+        threshold = threshold_slider.value
+        
+        # Don't proceed if no session name
+        if not session_name:
+            details_div.text = "Please enter a session name"
+            return
+        
+        # Only load data if needed (new session or forced reload)
+        if load_new or loaded_data['session_name'] != session_name:
+            data = load_data(session_name, time_window, threshold)
+        elif loaded_data['cell_tank'] is not None:
+            # Recompute with new time window if data already loaded
+            data = load_data(session_name, time_window, threshold)
+        else:
+            details_div.text = "Please load data first"
+            return
+            
         if isinstance(data, str):
             details_div.text = data
             return
@@ -109,6 +150,13 @@ def connection_bkapp_v2(doc):
         prob_matrix = prob_data['probability_matrix']
         neuron_labels = prob_data['neuron_labels']
         cell_types = prob_data['cell_types']
+        
+        # Store visualization data
+        viz_data['prob_matrix'] = prob_matrix
+        viz_data['neuron_labels'] = neuron_labels
+        viz_data['cell_types'] = cell_types
+        viz_data['time_window'] = time_window
+        viz_data['threshold'] = threshold
         
         print(f"Probability matrix shape: {prob_matrix.shape}")
         print(f"Number of neuron labels: {len(neuron_labels)}")
@@ -166,6 +214,11 @@ def connection_bkapp_v2(doc):
                 neuron_categories[label] = cell_type
             else:
                 print(f"Warning: actual_idx {actual_idx} out of bounds for {label}")
+        
+        # Store neuron data for reuse
+        viz_data['neuron_positions'] = neuron_positions
+        viz_data['neuron_colors'] = neuron_colors
+        viz_data['neuron_categories'] = neuron_categories
         
         print(f"Successfully mapped {len(neuron_positions)} neurons")
         
@@ -241,93 +294,117 @@ def connection_bkapp_v2(doc):
         tap_tool = TapTool(renderers=[circle_renderer])
         p.add_tools(tap_tool)
         
-        # Add color bar for connection strength
-        color_bar = ColorBar(color_mapper=color_mapper, 
-                           label_standoff=12, 
-                           border_line_color=None, 
-                           location=(0, 0),
-                           title="Connection Strength",
-                           title_text_font_size="12pt",
-                           title_standoff=20)
-        p.add_layout(color_bar, 'right')
+        # Add color bar for connection strength (only if not already added)
+        # Check if color bar already exists in the plot
+        has_colorbar = any(isinstance(renderer, ColorBar) for renderer in p.right)
+        if not has_colorbar:
+            color_bar = ColorBar(color_mapper=color_mapper, 
+                               label_standoff=12, 
+                               border_line_color=None, 
+                               location=(0, 0),
+                               title="Connection Strength",
+                               title_text_font_size="12pt",
+                               title_standoff=20)
+            p.add_layout(color_bar, 'right')
         
-        def update_display_based_on_category(attr, old, new):
-            selected_category = category_select.value
-            if selected_category == "All":
-                source.data['all'] = ['all'] * len(source.data['x'])
-                view.filter = GroupFilter(column_name='all', group='all')
-            else:
-                view.filter = GroupFilter(column_name='categories', group=selected_category)
+        # Update lines if a neuron is already selected
+        if source.selected.indices:
+            update_lines_from_selection()
+    
+    def update_lines_from_selection():
+        """Update connection lines based on current selection and threshold"""
+        selected_indices = source.selected.indices
+        threshold = threshold_slider.value
         
-        category_select.on_change('value', update_display_based_on_category)
-        
-        def update_lines(attr, old, new):
-            selected_indices = source.selected.indices
+        if not selected_indices or viz_data['prob_matrix'] is None:
+            lines_source.data = {'xs': [], 'ys': [], 'colors': [], 'strengths': []}
             if not selected_indices:
-                lines_source.data = {'xs': [], 'ys': [], 'colors': [], 'strengths': []}
                 details_div.text = "No neuron selected"
-                return
+            return
+        
+        selected_index = selected_indices[0]
+        selected_label = source.data['ids'][selected_index]
+        
+        # Find the index of selected neuron in probability matrix
+        if selected_label in viz_data['neuron_labels']:
+            selected_prob_idx = viz_data['neuron_labels'].index(selected_label)
             
-            selected_index = selected_indices[0]
-            selected_label = source.data['ids'][selected_index]
+            new_xs, new_ys, new_colors, new_strengths = [], [], [], []
+            connection_details = []
             
-            # Find the index of selected neuron in probability matrix
-            if selected_label in neuron_labels:
-                selected_prob_idx = neuron_labels.index(selected_label)
-                
-                new_xs, new_ys, new_colors, new_strengths = [], [], [], []
-                connection_details = []
-                
-                for i, prob in enumerate(prob_matrix[selected_prob_idx]):
-                    if i != selected_prob_idx and prob >= threshold:  # Only show connections above threshold
-                        target_label = neuron_labels[i]
+            for i, prob in enumerate(viz_data['prob_matrix'][selected_prob_idx]):
+                if i != selected_prob_idx and prob >= threshold:  # Only show connections above threshold
+                    target_label = viz_data['neuron_labels'][i]
+                    
+                    if target_label in viz_data['neuron_positions']:
+                        x0, y0 = viz_data['neuron_positions'][selected_label]
+                        x1, y1 = viz_data['neuron_positions'][target_label]
                         
-                        if target_label in neuron_positions:
-                            x0, y0 = neuron_positions[selected_label]
-                            x1, y1 = neuron_positions[target_label]
-                            
-                            new_xs.append([x0, x1])
-                            new_ys.append([y0, y1])
-                            
-                            # Color based on connection strength using color mapper (range 0-0.5)
-                            # Clamp probability to 0.5 max for better visualization
-                            clamped_prob = min(prob, 0.5)
-                            color_idx = int(clamped_prob / 0.5 * (len(color_mapper.palette) - 1))
-                            color = color_mapper.palette[color_idx]
-                            
-                            new_colors.append(color)
-                            new_strengths.append(max(3, clamped_prob * 16))  # Scale line width for 0-0.5 range
-                            
-                            connection_details.append(f"{target_label}: {prob:.3f}")
-                
-                lines_source.data = {
-                    'xs': new_xs, 
-                    'ys': new_ys, 
-                    'colors': new_colors, 
-                    'strengths': new_strengths
-                }
-                
-                details = f"Selected Neuron: {selected_label}<br>" \
-                         f"Category: {source.data['categories'][selected_index]}<br>" \
-                         f"Time Window: {time_window} samples<br>" \
-                         f"Threshold: {threshold}<br>" \
-                         f"Connections: {len(connection_details)}<br>" \
-                         f"Connection Details:<br>" + "<br>".join(connection_details)
-                details_div.text = details
-        
-        source.selected.on_change('indices', update_lines)
-        
-        # Replace placeholder with the actual plot and details div
-        layout.children[1].children[1] = column(category_select, details_div)
+                        new_xs.append([x0, x1])
+                        new_ys.append([y0, y1])
+                        
+                        # Color based on connection strength using color mapper (range 0-0.5)
+                        # Clamp probability to 0.5 max for better visualization
+                        clamped_prob = min(prob, 0.5)
+                        color_idx = int(clamped_prob / 0.5 * (len(color_mapper.palette) - 1))
+                        color = color_mapper.palette[color_idx]
+                        
+                        new_colors.append(color)
+                        new_strengths.append(max(3, clamped_prob * 16))  # Scale line width for 0-0.5 range
+                        
+                        connection_details.append(f"{target_label}: {prob:.3f}")
+            
+            lines_source.data = {
+                'xs': new_xs, 
+                'ys': new_ys, 
+                'colors': new_colors, 
+                'strengths': new_strengths
+            }
+            
+            details = f"Selected Neuron: {selected_label}<br>" \
+                     f"Category: {source.data['categories'][selected_index]}<br>" \
+                     f"Time Window: {viz_data['time_window']} samples<br>" \
+                     f"Threshold: {threshold}<br>" \
+                     f"Connections: {len(connection_details)}<br>" \
+                     f"Connection Details:<br>" + "<br>".join(connection_details)
+            details_div.text = details
+    
+    def update_display_based_on_category(attr, old, new):
+        selected_category = category_select.value
+        if selected_category == "All":
+            source.data['all'] = ['all'] * len(source.data['x'])
+            view.filter = GroupFilter(column_name='all', group='all')
+        else:
+            view.filter = GroupFilter(column_name='categories', group=selected_category)
+    
+    def selection_change_callback(attr, old, new):
+        """Callback for when neuron selection changes"""
+        update_lines_from_selection()
+    
+    def threshold_change_callback(attr, old, new):
+        """Callback for when threshold slider changes"""
+        update_lines_from_selection()
+    
+    def time_window_change_callback(attr, old, new):
+        """Callback for when time window slider changes"""
+        if loaded_data['cell_tank'] is not None:
+            update_data(load_new=False)
+    
+    # Connect callbacks
+    category_select.on_change('value', update_display_based_on_category)
+    source.selected.on_change('indices', selection_change_callback)
+    threshold_slider.on_change('value', threshold_change_callback)
+    time_window_slider.on_change('value', time_window_change_callback)
     
     # Format graph and load button
-    load_button.on_click(update_data)
+    load_button.on_click(lambda: update_data(load_new=True))
+    
     controls = column(
         row(neuron_path_input, column(Spacer(height=20), load_button)),
         time_window_slider,
         threshold_slider
     )
-    layout = row(p, column(controls, details_div))
+    layout = row(p, column(controls, column(category_select, details_div)))
     doc.add_root(layout)
 
-connection_bkapp_v2(curdoc()) 
+connection_bkapp_v2(curdoc())
