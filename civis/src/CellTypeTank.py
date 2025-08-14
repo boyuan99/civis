@@ -4665,10 +4665,12 @@ class CellTypeTank(CITank):
             
             return layout
         
+
         def create_conditional_probability_heatmap(self, save_path=None, title="Conditional Probability Heatmap", 
-                                                notebook=False, overwrite=False, font_size=None):
+                                          notebook=False, overwrite=False, font_size=None, 
+                                          normalize_by_baseline=True):
             """
-            Create conditional probability heatmap matrix visualization
+            Create conditional probability heatmap matrix visualization with optional baseline normalization
             
             Parameters:
             -----------
@@ -4682,6 +4684,8 @@ class CellTypeTank(CITank):
                 Flag to indicate whether to overwrite existing file
             font_size : str, optional
                 Font size for all text elements in the plot
+            normalize_by_baseline : bool
+                If True, normalize conditional probabilities by baseline firing rates
             
             Returns:
             --------
@@ -4692,7 +4696,7 @@ class CellTypeTank(CITank):
                 return None
                 
             from bokeh.plotting import figure
-            from bokeh.models import ColumnDataSource, HoverTool
+            from bokeh.models import ColumnDataSource, HoverTool, ColorBar, LinearColorMapper
             from bokeh.transform import linear_cmap
             from bokeh.palettes import RdYlBu11
             import pandas as pd
@@ -4703,69 +4707,194 @@ class CellTypeTank(CITank):
                 print("Warning: No conditional probabilities data found. Please run 'run_conditional_probabilities_analysis()' first.")
                 return None
             
+            # Calculate baseline firing rates for each cell type
+            baseline_rates = {}
+            if normalize_by_baseline:
+                print("Calculating baseline firing rates for normalization...")
+                
+                # Get binary signals for each cell type
+                d1_binary = self.binary_signals['D1']
+                d2_binary = self.binary_signals['D2']
+                chi_binary = self.binary_signals['CHI']
+                
+                # Calculate baseline activation probability for each cell type
+                # (proportion of time when at least one neuron of that type is active)
+                d1_population_active = np.sum(d1_binary, axis=0) > 0
+                d2_population_active = np.sum(d2_binary, axis=0) > 0
+                chi_population_active = np.sum(chi_binary, axis=0) > 0
+                
+                baseline_rates['D1'] = np.mean(d1_population_active)
+                baseline_rates['D2'] = np.mean(d2_population_active)
+                baseline_rates['CHI'] = np.mean(chi_population_active)
+                
+                print(f"Baseline activation rates:")
+                print(f"  D1: {baseline_rates['D1']:.4f}")
+                print(f"  D2: {baseline_rates['D2']:.4f}")
+                print(f"  CHI: {baseline_rates['CHI']:.4f}")
+            
             # Use the shortest time window data
             window_key = list(self.conditional_probs.keys())[0]
             probs = self.conditional_probs[window_key]
             
-            # Create 3x3 matrix - corrected coordinate system
+            # Create 3x3 matrices - one for raw and one for normalized
             cell_types = ['CHI', 'D1', 'D2']
             matrix_data = []
+            
+            # Also store the raw probability matrix for comparison
+            raw_matrix = np.zeros((3, 3))
+            normalized_matrix = np.zeros((3, 3))
             
             for i, source in enumerate(cell_types):
                 for j, target in enumerate(cell_types):
                     key = f'{source}_to_{target}'
                     prob_value = probs.get(key, 0)
+                    
                     # Handle both numeric and non-numeric values
                     if isinstance(prob_value, (int, float, np.integer, np.floating)):
-                        prob = prob_value
+                        raw_prob = prob_value
                     else:
-                        prob = 0
+                        raw_prob = 0
                     
-                    # Format probability value to 3 decimal places
-                    prob_formatted = f'{prob:.3f}' if prob > 0 else '0'
+                    # Store raw probability
+                    raw_matrix[i, j] = raw_prob
+                    
+                    # Calculate normalized probability
+                    if normalize_by_baseline and baseline_rates:
+                        # Normalize: P(Target|Source) / P(Target)
+                        # This gives us the fold-change over baseline
+                        if baseline_rates[target] > 0:
+                            normalized_prob = raw_prob / baseline_rates[target]
+                        else:
+                            normalized_prob = 0
+                        
+                        # Store normalized value
+                        normalized_matrix[i, j] = normalized_prob
+                        
+                        # Use normalized value for display
+                        display_prob = normalized_prob
+                        
+                        # Format text based on normalization
+                        if normalized_prob > 0:
+                            # Show both raw and normalized values
+                            prob_formatted = f'{normalized_prob:.2f}\n({raw_prob:.3f})'
+                        else:
+                            prob_formatted = '0'
+                        
+                        # Store additional info for hover
+                        fold_change = normalized_prob
+                        percent_change = (normalized_prob - 1) * 100 if normalized_prob > 0 else -100
+                        
+                    else:
+                        # Use raw probability
+                        display_prob = raw_prob
+                        prob_formatted = f'{raw_prob:.3f}' if raw_prob > 0 else '0'
+                        fold_change = 1
+                        percent_change = 0
                     
                     matrix_data.append({
                         'source': source,
                         'target': target,
-                        'probability': prob,
+                        'raw_probability': raw_prob,
+                        'normalized_probability': normalized_prob if normalize_by_baseline else raw_prob,
+                        'display_value': display_prob,
                         'probability_text': prob_formatted,
                         'x': j,      # Column index - Target
                         'y': 2-i,    # Row index - Source (flipped: CHI=2, D1=1, D2=0)
-                        'color_value': prob
+                        'color_value': display_prob,
+                        'baseline_rate': baseline_rates.get(target, 0) if normalize_by_baseline else 0,
+                        'fold_change': fold_change,
+                        'percent_change': percent_change
                     })
             
             df = pd.DataFrame(matrix_data)
             
-            # Create HoverTool
-            hover = HoverTool(tooltips=[
-                ('From', '@source'),
-                ('To', '@target'),
-                ('Probability', '@probability{0.000}')
-            ])
+            # Create HoverTool with more detailed information
+            if normalize_by_baseline:
+                hover = HoverTool(tooltips=[
+                    ('From', '@source'),
+                    ('To', '@target'),
+                    ('Raw Probability', '@raw_probability{0.000}'),
+                    ('Target Baseline Rate', '@baseline_rate{0.000}'),
+                    ('Normalized (Fold Change)', '@normalized_probability{0.00}'),
+                    ('Percent Change', '@percent_change{+0.0}%')
+                ])
+            else:
+                hover = HoverTool(tooltips=[
+                    ('From', '@source'),
+                    ('To', '@target'),
+                    ('Probability', '@raw_probability{0.000}')
+                ])
             
-            p = figure(width=450, height=450,
-                      title="Conditional Activation Probability Matrix P(Target|Source)",
-                      x_range=[-0.5, 2.5],           # Extended range to center squares
-                      y_range=[-0.5, 2.5],           # Extended range to center squares
-                      tools=[hover, 'pan', 'wheel_zoom', 'box_zoom', 'reset', 'save'])
+            # Adjust title based on normalization
+            if normalize_by_baseline:
+                plot_title = "Normalized Conditional Activation Matrix\nP(Target|Source) / P(Target baseline)"
+                color_label = "Fold Change Over Baseline"
+            else:
+                plot_title = "Conditional Activation Probability Matrix\nP(Target|Source)"
+                color_label = "Probability"
+            
+            p = figure(width=500, height=450,
+                    title=plot_title,
+                    x_range=[-0.5, 2.5],
+                    y_range=[-0.5, 2.5],
+                    tools=[hover, 'pan', 'wheel_zoom', 'box_zoom', 'reset', 'save'])
             
             source_data = ColumnDataSource(df)
             
+            # Adjust color mapping based on normalization
+            if normalize_by_baseline:
+                # For normalized data, center color scale at 1 (no change)
+                # Values > 1 indicate enhancement, < 1 indicate suppression
+                max_val = df['display_value'].max()
+                min_val = df['display_value'].min()
+                
+                # Use diverging color palette centered at 1
+                from bokeh.palettes import RdBu11
+                palette = RdBu11
+                
+                # Create custom color mapper centered at 1
+                if max_val > 1 and min_val < 1:
+                    # Ensure symmetric range around 1
+                    max_deviation = max(max_val - 1, 1 - min_val)
+                    color_mapper = LinearColorMapper(
+                        palette=palette,
+                        low=1 - max_deviation,
+                        high=1 + max_deviation
+                    )
+                else:
+                    color_mapper = LinearColorMapper(
+                        palette=palette,
+                        low=min_val,
+                        high=max_val
+                    )
+            else:
+                # For raw probabilities, use standard 0-1 scale
+                color_mapper = LinearColorMapper(
+                    palette=RdYlBu11,
+                    low=0,
+                    high=df['display_value'].max()
+                )
+            
             # Draw heatmap squares
-            p.rect(x='x', y='y', width=0.9, height=0.9, source=source_data,
-                   fill_color=linear_cmap('color_value', RdYlBu11, 0, df['probability'].max()),
-                   line_color='white', line_width=3)
+            rect_glyph = p.rect(x='x', y='y', width=0.9, height=0.9, source=source_data,
+                            fill_color={'field': 'color_value', 'transform': color_mapper},
+                            line_color='white', line_width=3)
             
             # Add probability value text
             p.text(x='x', y='y', text='probability_text', source=source_data,
-                   text_align='center', text_baseline='middle', text_font_size='16pt',
-                   text_color='black', text_font_style='bold')
+                text_align='center', text_baseline='middle', text_font_size='14pt',
+                text_color='black', text_font_style='bold')
+            
+            # Add color bar
+            color_bar = ColorBar(color_mapper=color_mapper, width=8, location=(0,0),
+                                title=color_label)
+            p.add_layout(color_bar, 'right')
             
             # Set axis labels
             p.xaxis.ticker = [0, 1, 2]
             p.yaxis.ticker = [0, 1, 2]
             p.xaxis.major_label_overrides = {0: "CHI", 1: "D1", 2: "D2"}
-            p.yaxis.major_label_overrides = {0: "D2", 1: "D1", 2: "CHI"}  # Flipped labels
+            p.yaxis.major_label_overrides = {0: "D2", 1: "D1", 2: "CHI"}
             
             # Correct axis labels
             p.xaxis.axis_label = "Target (Activated Neuron Type)"
@@ -4777,19 +4906,35 @@ class CellTypeTank(CITank):
             p.xaxis.major_label_text_font_size = "12pt"
             p.yaxis.major_label_text_font_size = "12pt"
             
+            # Print summary statistics
+            if normalize_by_baseline:
+                print("\nNormalized Conditional Probability Summary:")
+                print("=" * 50)
+                for i, source in enumerate(cell_types):
+                    for j, target in enumerate(cell_types):
+                        norm_val = normalized_matrix[i, j]
+                        raw_val = raw_matrix[i, j]
+                        if norm_val > 1.5:
+                            print(f"{source} → {target}: {norm_val:.2f}x baseline (raw={raw_val:.3f}) - STRONG ENHANCEMENT")
+                        elif norm_val > 1.2:
+                            print(f"{source} → {target}: {norm_val:.2f}x baseline (raw={raw_val:.3f}) - Moderate enhancement")
+                        elif norm_val < 0.8:
+                            print(f"{source} → {target}: {norm_val:.2f}x baseline (raw={raw_val:.3f}) - Suppression")
+            
             # Set default save path if none provided
             if save_path is None:
+                suffix = '_normalized' if normalize_by_baseline else ''
                 save_path = os.path.join(self.tank.config["SummaryPlotsPath"], 
-                                       self.tank.session_name, 
-                                       'conditional_probability_heatmap.html')
+                                    self.tank.session_name, 
+                                    f'conditional_probability_heatmap{suffix}.html')
             
             # Use tank's output_bokeh_plot method if save_path is provided
             if save_path:
                 self.tank.output_bokeh_plot(p, save_path=save_path, title=title, 
-                                          notebook=notebook, overwrite=overwrite, font_size=font_size)
+                                        notebook=notebook, overwrite=overwrite, font_size=font_size)
             
             return p
-        
+
         def create_network_strength_diagram(self, save_path=None, title="Network Connection Strength Diagram", 
                                           notebook=False, overwrite=False, font_size=None):
             """
