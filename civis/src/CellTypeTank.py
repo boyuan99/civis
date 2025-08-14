@@ -4841,39 +4841,20 @@ class CellTypeTank(CITank):
             
             source_data = ColumnDataSource(df)
             
-            # Adjust color mapping based on normalization
-            if normalize_by_baseline:
-                # For normalized data, center color scale at 1 (no change)
-                # Values > 1 indicate enhancement, < 1 indicate suppression
-                max_val = df['display_value'].max()
-                min_val = df['display_value'].min()
-                
-                # Use diverging color palette centered at 1
-                from bokeh.palettes import RdBu11
-                palette = RdBu11
-                
-                # Create custom color mapper centered at 1
-                if max_val > 1 and min_val < 1:
-                    # Ensure symmetric range around 1
-                    max_deviation = max(max_val - 1, 1 - min_val)
-                    color_mapper = LinearColorMapper(
-                        palette=palette,
-                        low=1 - max_deviation,
-                        high=1 + max_deviation
-                    )
-                else:
-                    color_mapper = LinearColorMapper(
-                        palette=palette,
-                        low=min_val,
-                        high=max_val
-                    )
-            else:
-                # For raw probabilities, use standard 0-1 scale
-                color_mapper = LinearColorMapper(
-                    palette=RdYlBu11,
-                    low=0,
-                    high=df['display_value'].max()
-                )
+
+            # For normalized data, center color scale at 1 (no change)
+            # Values > 1 indicate enhancement, < 1 indicate suppression
+            max_val = df['display_value'].max()
+            min_val = df['display_value'].min()
+            
+            from bokeh.palettes import OrRd9
+            palette = OrRd9[::-1]
+            
+            color_mapper = LinearColorMapper(
+                palette=palette,
+                low=0,
+                high=max_val
+            )
             
             # Draw heatmap squares
             rect_glyph = p.rect(x='x', y='y', width=0.9, height=0.9, source=source_data,
