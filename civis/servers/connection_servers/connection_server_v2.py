@@ -73,7 +73,8 @@ def connection_bkapp_v2(doc):
                active_scroll="wheel_zoom", title="Neural Connectivity Based on Activity Probability")
     
     # Adds empty image
-    p.image(image=[], x=0, y=0, palette="Greys256")
+    empty_green = np.zeros((1, 1), dtype=np.uint32)
+    p.image_rgba(image=[empty_green], x=0, y=0, dw=1, dh=1)
     
     # Create color mapper for connection strength with more colors and range 0-0.5
     color_mapper = LinearColorMapper(palette=["lightblue", "blue", "cyan", "green", "yellow", "orange", "red"], low=0, high=0.5)
@@ -169,9 +170,9 @@ def connection_bkapp_v2(doc):
         
         # Create color mapping for cell types
         cell_type_colors = {
-            'D1': '#F44336',  # Red
-            'D2': '#2196F3',  # Blue  
-            'CHI': '#4CAF50'   # Green
+            'D1': '#2196F3',  # Blue  
+            'D2': '#F44336',  # Red  
+            'CHI': '#8A2BE2'   # Blueviolet
         }
         
         # Map neuron labels to positions and colors
@@ -254,8 +255,22 @@ def connection_bkapp_v2(doc):
         p.y_range.start = 0
         p.y_range.end = height
         
-        # Update image
-        p.image(image=[np.flipud(cell_tank.Cn)], x=0, y=0, dw=width, dh=height, palette="Greys256")
+        # Update image - Create green image with RGBA method
+        def create_green_rgba_image(gray_image):
+            """Convert grayscale image to green RGBA image"""
+            normalized_image = gray_image.astype(float) / gray_image.max()
+            img = np.empty(gray_image.shape, dtype=np.uint32)
+            view = img.view(dtype=np.uint8).reshape((*gray_image.shape, 4))
+            
+            view[:, :, :] = 0
+            view[:, :, 1] = (normalized_image * 255).astype(np.uint8)  # Green channel
+            view[:, :, 3] = 255  # Alpha channel (opaque)
+            
+            return img
+        
+        # Create green RGBA image
+        green_image = create_green_rgba_image(np.flipud(cell_tank.Cn))
+        p.image_rgba(image=[green_image], x=0, y=0, dw=width, dh=height)
         
         # Add centroids with selection highlighting
         circle_renderer = p.scatter(x='x', y='y', source=source, size=10, fill_color='colors',
