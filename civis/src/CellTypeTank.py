@@ -185,6 +185,7 @@ class CellTypeTank(CITank):
         """
         Plot average calcium traces for D1, D2, and/or CHI neuron populations, along with velocity, around specific events.
         Uses dual y-axes to separately scale calcium and velocity signals, with optimized scaling.
+        Includes error bands (shaded areas) showing ±1 standard deviation around the mean for each cell type.
         
         Parameters:
         -----------
@@ -252,19 +253,20 @@ class CellTypeTank(CITank):
         # Use provided title or generate default
         plot_title = title or default_title
         
-        # Calculate average signals around the event for each cell type
-        C_avg_mean_d1 = None
-        C_avg_mean_d2 = None
-        C_avg_mean_chi = None
-        
         if show_d1:
             [C_avg_d1, _, _, C_avg_mean_d1, _] = self.average_across_indices(indices, signal=d1_signal, cut_interval=cut_interval)
+            # Calculate standard deviation across neurons
+            C_avg_std_d1 = np.std(C_avg_d1, axis=0)
             
         if show_d2:
-            [_, _, _, C_avg_mean_d2, _] = self.average_across_indices(indices, signal=d2_signal, cut_interval=cut_interval)
+            [C_avg_d2, _, _, C_avg_mean_d2, _] = self.average_across_indices(indices, signal=d2_signal, cut_interval=cut_interval)
+            # Calculate standard deviation across neurons
+            C_avg_std_d2 = np.std(C_avg_d2, axis=0)
             
         if show_chi:
-            [_, _, _, C_avg_mean_chi, _] = self.average_across_indices(indices, signal=chi_signal, cut_interval=cut_interval)
+            [C_avg_chi, _, _, C_avg_mean_chi, _] = self.average_across_indices(indices, signal=chi_signal, cut_interval=cut_interval)
+            # Calculate standard deviation across neurons
+            C_avg_std_chi = np.std(C_avg_chi, axis=0)
         
         # Always include velocity
         [_, _, _, velocity_mean, _] = self.average_across_indices(indices, signal=self.smoothed_velocity, cut_interval=cut_interval)
@@ -273,18 +275,31 @@ class CellTypeTank(CITank):
         time_axis = (np.array(range(2 * cut_interval)) - cut_interval) / self.ci_rate
         
         # Calculate optimal y-axis ranges for calcium signals with padding
-        # Collect all the signals we're going to plot
+        # Collect all the signals we're going to plot (including error bands)
         all_ca_signals = []
-        if show_d1:
-            all_ca_signals.append(C_avg_mean_d1)
-        if show_d2:
-            all_ca_signals.append(C_avg_mean_d2)
-        if show_chi:
-            all_ca_signals.append(C_avg_mean_chi)
+        all_ca_upper = []
+        all_ca_lower = []
         
-        # Calculate min and max across all cell types
-        ca_min = min(signal.min() for signal in all_ca_signals)
-        ca_max = max(signal.max() for signal in all_ca_signals)
+        if show_d1 and C_avg_mean_d1 is not None and C_avg_std_d1 is not None:
+            all_ca_signals.append(C_avg_mean_d1)
+            all_ca_upper.append(C_avg_mean_d1 + C_avg_std_d1)
+            all_ca_lower.append(C_avg_mean_d1 - C_avg_std_d1)
+        if show_d2 and C_avg_mean_d2 is not None and C_avg_std_d2 is not None:
+            all_ca_signals.append(C_avg_mean_d2)
+            all_ca_upper.append(C_avg_mean_d2 + C_avg_std_d2)
+            all_ca_lower.append(C_avg_mean_d2 - C_avg_std_d2)
+        if show_chi and C_avg_mean_chi is not None and C_avg_std_chi is not None:
+            all_ca_signals.append(C_avg_mean_chi)
+            all_ca_upper.append(C_avg_mean_chi + C_avg_std_chi)
+            all_ca_lower.append(C_avg_mean_chi - C_avg_std_chi)
+        
+        # Calculate min and max across all cell types (including error bands)
+        if all_ca_lower and all_ca_upper:
+            ca_min = min(signal.min() for signal in all_ca_lower)
+            ca_max = max(signal.max() for signal in all_ca_upper)
+        else:
+            # Fallback if no signals to plot
+            ca_min, ca_max = -1, 1
         
         # Add padding to ensure the signals are well-positioned in the plot (10% padding)
         ca_range = ca_max - ca_min
@@ -292,8 +307,9 @@ class CellTypeTank(CITank):
         ca_max = ca_max + (ca_range * 0.1)
         
         # Create plot with optimized y-axis for calcium signals
-        p = figure(width=800, height=400, active_scroll="wheel_zoom", title=plot_title,
+        p = figure(width=1000, height=400, active_scroll="wheel_zoom", title=plot_title,
                    x_axis_label='Time (s)', y_axis_label='Calcium Signal (ΔF/F)',
+                   x_range=Range1d(-cut_interval/self.ci_rate, cut_interval/self.ci_rate),
                    y_range=Range1d(ca_min, ca_max))
         
         # Add secondary y-axis for velocity with its own optimized range
@@ -307,17 +323,32 @@ class CellTypeTank(CITank):
         # Add calcium traces and velocity to plot (without adding to legend)
         legend_items = []
         
-        if show_d1:
-            d1_line = p.line(time_axis, C_avg_mean_d1, line_width=3, color='navy', alpha=0.6)
-            legend_items.append(("D1", [d1_line]))
+        if show_d1 and C_avg_mean_d1 is not None and C_avg_std_d1 is not None:
+            # Add error band for D1
+            d1_band = p.patch(np.concatenate([time_axis, time_axis[::-1]]), 
+                             np.concatenate([C_avg_mean_d1 + C_avg_std_d1, (C_avg_mean_d1 - C_avg_std_d1)[::-1]]),
+                             alpha=0.2, color='navy', line_alpha=0)
+            # Add mean line for D1
+            d1_line = p.line(time_axis, C_avg_mean_d1, line_width=3, color='navy', alpha=0.8)
+            legend_items.append(("D1", [d1_line, d1_band]))
         
-        if show_d2:
-            d2_line = p.line(time_axis, C_avg_mean_d2, line_width=3, color='red', alpha=0.6)
-            legend_items.append(("D2", [d2_line]))
+        if show_d2 and C_avg_mean_d2 is not None and C_avg_std_d2 is not None:
+            # Add error band for D2
+            d2_band = p.patch(np.concatenate([time_axis, time_axis[::-1]]), 
+                             np.concatenate([C_avg_mean_d2 + C_avg_std_d2, (C_avg_mean_d2 - C_avg_std_d2)[::-1]]),
+                             alpha=0.2, color='red', line_alpha=0)
+            # Add mean line for D2
+            d2_line = p.line(time_axis, C_avg_mean_d2, line_width=3, color='red', alpha=0.8)
+            legend_items.append(("D2", [d2_line, d2_band]))
         
-        if show_chi:
-            chi_line = p.line(time_axis, C_avg_mean_chi, line_width=3, color='green', alpha=0.6)
-            legend_items.append(("CHI", [chi_line]))
+        if show_chi and C_avg_mean_chi is not None and C_avg_std_chi is not None:
+            # Add error band for CHI
+            chi_band = p.patch(np.concatenate([time_axis, time_axis[::-1]]), 
+                              np.concatenate([C_avg_mean_chi + C_avg_std_chi, (C_avg_mean_chi - C_avg_std_chi)[::-1]]),
+                              alpha=0.2, color='green', line_alpha=0)
+            # Add mean line for CHI
+            chi_line = p.line(time_axis, C_avg_mean_chi, line_width=3, color='green', alpha=0.8)
+            legend_items.append(("CHI", [chi_line, chi_band]))
         
         vel_line = p.line(time_axis, velocity_mean, line_width=3, color='gray', 
                          y_range_name="velocity_axis", alpha=0.6)
@@ -326,20 +357,20 @@ class CellTypeTank(CITank):
         # Create a legend outside the plot
         legend = Legend(
             items=legend_items,
-            location="center",
-            orientation="horizontal",
+            location="right",
+            orientation="vertical",
             click_policy="hide"
         )
         
         # Add the legend to the top of the plot (outside the plot area)
-        p.add_layout(legend, 'above')
+        p.add_layout(legend, 'right')
         
         # Style the plot
         p.xgrid.grid_line_color = None
         p.ygrid.grid_line_color = None
         
         # Add vertical line at time=0 (the event)
-        p.line([0, 0], [ca_min, ca_max], line_width=1, line_dash='dashed', color='black', alpha=0.7)
+        p.line([0, 0], [ca_min, ca_max], line_width=2, line_dash='dashed', color='black', alpha=0.7)
         
         # Output the plot
         cell_types = []
@@ -349,6 +380,389 @@ class CellTypeTank(CITank):
         cell_type_str = "_".join(cell_types)
         
         output_title = f"{plot_title} ({cell_type_str})" if cell_types else plot_title
+        self.output_bokeh_plot(p, save_path=save_path, title=output_title, notebook=notebook, overwrite=overwrite, font_size=font_size)
+        
+        return p
+
+    def plot_fluorescence_change_around_events(self, event_type='movement_onset', 
+                                                show_d1=True, show_d2=True, show_chi=True,
+                                                d1_signal=None, d2_signal=None, chi_signal=None,
+                                                analysis_type='change', time_window=(-2.0, 2.0),
+                                                baseline_window=(-2.0, -1.0), bin_size=1.0,
+                                                save_path=None, title=None, notebook=False, overwrite=False, font_size=None):
+        """
+        Analyze and plot fluorescence changes around specific behavioral events.
+        Can generate plots similar to paper Figure 2e (change analysis) and Figure 2g (time dynamics analysis).
+        
+        Parameters:
+        -----------
+        event_type : str
+            Type of behavioral event. Options: 'movement_onset', 'velocity_peak', 'movement_offset'
+        show_d1, show_d2, show_chi : bool
+            Whether to show the corresponding cell types
+        d1_signal, d2_signal, chi_signal : numpy.ndarray, optional
+            Cell signals. If None, uses default z-scored signals
+        analysis_type : str
+            Type of analysis. Options: 'change' (similar to 2e), 'dynamics' (similar to 2g)
+        time_window : tuple
+            Analysis time window in seconds (start, end)
+        baseline_window : tuple
+            Baseline window in seconds (start, end), only used for 'dynamics' analysis
+        bin_size : float
+            Time bin size in seconds, only used for 'dynamics' analysis
+        save_path, title, notebook, overwrite, font_size : 
+            Plotting parameters, same as previous functions
+        
+        Returns:
+        --------
+        bokeh.plotting.figure or tuple
+            If analysis_type='change', returns bar plot and statistical results
+            If analysis_type='dynamics', returns line plot
+        """
+        from bokeh.plotting import figure
+        from bokeh.models import LinearAxis, Range1d, Legend
+        import numpy as np
+        from scipy import stats
+        
+        # Select event indices based on event type
+        if event_type == 'movement_onset':
+            indices = self.movement_onset_indices
+            default_title_change = "Fluorescence Change at Movement Onset"
+            default_title_dynamics = "Fluorescence Dynamics around Movement Onset"
+        elif event_type == 'velocity_peak':
+            indices = self.velocity_peak_indices
+            default_title_change = "Fluorescence Change at Velocity Peak"
+            default_title_dynamics = "Fluorescence Dynamics around Velocity Peak"
+        elif event_type == 'movement_offset':
+            indices = self.movement_offset_indices
+            default_title_change = "Fluorescence Change at Movement Offset"
+            default_title_dynamics = "Fluorescence Dynamics around Movement Offset"
+        else:
+            raise ValueError("event_type must be one of: 'movement_onset', 'velocity_peak', 'movement_offset'")
+        
+        # Check that at least one cell type is shown
+        if not (show_d1 or show_d2 or show_chi):
+            raise ValueError("At least one of show_d1, show_d2, or show_chi must be True")
+        
+        # Set default signals if not provided
+        if show_d1 and d1_signal is None:
+            d1_signal = self.d1_zsc
+        if show_d2 and d2_signal is None:
+            d2_signal = self.d2_zsc
+        if show_chi and chi_signal is None:
+            chi_signal = self.chi_zsc
+        
+        # Calculate number of samples for time window
+        cut_interval = int(max(abs(time_window[0]), abs(time_window[1])) * self.ci_rate)
+        
+        # Extract data for each cell type (keep D1 and D2 separate)
+        cell_data = {}
+        cell_colors = {}
+        
+        if show_d1:
+            [C_avg_d1, _, _, C_avg_mean_d1, _] = self.average_across_indices(indices, signal=d1_signal, cut_interval=cut_interval)
+            cell_data['D1'] = {'individual': C_avg_d1, 'mean': C_avg_mean_d1}
+            cell_colors['D1'] = 'blue'
+        
+        if show_d2:
+            [C_avg_d2, _, _, C_avg_mean_d2, _] = self.average_across_indices(indices, signal=d2_signal, cut_interval=cut_interval)
+            cell_data['D2'] = {'individual': C_avg_d2, 'mean': C_avg_mean_d2}
+            cell_colors['D2'] = 'red'
+        
+        if show_chi:
+            [C_avg_chi, _, _, C_avg_mean_chi, _] = self.average_across_indices(indices, signal=chi_signal, cut_interval=cut_interval)
+            cell_data['CHI'] = {'individual': C_avg_chi, 'mean': C_avg_mean_chi}
+            cell_colors['CHI'] = 'green'
+        
+        # Create time axis in seconds
+        time_axis = (np.array(range(2 * cut_interval)) - cut_interval) / self.ci_rate
+        
+        if analysis_type == 'change':
+            return self._plot_fluorescence_change(cell_data, cell_colors, time_axis, time_window, 
+                                                title or default_title_change, save_path, notebook, overwrite, font_size)
+        elif analysis_type == 'dynamics':
+            return self._plot_fluorescence_dynamics(cell_data, cell_colors, time_axis, baseline_window, bin_size,
+                                                title or default_title_dynamics, save_path, notebook, overwrite, font_size)
+        else:
+            raise ValueError("analysis_type must be 'change' or 'dynamics'")
+
+    def _plot_fluorescence_change(self, cell_data, cell_colors, time_axis, time_window, title, save_path, notebook, overwrite, font_size):
+        """
+        Plot fluorescence change line plot (similar to Figure 2e)
+        Shows Pre vs Post event fluorescence with connecting lines
+        """
+        from bokeh.plotting import figure
+        from bokeh.models import Legend
+        from scipy import stats
+        import numpy as np
+        
+        # Define pre/post time window indices
+        pre_start_idx = np.argmin(np.abs(time_axis - (-1.0)))  # 1 second before event
+        pre_end_idx = np.argmin(np.abs(time_axis - 0.0))       # Event time
+        post_start_idx = np.argmin(np.abs(time_axis - 0.0))    # Event time
+        post_end_idx = np.argmin(np.abs(time_axis - 1.0))      # 1 second after event
+        
+        # Calculate changes for each cell type
+        results = {}
+        
+        # Create plot with categorical x-axis
+        x_categories = ['Pre', 'Post']
+        p = figure(x_range=x_categories, width=400, height=500, title=title,
+                x_axis_label='', y_axis_label='Mean population ΔF/F')
+        
+        legend_items = []
+        
+        for cell_type, data in cell_data.items():
+            individual_data = data['individual']
+            
+            # Calculate pre and post fluorescence means for each neuron
+            pre_values = np.mean(individual_data[:, pre_start_idx:pre_end_idx], axis=1)
+            post_values = np.mean(individual_data[:, post_start_idx:post_end_idx], axis=1)
+            
+            # Calculate population means and SEM
+            pre_mean = np.mean(pre_values)
+            post_mean = np.mean(post_values)
+            pre_sem = stats.sem(pre_values)
+            post_sem = stats.sem(post_values)
+            
+            # Statistical test for significance
+            change_values = post_values - pre_values
+            positive_changes = np.sum(change_values > 0)
+            total_neurons = len(change_values)
+            
+            # Use normal approximation for sign test
+            if total_neurons > 10:
+                expected = total_neurons / 2
+                se = np.sqrt(total_neurons * 0.5 * 0.5)
+                z_score = (positive_changes - expected) / se
+                p_value = 2 * (1 - stats.norm.cdf(abs(z_score)))
+            else:
+                try:
+                    from scipy.stats import binomtest
+                    result = binomtest(positive_changes, total_neurons, p=0.5, alternative='two-sided')
+                    p_value = result.pvalue
+                except ImportError:
+                    try:
+                        _, p_value = stats.binom_test(positive_changes, total_neurons, p=0.5, alternative='two-sided')
+                    except AttributeError:
+                        p_value = 1.0 if positive_changes == total_neurons // 2 else 0.05
+            
+            # Store results
+            results[cell_type] = {
+                'pre_mean': pre_mean,
+                'post_mean': post_mean,
+                'pre_sem': pre_sem,
+                'post_sem': post_sem,
+                'p_value': p_value,
+                'n_neurons': total_neurons,
+                'positive_count': positive_changes
+            }
+            
+            # Alternative approach: Plot error bars with proper caps using explicit coordinates
+            color = cell_colors[cell_type]
+            y_data = [pre_mean, post_mean]
+            y_err = [pre_sem, post_sem]
+            
+            # Store all renderers for this cell type
+            cell_renderers = []
+            
+            # Plot line connecting pre to post
+            line = p.line(x_categories, y_data, line_width=3, color=color, alpha=0.8)
+            cell_renderers.append(line)
+            
+            # Plot error bars and points with proper caps
+            cap_width = 0.1  # Width of the horizontal caps as fraction of category spacing
+            
+            for i, (x_cat, y_val, err) in enumerate(zip(x_categories, y_data, y_err)):
+                # Main vertical error bar
+                error_bar = p.line([x_cat, x_cat], [y_val - err, y_val + err], 
+                    line_width=2, color=color, alpha=0.8)
+                cell_renderers.append(error_bar)
+                
+                # Error bar caps (horizontal whiskers)
+                # For categorical axes, we need to use the actual category positions
+                x_pos = i+0.5  # 0 for 'Pre', 1 for 'Post'
+                x_left = x_pos - cap_width
+                x_right = x_pos + cap_width
+                
+                # Top cap
+                cap_top = p.segment(x0=[x_left], y0=[y_val + err], 
+                                x1=[x_right], y1=[y_val + err],
+                                line_width=2, color=color, alpha=0.8)
+                # Bottom cap  
+                cap_bottom = p.segment(x0=[x_left], y0=[y_val - err], 
+                                    x1=[x_right], y1=[y_val - err],
+                                    line_width=2, color=color, alpha=0.8)
+                
+                cell_renderers.extend([cap_top, cap_bottom])
+                
+                # Data points
+                scatter = p.scatter([x_cat], [y_val], size=8, color=color, alpha=0.8)
+                cell_renderers.append(scatter)
+            
+            # Add significance marker
+            if p_value < 0.001:
+                sig_text = "***"
+            elif p_value < 0.01:
+                sig_text = "**"
+            elif p_value < 0.05:
+                sig_text = "*"
+            else:
+                sig_text = ""
+            
+            if sig_text:
+                # Position significance marker above the post value
+                max_y = post_mean + post_sem + 0.01
+                sig_marker = p.text(['Post'], [max_y], text=[sig_text], 
+                    text_align="center", text_baseline="bottom", 
+                    text_color=color, text_font_size="14pt")
+                cell_renderers.append(sig_marker)
+            
+            # Add all renderers for this cell type to legend
+            legend_items.append((cell_type, cell_renderers))
+        
+        # Add zero reference line
+        p.line([-0.5, 1.5], [0, 0], line_color='black', line_dash='dashed', alpha=0.5)
+        
+        # Create legend
+        legend = Legend(items=legend_items, location="center", orientation="vertical", click_policy="hide")
+        p.add_layout(legend, 'right')
+        
+        # Style settings
+        p.xgrid.grid_line_color = None
+        p.ygrid.grid_line_color = None
+        
+        # Output plot
+        cell_type_str = "_".join(cell_data.keys())
+        output_title = f"{title} ({cell_type_str})"
+        self.output_bokeh_plot(p, save_path=save_path, title=output_title, notebook=notebook, overwrite=overwrite, font_size=font_size)
+        
+        return p, results
+
+    def _plot_fluorescence_dynamics(self, cell_data, cell_colors, time_axis, baseline_window, bin_size, title, save_path, notebook, overwrite, font_size):
+        """
+        Plot fluorescence time dynamics (similar to Figure 2g)
+        Shows time course with error bars and significance markers
+        """
+        from bokeh.plotting import figure
+        from bokeh.models import Legend, Span
+        from scipy import stats
+        import numpy as np
+        
+        # Define baseline window indices
+        baseline_start_idx = np.argmin(np.abs(time_axis - baseline_window[0]))
+        baseline_end_idx = np.argmin(np.abs(time_axis - baseline_window[1]))
+        
+        # Create time bins
+        bin_samples = int(bin_size * self.ci_rate)
+        n_bins = len(time_axis) // bin_samples
+        
+        # Create plot
+        p = figure(width=800, height=400, title=title,
+                x_axis_label='Time from velocity peak (s)', y_axis_label='Mean population ΔF/F\n(vs 2 s before velocity peak)')
+        
+        legend_items = []
+        
+        for cell_type, data in cell_data.items():
+            mean_trace = data['mean']
+            individual_data = data['individual']
+            
+            # Calculate baseline mean for each neuron
+            baseline_means = np.mean(individual_data[:, baseline_start_idx:baseline_end_idx], axis=1)
+            
+            # Time binning with baseline correction and statistics
+            binned_time = []
+            binned_signal = []
+            binned_sem = []
+            p_values = []
+            
+            for i in range(n_bins):
+                start_idx = i * bin_samples
+                end_idx = min((i + 1) * bin_samples, len(time_axis))
+                
+                if end_idx > start_idx:
+                    bin_time = np.mean(time_axis[start_idx:end_idx])
+                    
+                    # Calculate baseline-corrected values for each neuron
+                    bin_individual = np.mean(individual_data[:, start_idx:end_idx], axis=1)
+                    bin_corrected = bin_individual - baseline_means
+                    
+                    bin_signal = np.mean(bin_corrected)
+                    bin_sem = stats.sem(bin_corrected)
+                    
+                    # Statistical test: one-sample t-test against baseline (zero)
+                    if len(bin_corrected) > 1:
+                        t_stat, p_val = stats.ttest_1samp(bin_corrected, 0)
+                    else:
+                        p_val = 1.0
+                    
+                    binned_time.append(bin_time)
+                    binned_signal.append(bin_signal)
+                    binned_sem.append(bin_sem)
+                    p_values.append(p_val)
+            
+            binned_time = np.array(binned_time)
+            binned_signal = np.array(binned_signal)
+            binned_sem = np.array(binned_sem)
+            p_values = np.array(p_values)
+            
+            # Plot mean line
+            color = cell_colors[cell_type]
+            line = p.line(binned_time, binned_signal, line_width=3, color=color, alpha=0.8)
+            
+            # Add error bars
+            for i, (t, y, err) in enumerate(zip(binned_time, binned_signal, binned_sem)):
+                # Vertical error bar
+                p.line([t, t], [y - err, y + err], line_width=2, color=color, alpha=0.6)
+                # Error bar caps
+                cap_width = 0.05
+                p.line([t - cap_width, t + cap_width], [y - err, y - err], line_width=2, color=color, alpha=0.6)
+                p.line([t - cap_width, t + cap_width], [y + err, y + err], line_width=2, color=color, alpha=0.6)
+            
+            # Add data points
+            p.scatter(binned_time, binned_signal, size=6, color=color, alpha=0.8)
+            
+            # Add significance markers
+            for i, (t, y, err, p_val) in enumerate(zip(binned_time, binned_signal, binned_sem, p_values)):
+                if p_val < 0.001:
+                    sig_text = "***"
+                elif p_val < 0.01:
+                    sig_text = "**"
+                elif p_val < 0.05:
+                    sig_text = "*"
+                else:
+                    sig_text = ""
+                
+                if sig_text:
+                    # Position significance marker above error bar
+                    y_pos = y + err + 0.005
+                    p.text([t], [y_pos], text=[sig_text], 
+                        text_align="center", text_baseline="bottom", 
+                        text_color=color, text_font_size="12pt", text_font_style="bold")
+            
+            legend_items.append((cell_type, [line]))
+        
+        # Add event marker line (velocity peak at t=0)
+        event_line = Span(location=0, dimension='height', line_color='black', 
+                        line_dash='dashed', line_width=2, line_alpha=0.7)
+        p.add_layout(event_line)
+        
+        # Add baseline marker line (y=0)
+        baseline_line = Span(location=0, dimension='width', line_color='gray', 
+                            line_dash='dotted', line_width=1, line_alpha=0.5)
+        p.add_layout(baseline_line)
+        
+        # Create legend
+        legend = Legend(items=legend_items, location="center", orientation="horizontal", click_policy="hide")
+        p.add_layout(legend, 'above')
+        
+        # Style settings
+        p.xgrid.grid_line_color = None
+        p.ygrid.grid_line_color = None
+        
+        # Output plot
+        cell_type_str = "_".join(cell_data.keys())
+        output_title = f"{title} ({cell_type_str})"
         self.output_bokeh_plot(p, save_path=save_path, title=output_title, notebook=notebook, overwrite=overwrite, font_size=font_size)
         
         return p
