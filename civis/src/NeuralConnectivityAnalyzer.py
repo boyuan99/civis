@@ -552,6 +552,254 @@ class NeuralConnectivityAnalyzer:
         
         return results
     
+    def _calculate_proper_baseline_neuron_proportions(self, window_size=5):
+        """
+        Calculate baseline neuron activation proportions using forward-looking time windows
+        This matches the conditional probability calculation logic exactly
+        
+        Parameters:
+        -----------
+        window_size : int
+            Size of forward-looking time window after each activation event
+        
+        Returns:
+        --------
+        dict : Baseline activation proportions for each cell type
+        """
+        baseline_rates = {}
+        
+        for cell_type in ['D1', 'D2', 'CHI']:
+            signals = self.binary_signals[cell_type]
+            
+            # Find SPECIFIC activation events for this cell type (same as used in conditional probability)
+            # We need to use the same activation detection logic as the conditional probability calculation
+            
+            # Get activation events from binary signals (these are based on detected peaks)
+            # Find when the population first becomes active (rising edges of population activity)
+            population_activity = np.sum(signals, axis=0)  # Sum across all neurons of this type
+            
+            # Find rising edges: transition from 0 to >0 activity
+            population_binary = (population_activity > 0).astype(int)
+            rising_edges = np.where(np.diff(population_binary) == 1)[0] + 1  # +1 because diff shifts by 1
+            
+            # Also include the first timepoint if it starts with activity
+            if population_binary[0] == 1:
+                rising_edges = np.concatenate([[0], rising_edges])
+            
+            active_timepoints = rising_edges
+            
+            if len(active_timepoints) == 0:
+                # No activity found for this cell type
+                baseline_rates[cell_type] = 0.0
+                print(f"Warning: No activity found for {cell_type} neurons")
+            else:
+                # Calculate average proportion using time windows around active timepoints
+                n_neurons = signals.shape[0]
+                proportions = []
+                
+                for center_t in active_timepoints:
+                    # Create forward-looking window EXACTLY like conditional probability calculation
+                    start = center_t + 1  # Start AFTER the activation event
+                    end = min(signals.shape[1], center_t + window_size + 1)
+                    
+                    # Skip if window is invalid
+                    if start >= signals.shape[1] or end <= start:
+                        continue
+                    
+                    # Count activations in the window
+                    window_activations = np.sum(signals[:, start:end])
+                    
+                    # Calculate proportion (normalize by window size and neuron count)
+                    window_length = end - start
+                    proportion = window_activations / (n_neurons * window_length) if (n_neurons * window_length) > 0 else 0
+                    proportions.append(proportion)
+                
+                baseline_rates[cell_type] = np.mean(proportions)
+                
+                print(f"{cell_type} baseline (forward window={window_size}): {baseline_rates[cell_type]:.4f} "
+                      f"(from {len(proportions)} activation events, {n_neurons} neurons)")
+        
+        return baseline_rates
+    
+    def _calculate_pre_activation_baseline_neuron_proportions(self, window_size=5):
+        """
+        Calculate baseline neuron activation proportions using PRE-activation time windows
+        This represents the traditional neuroscience approach: comparing post-activation to pre-activation
+        
+        Parameters:
+        -----------
+        window_size : int
+            Size of backward-looking time window before each activation event
+        
+        Returns:
+        --------
+        dict : Baseline activation proportions for each cell type
+        """
+        baseline_rates = {}
+        
+        for cell_type in ['D1', 'D2', 'CHI']:
+            signals = self.binary_signals[cell_type]
+            
+            # Find SPECIFIC activation events for this cell type (same logic as forward method)
+            population_activity = np.sum(signals, axis=0)  # Sum across all neurons of this type
+            
+            # Find rising edges: transition from 0 to >0 activity
+            population_binary = (population_activity > 0).astype(int)
+            rising_edges = np.where(np.diff(population_binary) == 1)[0] + 1  # +1 because diff shifts by 1
+            
+            # Also include the first timepoint if it starts with activity
+            if population_binary[0] == 1:
+                rising_edges = np.concatenate([[0], rising_edges])
+            
+            active_timepoints = rising_edges
+            
+            if len(active_timepoints) == 0:
+                # No activity found for this cell type
+                baseline_rates[cell_type] = 0.0
+                print(f"Warning: No activity found for {cell_type} neurons")
+            else:
+                # Calculate average proportion using PRE-activation time windows
+                n_neurons = signals.shape[0]
+                proportions = []
+                
+                for center_t in active_timepoints:
+                    # Create backward-looking window BEFORE the activation event
+                    start = max(0, center_t - window_size)
+                    end = center_t  # Up to but not including the activation timepoint
+                    
+                    # Skip if window is invalid
+                    if end <= start:
+                        continue
+                    
+                    # Count activations in the PRE-activation window
+                    window_activations = np.sum(signals[:, start:end])
+                    
+                    # Calculate proportion (normalize by window size and neuron count)
+                    window_length = end - start
+                    proportion = window_activations / (n_neurons * window_length) if (n_neurons * window_length) > 0 else 0
+                    proportions.append(proportion)
+                
+                baseline_rates[cell_type] = np.mean(proportions)
+                
+                print(f"{cell_type} baseline (pre-activation window={window_size}): {baseline_rates[cell_type]:.4f} "
+                      f"(from {len(proportions)} pre-activation windows, {n_neurons} neurons)")
+        
+        return baseline_rates
+    
+    def _calculate_proper_baseline_neuron_proportions_v2(self, window_size=5):
+        """
+        Alternative baseline calculation: random time windows
+        This provides a true 'background' activation rate
+        
+        Parameters:
+        -----------
+        window_size : int
+            Size of time window to use for baseline calculation
+        
+        Returns:
+        --------
+        dict : Baseline activation proportions for each cell type
+        """
+        baseline_rates = {}
+        n_samples = 1000  # Number of random samples
+        
+        for cell_type in ['D1', 'D2', 'CHI']:
+            signals = self.binary_signals[cell_type]
+            n_neurons = signals.shape[0]
+            signal_length = signals.shape[1]
+            
+            if signal_length < window_size:
+                baseline_rates[cell_type] = 0.0
+                continue
+            
+            # Sample random time windows
+            proportions = []
+            for _ in range(n_samples):
+                # Random starting point
+                start = np.random.randint(0, signal_length - window_size)
+                end = start + window_size
+                
+                # Count activations in random window
+                window_activations = np.sum(signals[:, start:end])
+                
+                # Calculate proportion per time step (to match conditional prob)
+                proportion = window_activations / (n_neurons * window_size) if (n_neurons * window_size) > 0 else 0
+                proportions.append(proportion)
+            
+            baseline_rates[cell_type] = np.mean(proportions)
+            
+            print(f"{cell_type} random baseline: {baseline_rates[cell_type]:.4f} "
+                  f"(from {n_samples} random windows, {n_neurons} neurons)")
+        
+        return baseline_rates
+    
+    def _calculate_proper_baseline_neuron_proportions_original(self):
+        """
+        Original baseline calculation: single timepoint activation
+        Kept for comparison and backward compatibility
+        
+        Returns:
+        --------
+        dict : Baseline activation proportions for each cell type
+        """
+        baseline_rates = {}
+        
+        for cell_type in ['D1', 'D2', 'CHI']:
+            signals = self.binary_signals[cell_type]
+            
+            # Find timepoints where this cell type has any activity
+            population_activity = np.sum(signals, axis=0)  # Sum across all neurons of this type
+            active_timepoints = population_activity > 0     # Boolean mask for active timepoints
+            
+            if np.sum(active_timepoints) == 0:
+                # No activity found for this cell type
+                baseline_rates[cell_type] = 0.0
+                print(f"Warning: No activity found for {cell_type} neurons")
+            else:
+                # Calculate average proportion of neurons active during active timepoints
+                n_neurons = signals.shape[0]
+                proportions = []
+                
+                for t in np.where(active_timepoints)[0]:
+                    active_neurons_at_t = np.sum(signals[:, t])
+                    proportion = active_neurons_at_t / n_neurons if n_neurons > 0 else 0
+                    proportions.append(proportion)
+                
+                baseline_rates[cell_type] = np.mean(proportions)
+                
+                print(f"{cell_type} baseline (instantaneous): {baseline_rates[cell_type]:.4f} "
+                      f"(from {len(proportions)} active timepoints, {n_neurons} neurons)")
+        
+        return baseline_rates
+    
+    def _calculate_legacy_baseline_rates(self):
+        """
+        Calculate baseline rates using the original method (time proportion)
+        Kept for backward compatibility and comparison
+        
+        Returns:
+        --------
+        dict : Baseline time proportions for each cell type
+        """
+        baseline_rates = {}
+        
+        # Get binary signals for each cell type
+        d1_binary = self.binary_signals['D1']
+        d2_binary = self.binary_signals['D2']
+        chi_binary = self.binary_signals['CHI']
+        
+        # Calculate baseline activation probability for each cell type
+        # (proportion of time when at least one neuron of that type is active)
+        d1_population_active = np.sum(d1_binary, axis=0) > 0
+        d2_population_active = np.sum(d2_binary, axis=0) > 0
+        chi_population_active = np.sum(chi_binary, axis=0) > 0
+        
+        baseline_rates['D1'] = np.mean(d1_population_active)
+        baseline_rates['D2'] = np.mean(d2_population_active)
+        baseline_rates['CHI'] = np.mean(chi_population_active)
+        
+        return baseline_rates
+    
     def _aggregate_by_cell_type(self, prob_matrix, cell_types):
         """Aggregate individual neuron probabilities by cell type"""
         aggregated = {}
@@ -1225,9 +1473,12 @@ class NeuralConnectivityAnalyzer:
 
     def create_conditional_probability_heatmap(self, save_path=None, title="Conditional Probability Heatmap", 
                                         notebook=False, overwrite=False, font_size=None, 
-                                        normalize_by_baseline=True):
+                                        normalization_method='neuron_proportion',
+                                        baseline_method='pre_activation',
+                                        window_size=10,
+                                        baseline_window_size=10):
         """
-        Create conditional probability heatmap matrix visualization with optional baseline normalization
+        Create conditional probability heatmap matrix visualization with multiple normalization options
         
         Parameters:
         -----------
@@ -1241,8 +1492,23 @@ class NeuralConnectivityAnalyzer:
             Flag to indicate whether to overwrite existing file
         font_size : str, optional
             Font size for all text elements in the plot
-        normalize_by_baseline : bool
-            If True, normalize conditional probabilities by baseline firing rates
+        normalization_method : str, optional
+            Normalization method for conditional probabilities:
+            - 'neuron_proportion': Normalize by baseline neuron activation proportions (recommended)
+            - 'activation_frequency': Normalize by activation time proportions (legacy method)
+            - 'none': No normalization, show raw conditional probabilities
+        baseline_method : str, optional
+            Method for calculating baseline when using neuron_proportion normalization:
+            - 'windowed': Use forward-looking windows after target activation events (default)
+            - 'pre_activation': Use time windows BEFORE target activation events (traditional approach)
+            - 'instantaneous': Use single timepoint activation (original method)
+            - 'random': Use random time windows for true background rate
+        window_size : int, optional
+            Size of time window for conditional probability calculations (default=5)
+            Must match available conditional probability data
+        baseline_window_size : int, optional
+            Size of time window for baseline calculations (default=5)
+            Both conditional probability and baseline use forward-looking windows after activation events
         
         Returns:
         --------
@@ -1264,34 +1530,61 @@ class NeuralConnectivityAnalyzer:
             print("Warning: No conditional probabilities data found. Please run 'run_conditional_probabilities_analysis()' first.")
             return None
         
-        # Calculate baseline firing rates for each cell type
+        # Calculate baseline rates based on selected normalization method
         baseline_rates = {}
-        if normalize_by_baseline:
-            print("Calculating baseline firing rates for normalization...")
-            
-            # Get binary signals for each cell type
-            d1_binary = self.binary_signals['D1']
-            d2_binary = self.binary_signals['D2']
-            chi_binary = self.binary_signals['CHI']
-            
-            # Calculate baseline activation probability for each cell type
-            # (proportion of time when at least one neuron of that type is active)
-            d1_population_active = np.sum(d1_binary, axis=0) > 0
-            d2_population_active = np.sum(d2_binary, axis=0) > 0
-            chi_population_active = np.sum(chi_binary, axis=0) > 0
-            
-            baseline_rates['D1'] = np.mean(d1_population_active)
-            baseline_rates['D2'] = np.mean(d2_population_active)
-            baseline_rates['CHI'] = np.mean(chi_population_active)
-            
-            print(f"Baseline activation rates:")
-            print(f"  D1: {baseline_rates['D1']:.4f}")
-            print(f"  D2: {baseline_rates['D2']:.4f}")
-            print(f"  CHI: {baseline_rates['CHI']:.4f}")
         
-        # Use the shortest time window data
-        window_key = list(self.conditional_probs.keys())[0]
-        probs = self.conditional_probs[window_key]
+        if normalization_method == 'neuron_proportion':
+            print(f"Calculating baseline neuron activation proportions using {baseline_method} method...")
+            
+            if baseline_method == 'windowed':
+                baseline_rates = self._calculate_proper_baseline_neuron_proportions(
+                    window_size=baseline_window_size
+                )
+                print(f"Baseline calculated using forward windows (size={baseline_window_size}).")
+            elif baseline_method == 'pre_activation':
+                baseline_rates = self._calculate_pre_activation_baseline_neuron_proportions(
+                    window_size=baseline_window_size
+                )
+                print(f"Baseline calculated using pre-activation windows (size={baseline_window_size}).")
+            elif baseline_method == 'instantaneous':
+                baseline_rates = self._calculate_proper_baseline_neuron_proportions_original()
+                print(f"Baseline calculated using instantaneous active timepoints.")
+            elif baseline_method == 'random':
+                baseline_rates = self._calculate_proper_baseline_neuron_proportions_v2(window_size=baseline_window_size)
+                print(f"Baseline calculated using random time windows (size={baseline_window_size}).")
+            else:
+                raise ValueError(f"Invalid baseline_method: {baseline_method}. "
+                               f"Must be 'windowed', 'pre_activation', 'instantaneous', or 'random'")
+            
+        elif normalization_method == 'activation_frequency':
+            print("Calculating baseline activation frequencies for normalization (legacy method)...")
+            baseline_rates = self._calculate_legacy_baseline_rates()
+            print(f"Baseline activation frequencies:")
+            for cell_type, rate in baseline_rates.items():
+                print(f"  {cell_type}: {rate:.4f}")
+                
+        elif normalization_method == 'none':
+            print("No normalization will be applied.")
+            baseline_rates = None
+            
+        else:
+            raise ValueError(f"Invalid normalization_method: {normalization_method}. "
+                           f"Must be 'neuron_proportion', 'activation_frequency', or 'none'")
+        
+        # Use data that matches the specified window size, or closest available
+        target_window_key = f'window_{window_size}'
+        if target_window_key in self.conditional_probs:
+            window_key = target_window_key
+            probs = self.conditional_probs[window_key]
+            print(f"Using conditional probabilities with window_size={window_size}")
+        else:
+            # Fall back to the first available window if exact match not found
+            window_key = list(self.conditional_probs.keys())[0]
+            probs = self.conditional_probs[window_key]
+            actual_window = window_key.replace('window_', '')
+            print(f"Warning: Requested window_size={window_size} not found. Using window_size={actual_window}")
+            print(f"Available windows: {list(self.conditional_probs.keys())}")
+            print(f"To use window_size={window_size}, please run conditional probabilities analysis with time_windows=[{window_size}, ...]")
         
         # Create 3x3 matrices - one for raw and one for normalized
         cell_types = ['CHI', 'D1', 'D2']
@@ -1315,10 +1608,9 @@ class NeuralConnectivityAnalyzer:
                 # Store raw probability
                 raw_matrix[i, j] = raw_prob
                 
-                # Calculate normalized probability
-                if normalize_by_baseline and baseline_rates:
-                    # Normalize: P(Target|Source) / P(Target)
-                    # This gives us the fold-change over baseline
+                # Calculate normalized probability based on method
+                if baseline_rates is not None:
+                    # Normalize: P(Target|Source) / P(Target_baseline)
                     if baseline_rates[target] > 0:
                         normalized_prob = raw_prob / baseline_rates[target]
                     else:
@@ -1342,7 +1634,8 @@ class NeuralConnectivityAnalyzer:
                     display_prob = percent_change
 
                 else:
-                    # Use raw probability
+                    # No normalization - use raw probability
+                    normalized_prob = raw_prob
                     display_prob = raw_prob
                     prob_formatted = f'{raw_prob:.3f}' if raw_prob > 0 else '0'
                     fold_change = 1
@@ -1352,41 +1645,58 @@ class NeuralConnectivityAnalyzer:
                     'source': source,
                     'target': target,
                     'raw_probability': raw_prob,
-                    'normalized_probability': normalized_prob if normalize_by_baseline else raw_prob,
+                    'normalized_probability': normalized_prob,
                     'display_value': display_prob,
                     'probability_text': prob_formatted,
                     'x': j,      # Column index - Target
                     'y': 2-i,    # Row index - Source (flipped: CHI=2, D1=1, D2=0)
                     'color_value': display_prob,
-                    'baseline_rate': baseline_rates.get(target, 0) if normalize_by_baseline else 0,
+                    'baseline_rate': baseline_rates.get(target, 0) if baseline_rates else 0,
                     'fold_change': fold_change,
-                    'percent_change': percent_change
+                    'percent_change': percent_change,
+                    'normalization_method': normalization_method
                 })
         
         df = pd.DataFrame(matrix_data)
         
-        # Create HoverTool with more detailed information
-        if normalize_by_baseline:
-            hover = HoverTool(tooltips=[
-                ('From', '@source'),
-                ('To', '@target'),
-                ('Raw Probability', '@raw_probability{0.000}'),
-                ('Target Baseline Rate', '@baseline_rate{0.000}'),
-                ('Normalized (Fold Change)', '@normalized_probability{0.00}'),
-                ('Percent Change', '@percent_change{+0.0}%')
-            ])
+        # Create HoverTool with detailed information based on normalization method
+        if baseline_rates is not None:
+            if normalization_method == 'neuron_proportion':
+                hover = HoverTool(tooltips=[
+                    ('From', '@source'),
+                    ('To', '@target'),
+                    ('Raw Probability', '@raw_probability{0.000}'),
+                    ('Target Baseline Proportion', '@baseline_rate{0.000}'),
+                    ('Normalized (Fold Change)', '@normalized_probability{0.00}'),
+                    ('Percent Change', '@percent_change{+0.0}%'),
+                    ('Method', 'Neuron Proportion Normalization')
+                ])
+            else:  # activation_frequency
+                hover = HoverTool(tooltips=[
+                    ('From', '@source'),
+                    ('To', '@target'),
+                    ('Raw Probability', '@raw_probability{0.000}'),
+                    ('Target Baseline Frequency', '@baseline_rate{0.000}'),
+                    ('Normalized (Fold Change)', '@normalized_probability{0.00}'),
+                    ('Percent Change', '@percent_change{+0.0}%'),
+                    ('Method', 'Activation Frequency Normalization (Legacy)')
+                ])
         else:
             hover = HoverTool(tooltips=[
                 ('From', '@source'),
                 ('To', '@target'),
-                ('Probability', '@raw_probability{0.000}')
+                ('Probability', '@raw_probability{0.000}'),
+                ('Method', 'No Normalization')
             ])
         
-        # Adjust title based on normalization
-        if normalize_by_baseline:
-            plot_title = "Normalized Conditional Activation Matrix\nP(Target|Source) / P(Target baseline)"
-            color_label = "Fold Change Over Baseline"
-        else:
+        # Adjust title and labels based on normalization method
+        if normalization_method == 'neuron_proportion':
+            plot_title = "Normalized Conditional Activation Matrix\nP(Target|Source) / P(Target neuron proportion)"
+            color_label = "Percent Change Over Baseline"
+        elif normalization_method == 'activation_frequency':
+            plot_title = "Normalized Conditional Activation Matrix (Legacy)\nP(Target|Source) / P(Target time frequency)"
+            color_label = "Percent Change Over Baseline"
+        else:  # 'none'
             plot_title = "Conditional Activation Probability Matrix\nP(Target|Source)"
             color_label = "Probability"
         
@@ -1399,19 +1709,30 @@ class NeuralConnectivityAnalyzer:
         source_data = ColumnDataSource(df)
         
 
-        # For normalized data, center color scale at 1 (no change)
-        # Values > 1 indicate enhancement, < 1 indicate suppression
+        # Set color scale based on normalization method
         max_val = df['display_value'].max()
         min_val = df['display_value'].min()
         
         from bokeh.palettes import RdBu11
         palette = RdBu11
         
-        color_mapper = LinearColorMapper(
-            palette=palette,
-            low=-100,
-            high=100
-        )
+        if baseline_rates is not None:
+            # For normalized data, center color scale around 0% change
+            # Use symmetric range for better visualization
+            abs_max = max(abs(max_val), abs(min_val))
+            color_range = min(abs_max, 200)  # Cap at ±200% for extreme values
+            color_mapper = LinearColorMapper(
+                palette=palette,
+                low=-color_range,
+                high=color_range
+            )
+        else:
+            # For raw probabilities, use 0 to max range
+            color_mapper = LinearColorMapper(
+                palette=palette,
+                low=0,
+                high=max_val if max_val > 0 else 1
+            )
         
         # Draw heatmap squares
         rect_glyph = p.rect(x='x', y='y', width=0.9, height=0.9, source=source_data,
@@ -1445,23 +1766,39 @@ class NeuralConnectivityAnalyzer:
         p.yaxis.major_label_text_font_size = "12pt"
         
         # Print summary statistics
-        if normalize_by_baseline:
-            print("\nNormalized Conditional Probability Summary:")
-            print("=" * 50)
+        if baseline_rates is not None:
+            print(f"\nNormalized Conditional Probability Summary ({normalization_method}):")
+            print("=" * 60)
             for i, source in enumerate(cell_types):
                 for j, target in enumerate(cell_types):
                     norm_val = normalized_matrix[i, j]
                     raw_val = raw_matrix[i, j]
+                    percent_change = (norm_val - 1) * 100 if norm_val > 0 else -100
+                    
                     if norm_val > 1.5:
-                        print(f"{source} → {target}: {norm_val:.2f}x baseline (raw={raw_val:.3f}) - STRONG ENHANCEMENT")
+                        print(f"{source} → {target}: {norm_val:.2f}x baseline ({percent_change:+.1f}%, raw={raw_val:.3f}) - STRONG ENHANCEMENT")
                     elif norm_val > 1.2:
-                        print(f"{source} → {target}: {norm_val:.2f}x baseline (raw={raw_val:.3f}) - Moderate enhancement")
+                        print(f"{source} → {target}: {norm_val:.2f}x baseline ({percent_change:+.1f}%, raw={raw_val:.3f}) - Moderate enhancement")
                     elif norm_val < 0.8:
-                        print(f"{source} → {target}: {norm_val:.2f}x baseline (raw={raw_val:.3f}) - Suppression")
+                        print(f"{source} → {target}: {norm_val:.2f}x baseline ({percent_change:+.1f}%, raw={raw_val:.3f}) - Suppression")
+                    else:
+                        print(f"{source} → {target}: {norm_val:.2f}x baseline ({percent_change:+.1f}%, raw={raw_val:.3f}) - Normal")
+        else:
+            print(f"\nRaw Conditional Probability Summary:")
+            print("=" * 40)
+            for i, source in enumerate(cell_types):
+                for j, target in enumerate(cell_types):
+                    raw_val = raw_matrix[i, j]
+                    print(f"{source} → {target}: {raw_val:.3f}")
         
         # Set default save path if none provided
         if save_path is None:
-            suffix = '_normalized' if normalize_by_baseline else ''
+            if normalization_method == 'neuron_proportion':
+                suffix = f'_normalized_{baseline_method}_bw{baseline_window_size}_cw{window_size}'
+            elif normalization_method == 'activation_frequency':
+                suffix = '_normalized_legacy'
+            else:
+                suffix = f'_raw_w{window_size}'
             save_path = os.path.join(self.tank.config["SummaryPlotsPath"], 
                                 self.tank.session_name, 
                                 f'conditional_probability_heatmap{suffix}.html')
@@ -1472,6 +1809,140 @@ class NeuralConnectivityAnalyzer:
                                     notebook=notebook, overwrite=overwrite, font_size=font_size)
         
         return p
+    
+    def test_normalization_methods(self, window_size=5, baseline_window_size=5):
+        """
+        Test function to compare different normalization methods with consistent forward windows
+        This helps verify the implementation correctness and window consistency
+        """
+        if not hasattr(self, 'conditional_probs') or self.conditional_probs is None:
+            print("Error: No conditional probabilities data found. Please run analysis first.")
+            return None
+            
+        print("Testing different normalization methods with forward windows...")
+        print("=" * 60)
+        
+        # Test all combinations
+        methods = ['neuron_proportion', 'activation_frequency', 'none']
+        baseline_methods = ['windowed', 'pre_activation', 'random', 'instantaneous']
+        
+        results = {}
+        
+        for method in methods:
+            print(f"\n=== Testing {method} method ===")
+            results[method] = {}
+            
+            if method == 'neuron_proportion':
+                for baseline_method in baseline_methods:
+                    print(f"\n--- Baseline method: {baseline_method} ---")
+                    results[method][baseline_method] = {}
+                    
+                    if baseline_method == 'windowed':
+                        print(f"  Forward window size: {baseline_window_size}")
+                        try:
+                            baseline_rates = self._calculate_proper_baseline_neuron_proportions(
+                                window_size=baseline_window_size
+                            )
+                            results[method][baseline_method] = {
+                                'baseline_rates': baseline_rates,
+                                'method_valid': True,
+                                'window_size': baseline_window_size
+                            }
+                            
+                            print(f"    Success! Baseline rates:")
+                            for cell_type, rate in baseline_rates.items():
+                                print(f"      {cell_type}: {rate:.4f}")
+                                
+                        except Exception as e:
+                            print(f"    Error: {str(e)}")
+                            results[method][baseline_method] = {
+                                'baseline_rates': None,
+                                'method_valid': False,
+                                'error': str(e)
+                            }
+                    elif baseline_method == 'pre_activation':
+                        print(f"  Pre-activation window size: {baseline_window_size}")
+                        try:
+                            baseline_rates = self._calculate_pre_activation_baseline_neuron_proportions(
+                                window_size=baseline_window_size
+                            )
+                            results[method][baseline_method] = {
+                                'baseline_rates': baseline_rates,
+                                'method_valid': True,
+                                'window_size': baseline_window_size
+                            }
+                            
+                            print(f"    Success! Baseline rates:")
+                            for cell_type, rate in baseline_rates.items():
+                                print(f"      {cell_type}: {rate:.4f}")
+                                
+                        except Exception as e:
+                            print(f"    Error: {str(e)}")
+                            results[method][baseline_method] = {
+                                'baseline_rates': None,
+                                'method_valid': False,
+                                'error': str(e)
+                            }
+                    else:
+                        try:
+                            if baseline_method == 'random':
+                                baseline_rates = self._calculate_proper_baseline_neuron_proportions_v2(window_size=baseline_window_size)
+                            else:  # instantaneous
+                                baseline_rates = self._calculate_proper_baseline_neuron_proportions_original()
+                                
+                            results[method][baseline_method]['default'] = {
+                                'baseline_rates': baseline_rates,
+                                'method_valid': True
+                            }
+                            
+                            print(f"    Success! Baseline rates:")
+                            for cell_type, rate in baseline_rates.items():
+                                print(f"      {cell_type}: {rate:.4f}")
+                                
+                        except Exception as e:
+                            print(f"    Error: {str(e)}")
+                            results[method][baseline_method]['default'] = {
+                                'baseline_rates': None,
+                                'method_valid': False,
+                                'error': str(e)
+                            }
+                            
+            elif method == 'activation_frequency':
+                try:
+                    baseline_rates = self._calculate_legacy_baseline_rates()
+                    results[method]['legacy'] = {
+                        'baseline_rates': baseline_rates,
+                        'method_valid': True
+                    }
+                    
+                    print(f"  Success! Baseline rates:")
+                    for cell_type, rate in baseline_rates.items():
+                        print(f"    {cell_type}: {rate:.4f}")
+                        
+                except Exception as e:
+                    print(f"  Error: {str(e)}")
+                    results[method]['legacy'] = {
+                        'baseline_rates': None,
+                        'method_valid': False,
+                        'error': str(e)
+                    }
+            else:  # none
+                print("  No normalization applied.")
+                results[method]['none'] = {
+                    'baseline_rates': None,
+                    'method_valid': True
+                }
+        
+        # Summary of window consistency
+        print(f"\n=== Window Consistency Analysis ===")
+        if f'window_{window_size}' in self.conditional_probs:
+            print(f"✅ Conditional probabilities available for window_size={window_size}")
+        else:
+            available = [k.replace('window_', '') for k in self.conditional_probs.keys()]
+            print(f"⚠️  Conditional probabilities NOT available for window_size={window_size}")
+            print(f"   Available windows: {available}")
+        
+        return results
 
     def create_network_strength_diagram(self, save_path=None, title="Network Connection Strength Diagram", 
                                         notebook=False, overwrite=False, font_size=None):
