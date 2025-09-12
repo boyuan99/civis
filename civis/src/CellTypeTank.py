@@ -132,11 +132,16 @@ class CellTypeTank(CITank):
     def _load_cell_type_labels(self, cell_type_label_file):
         """
         Load cell type labels from either a dictionary or a file.
+        Supports both absolute paths and relative paths within the session structure.
         
         Parameters:
         -----------
         cell_type_label_file : str
-            Path to a JSON/CSV file containing the labels
+            Path to a JSON file containing the labels. Can be:
+            - None: Uses default path {ProcessedFilePath}/{session_name}/{session_name}.json
+            - Absolute path: Uses the path directly (e.g., /path/to/labels.json)
+            - Relative path: Uses the path relative to current directory
+            - Filename only: Uses default folder structure with the filename
             
         Returns:
         --------
@@ -144,7 +149,16 @@ class CellTypeTank(CITank):
             Tuple containing arrays of indices for D1, D2, CHI, and unknown neurons
         """
         if cell_type_label_file is None:
+            # Default path when no file specified
             cell_type_label_file = os.path.join(self.config['ProcessedFilePath'], self.session_name, f"{self.session_name}.json")
+        elif isinstance(cell_type_label_file, str):
+            # Check if the input contains path separators (absolute or relative path)
+            if "/" not in cell_type_label_file and "\\" not in cell_type_label_file:
+                # Treat as filename only - use default folder structure
+                cell_type_label_file = os.path.join(self.config['ProcessedFilePath'], self.session_name, cell_type_label_file)
+            else:
+                # Treat as absolute or relative path and normalize it
+                cell_type_label_file = os.path.normpath(cell_type_label_file)
             
         if isinstance(cell_type_label_file, str):
             # Load from file based on extension
