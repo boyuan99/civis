@@ -741,33 +741,49 @@ def labeler_bkapp_v2(doc):
     def load_specific_image(image_type, image_input):
         """
         Load a specific image type (GCaMP, original TDT, or adjusted TDT)
+        Supports both absolute paths and relative paths within the session structure
         """
         try:
             # Save current view state
             current_x_range = (spatial.x_range.start, spatial.x_range.end)
             current_y_range = (spatial.y_range.start, spatial.y_range.end)
 
-            with open(CONFIG_PATH, 'r') as file:
-                config = json.load(file)
+            input_value = image_input.value
+            
+            # Check if the input contains path separators (absolute or relative path)
+            if "/" in input_value or "\\" in input_value:
+                # Treat as absolute or relative path
+                image_path = input_value
+                # Convert forward slashes to platform-appropriate separators
+                image_path = os.path.normpath(image_path)
+            else:
+                # Treat as filename only - use existing folder structure
+                with open(CONFIG_PATH, 'r') as file:
+                    config = json.load(file)
 
-            session_name = sessionname_input.value
-            base_path = config['ProcessedFilePath']
+                session_name = sessionname_input.value
+                base_path = config['ProcessedFilePath']
 
-            # Construct the image path based on type
+                # Construct the image path based on type
+                if image_type == "gcamp":
+                    folder_name = f'{session_name}_tiff_projections'
+                    filename = input_value
+                    image_path = os.path.join(base_path, session_name, folder_name, filename)
+                elif image_type == "orig_tdt":
+                    folder_name = f'{session_name}_alignment_check'
+                    filename = input_value
+                    image_path = os.path.join(base_path, session_name, folder_name, filename)
+                elif image_type == "bfp":
+                    folder_name = f'{session_name}_alignment_check'
+                    filename = input_value
+                    image_path = os.path.join(base_path, session_name, folder_name, filename)
+
+            # Set color based on image type
             if image_type == "gcamp":
-                folder_name = f'{session_name}_tiff_projections'
-                filename = image_input.value
-                image_path = os.path.join(base_path, session_name, folder_name, filename)
                 color = "green"
             elif image_type == "orig_tdt":
-                folder_name = f'{session_name}_alignment_check'
-                filename = image_input.value
-                image_path = os.path.join(base_path, session_name, folder_name, filename)
                 color = "red"
             elif image_type == "bfp":
-                folder_name = f'{session_name}_alignment_check'
-                filename = image_input.value
-                image_path = os.path.join(base_path, session_name, folder_name, filename)
                 color = "blue"
 
             # Load and process the image
