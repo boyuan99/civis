@@ -63,7 +63,7 @@ def trajectory_bkapp_v9(doc):
     next_button.disabled = True
 
     def load_data():
-        global source, trials, starts, vm_rate, pstcr
+        global source, trials, starts, vm_rate, pstcr, vm
 
         try:
             config_path = os.path.join(project_root, 'config.json')
@@ -83,15 +83,29 @@ def trajectory_bkapp_v9(doc):
             else:
                 vm = VirmenTank(file)
 
-            trials = vm.virmen_trials
-            starts = [x / vm.vm_rate for x in vm.trials_start_indices]
+            # Use enhanced trials from MazeV3Tank instead of regular trials
+            if vm.extend_data is None:
+                raise ValueError("MazeV3Tank extend_data not available for straight70v3 maze")
+            
+            # Convert enhanced trials to the format expected by the visualization
+            enhanced_trials = vm.extend_data.enhanced_trials
+            trials = []
+            starts = []
+            
+            for enhanced_trial in enhanced_trials:
+                trial_dict = enhanced_trial['trial_data'].copy()
+                trials.append(trial_dict)
+                starts.append(enhanced_trial['start_idx'] / vm.vm_rate)
 
-            # Get the data array and indices
+            # Get the data array and enhanced indices
             data_array = np.array(vm.virmen_data)
-            start_indicies = vm.trials_start_indices
-            end_indicies = vm.trials_end_indices_all
+            start_indicies = vm.extend_data.enhanced_trial_start_indices
+            end_indicies = vm.extend_data.enhanced_trial_end_indices
 
-            print("Successfully loaded: " + file)
+            print(f"Successfully loaded: {file}")
+            print(f"Enhanced trials found: {len(enhanced_trials)}")
+            print(f"Success trials: {vm.extend_data.success_count}")
+            print(f"Left failures: {vm.extend_data.left_failure_count}, Right failures: {vm.extend_data.right_failure_count}")
             error_div.text = ""  # Clear any previous error messages
 
             if trials:
@@ -108,25 +122,28 @@ def trajectory_bkapp_v9(doc):
                             'face_angle': [initial_trial['face_angle'][0]]}
                 source.data = new_data
 
-                trial_slider.end = vm.trial_num - 1
+                trial_slider.end = len(trials) - 1
                 trial_slider.value = 0
 
                 progress_slider.end = 100
                 progress_slider.value = 0
 
-                starts_div.text = f"Start Time: {starts[0]}"
+                starts_div.text = f"Start Time: {starts[0]:.2f}s (Outcome: {enhanced_trials[0]['outcome']})"
 
             vm_rate = vm.vm_rate
             pstcr = {}
 
-            for i in range(len(vm.virmen_trials)-1):
-                dx = np.diff(data_array[start_indicies[i]:end_indicies[i] + 1, 0])
-                dx = np.append(dx, dx[-1])
-                dy = np.diff(data_array[start_indicies[i]:end_indicies[i] + 1, 1])
-                dy = np.append(dy, dy[-1])
-                dx = dx.astype(np.float32)
-                dy = dy.astype(np.float32)
-                pstcr[i] = np.sqrt(dx ** 2 + dy ** 2)
+            for i in range(len(trials)):
+                if i < len(start_indicies) and i < len(end_indicies):
+                    start_idx = start_indicies[i]
+                    end_idx = end_indicies[i]
+                    dx = np.diff(data_array[start_idx:end_idx + 1, 0])
+                    dx = np.append(dx, dx[-1] if len(dx) > 0 else 0)
+                    dy = np.diff(data_array[start_idx:end_idx + 1, 1])
+                    dy = np.append(dy, dy[-1] if len(dy) > 0 else 0)
+                    dx = dx.astype(np.float32)
+                    dy = dy.astype(np.float32)
+                    pstcr[i] = np.sqrt(dx ** 2 + dy ** 2)
 
         except ValueError as e:
             error_div.text = f"Error: {str(e)}"
@@ -152,6 +169,7 @@ def trajectory_bkapp_v9(doc):
     load_button.on_click(load_data)
 
     def update_plot(attr, old, new):
+        global vm
         trial_index = trial_slider.value
         progress = progress_slider.value / 100
         trial_data = trials[trial_index]
@@ -177,14 +195,25 @@ def trajectory_bkapp_v9(doc):
                     'y': trial_data['y'][:max_index],
                     'face_angle': trial_data['face_angle'][:max_index]}
         source.data = new_data
-        starts_div.text = f"Start Time: {starts[trial_index]}"
+        
+        # Display enhanced trial information
+        if hasattr(vm, 'extend_data') and vm.extend_data is not None:
+            enhanced_trial = vm.extend_data.enhanced_trials[trial_index]
+            outcome = enhanced_trial['outcome']
+            duration = enhanced_trial['duration']
+            starts_div.text = f"Start Time: {starts[trial_index]:.2f}s | Outcome: {outcome.upper()} | Duration: {duration} frames"
+        else:
+            starts_div.text = f"Start Time: {starts[trial_index]:.2f}s"
 
         # Update velocity plot data
         dx = np.array(trial_data['dx'])
         dy = np.array(trial_data['dy'])
         velocity = np.sqrt(dx ** 2 + dy ** 2)
         
-        pstcr_array = np.array(pstcr[trial_index])
+        if trial_index in pstcr:
+            pstcr_array = np.array(pstcr[trial_index])
+        else:
+            pstcr_array = np.zeros_like(velocity)
 
         velocity_source.data = {'x': (1/vm_rate) * np.arange(len(trial_data['x'])), 'y': velocity}
         pstcr_source.data = {'x': (1/vm_rate) * np.arange(len(trial_data['x'])),
