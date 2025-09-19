@@ -842,8 +842,7 @@ def labeler_bkapp_v2(doc):
         gcamp_row,
         orig_tdt_row,
         bfp_row,
-        row(remove_image_button),
-        status_div
+        row(remove_image_button)
     )
 
     """
@@ -940,7 +939,8 @@ def labeler_bkapp_v2(doc):
             toggle_row,
             temporal,
             labelling,
-            menus
+            menus,
+            status_div
         )
     )
 
