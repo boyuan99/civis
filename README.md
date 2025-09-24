@@ -1,6 +1,6 @@
-# CIVisServer
+# CIVIS
 
-**CIVisServer** is a Calcium Imaging data visualization server built with [Bokeh](https://bokeh.org/) and [Flask](https://flask.palletsprojects.com/en/3.0.x/). It provides an interactive web-based interface for visualizing and analyzing calcium imaging data, facilitating research and data exploration.
+**CIVIS** is a Calcium Imaging data visualization server built with [Bokeh](https://bokeh.org/) and [Flask](https://flask.palletsprojects.com/en/3.0.x/). It provides an interactive web-based interface for visualizing and analyzing calcium imaging data, facilitating research and data exploration.
 
 ## Table of Contents
 
@@ -27,8 +27,8 @@
 ### Clone the Repository
 
 ```bash
-git clone https://github.com/boyuan99/CIVisServer.git
-cd CIVisServer
+git clone https://github.com/boyuan99/civis.git
+cd civis
 ```
 ### Create a Conda Environment
 ```bash
@@ -74,7 +74,7 @@ By default, running the server will open two ports:
 
 ### Start the Server
 
-Execute the following command to start the CIVisServer:
+Execute the following command to start the civis:
 
 ```bash
 civis

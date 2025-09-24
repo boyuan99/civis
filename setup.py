@@ -25,7 +25,7 @@ setup(
     description="A visualization server for Calcium Imaging data",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/boyuan99/CIVisServer",
+    url="https://github.com/boyuan99/civis",
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
