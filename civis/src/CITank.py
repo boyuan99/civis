@@ -181,18 +181,39 @@ class CITank(VirmenTank):
             peak_indices_all.append(peaks)
         
         return peak_indices_all
-    
+
     def _find_rising_edges_starts(self):
         """
         Find the start indices of rising edges in the calcium traces.
+        For each peak, find the earliest rising edge (start of the calcium event).
         """
         rising_edges_starts = []
+
         for i in range(self.neuron_num):
+            # find all possible rising edges
             c1 = np.where(self.C_deconvolved[i] > 0.0001, 1, 0)
             c2 = np.diff(c1, append=c1[-1])
             c3 = np.where(c2 == 1, 1, 0)
+            all_rising_edges = np.where(c3 == 1)[0].tolist()
 
-            rising_edges_starts.append(np.where(c3 == 1)[0])
+            # get peak indices
+            peaks = self.peak_indices[i]
+
+            # find the earliest rising edge for each peak
+            selected_edges = []
+            for peak in peaks:
+                # find every rising edges for the peak
+                preceding_edges = [e for e in all_rising_edges if e < peak]
+
+                if len(preceding_edges) > 0:
+                    # pick the earliest
+                    earliest_edge = preceding_edges[0]
+                    selected_edges.append(earliest_edge)
+
+                    # delete all edges before the current peak (including the chosen one)
+                    all_rising_edges = [e for e in all_rising_edges if e >= peak]
+
+            rising_edges_starts.append(np.array(selected_edges))
 
         return rising_edges_starts
 
