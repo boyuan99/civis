@@ -722,7 +722,7 @@ def labeler_bkapp_v2(doc):
     """
     # Create input fields for different image types with default filenames
     gcamp_input = TextInput(value=f"max.tif", title="GCaMP Max Projection", width=400)
-    orig_tdt_input = TextInput(value=f"m_f_n_001_tdt_max.tif", title="TDT (D2)", width=400)
+    orig_tdt_input = TextInput(value=f"m_f_n_001_tdt_max.tif", title="TDT (D1)", width=400)
     bfp_input = TextInput(value=f"m_f_n_001_bfp_max.tif", title="BFP (Cholinergic)", width=400)
 
     gcamp_input.disabled = True
