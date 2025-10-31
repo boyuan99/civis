@@ -45,7 +45,7 @@ def load_data(filename):
             coor_data = file[ref]  # Use the reference to access the data
             coor_matrix = np.array(coor_data)  # Convert to a NumPy array
 
-            Coor.append(np.transpose(coor_matrix))
+            Coor.append(coor_matrix)
 
     return C, C_raw, Cn, ids, Coor, centroids, virmenPath, C_denoised, C_deconvolved, C_reraw
 
@@ -59,7 +59,6 @@ def load_tiff_image(image_path, color="red"):
     try:
         # Load the image
         gray_image = imread(image_path)
-        gray_image = np.transpose(gray_image)
         
         # Normalize to 0-1 range
         normalized_image = gray_image.astype(float) / gray_image.max()
@@ -614,8 +613,10 @@ def labeler_bkapp_v2(doc):
         y_positions_all = []
 
         for i in range(num_shapes):
-            x_positions = Coor[i][0]
-            y_positions = Coor[i][1]
+            # No transpose in load_data, so extract from columns
+            # Then swap x and y to match the flipped image orientation
+            x_positions = Coor[i][:, 1]  # Swap: use column 1 for x
+            y_positions = Coor[i][:, 0]  # Swap: use column 0 for y
 
             # Close the shape by ensuring the first point is repeated at the end
             x_positions_all.append(x_positions)
