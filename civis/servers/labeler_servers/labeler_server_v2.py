@@ -89,10 +89,12 @@ def load_tiff_image(image_path, color="red"):
 
 
 def labeler_bkapp_v2(doc):
-    global C, C_raw, ids, labels, image_source, session_name, C_denoised, C_deconvolved, C_reraw
+    global C, C_raw, ids, labels, image_source, session_name, C_denoised, C_deconvolved, C_reraw, Coor_original, Cn_shape
     filename = ''
     labels = np.zeros((3, 3), dtype=bool)
     labels[:, 2] = True
+    Coor_original = None  # Store original coordinate data
+    Cn_shape = None  # Store image shape
 
     """
     ========================================================================================================================
@@ -330,6 +332,39 @@ def labeler_bkapp_v2(doc):
     toggle_unknown = Toggle(label="Show Unknown", button_type="success", active=True)
     toggle_discard = Toggle(label="Show Discard", button_type="success", active=True)
 
+    # Toggle for coordinate transformation (XY swap only; Y-flip is always applied)
+    toggle_transform = Toggle(label="Swap X-Y Coordinates", button_type="primary", active=False, disabled=True)
+
+    def apply_coordinate_transform(Coor_data, height, apply_xy_swap=True):
+        """
+        Apply coordinate transformation on mask coordinates
+        :param Coor_data: List of coordinate arrays for each neuron
+        :param height: Image height for y-axis flipping
+        :param apply_xy_swap: If True, swap x and y coordinates (diagonal transform);
+                              Y-axis flip is ALWAYS applied regardless (Bokeh requirement)
+        :return: Transformed x and y position lists
+        """
+        x_positions_all = []
+        y_positions_all = []
+
+        for i in range(len(Coor_data)):
+            if apply_xy_swap:
+                # Apply coordinate swap (diagonal transformation)
+                x_positions = Coor_data[i][:, 1]  # Swap: use column 1 for x
+                y_positions = Coor_data[i][:, 0]  # Swap: use column 0 for y
+            else:
+                # Use original column order (no swap)
+                x_positions = Coor_data[i][:, 0]  # Use column 0 for x
+                y_positions = Coor_data[i][:, 1]  # Use column 1 for y
+
+            x_positions_all.append(x_positions)
+            y_positions_all.append(y_positions)
+
+        # ALWAYS flip y-coordinates vertically (Bokeh coordinate system requirement)
+        y_positions_all = [[height - y for y in y_list] for y_list in y_positions_all]
+
+        return x_positions_all, y_positions_all
+
     def update_toggle_colors():
         """Update toggle button colors and labels based on their state"""
         for toggle, label_base in [(toggle_d1, "D1"), (toggle_d2, "D2"), 
@@ -348,6 +383,26 @@ def labeler_bkapp_v2(doc):
     toggle_cholinergic.on_change('active', lambda attr, old, new: toggle_callback(toggle_cholinergic))
     toggle_unknown.on_change('active', lambda attr, old, new: toggle_callback(toggle_unknown))
     toggle_discard.on_change('active', lambda attr, old, new: toggle_callback(toggle_discard))
+
+    def toggle_transform_callback(_attr, _old, new):
+        """Callback for XY coordinate swap toggle"""
+        if Coor_original is None or Cn_shape is None:
+            return  # Data not loaded yet
+
+        # Apply or remove XY coordinate swap (Y-flip always applied)
+        # Note: Button logic is inverted - active=True means DO swap
+        height, _width = Cn_shape
+        x_positions_all, y_positions_all = apply_coordinate_transform(Coor_original, height, new)
+
+        # Update spatial_source with transformed coordinates
+        spatial_source.data['xs'] = x_positions_all
+        spatial_source.data['ys'] = y_positions_all
+
+        # Update button appearance
+        toggle_transform.button_type = "success" if new else "primary"
+        toggle_transform.label = "X-Y Swapped" if new else "Original X-Y Order"
+
+    toggle_transform.on_change('active', toggle_transform_callback)
 
     def update_mask_visibility():
         """Update visibility of masks based on their labels and toggle states"""
@@ -565,7 +620,7 @@ def labeler_bkapp_v2(doc):
         Then re-populate the spatial_source with new shapes and
         reset labels/data for all neurons to 'unknown' by default.
         """
-        global C, C_raw, ids, labels, image_source, C_denoised, C_deconvolved, C_reraw
+        global C, C_raw, ids, labels, image_source, C_denoised, C_deconvolved, C_reraw, Coor_original, Cn_shape
         # Enable navigation controls
         neuron_id_slider.disabled = False
         neuron_index_input.disabled = False
@@ -602,27 +657,21 @@ def labeler_bkapp_v2(doc):
         # Load the data
         [C, C_raw, Cn, ids, Coor, centroids, virmenPath, C_denoised, C_deconvolved, C_reraw] = load_data(filename)
 
+        # Store original coordinate data and image shape for coordinate transformation
+        Coor_original = Coor
+        Cn_shape = Cn.shape[:2]
+
+        # Enable coordinate transformation toggle
+        toggle_transform.disabled = False
+
         # Initialize labels as a dictionary with all neurons set to "unknown"
         labels = {str(i): "unknown" for i in range(len(C))}
 
         num_shapes = len(Coor)
         height, width = Cn.shape[:2]
 
-        # Prepare data for Bokeh
-        x_positions_all = []
-        y_positions_all = []
-
-        for i in range(num_shapes):
-            # No transpose in load_data, so extract from columns
-            # Then swap x and y to match the flipped image orientation
-            x_positions = Coor[i][:, 1]  # Swap: use column 1 for x
-            y_positions = Coor[i][:, 0]  # Swap: use column 0 for y
-
-            # Close the shape by ensuring the first point is repeated at the end
-            x_positions_all.append(x_positions)
-            y_positions_all.append(y_positions)
-
-        y_positions_all = [[height - y for y in y_list] for y_list in y_positions_all]
+        # Apply coordinate transformation based on toggle state
+        x_positions_all, y_positions_all = apply_coordinate_transform(Coor, height, toggle_transform.active)
 
         colors = [custom_bright_colors[i % len(custom_bright_colors)] for i in range(num_shapes)]
 
@@ -929,6 +978,9 @@ def labeler_bkapp_v2(doc):
     # Our new row of toggles:
     toggle_row = row(spacer3, toggle_d1, toggle_d2, toggle_cholinergic, toggle_unknown, toggle_discard)
 
+    # Coordinate transformation toggle in a separate row
+    transform_row = row(spacer3, toggle_transform)
+
     layout = row(
         column(
             spatial,
@@ -938,6 +990,7 @@ def labeler_bkapp_v2(doc):
             choose_file,
             controls,
             toggle_row,
+            transform_row,
             temporal,
             labelling,
             menus,
