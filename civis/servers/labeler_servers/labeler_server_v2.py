@@ -610,8 +610,8 @@ def labeler_bkapp_v2(doc):
     ========================================================================================================================
     """
 
-    # Filename input
-    sessionname_input = TextInput(value=filename, title="SessionName:", width=400)
+    # Filename input (supports both session name and file path)
+    sessionname_input = TextInput(value=filename, title="Session Name or File Path:", width=400)
     load_data_button = Button(label="Load Data", button_type="success")
 
     def load_and_update_data(filename):
@@ -756,10 +756,33 @@ def labeler_bkapp_v2(doc):
 
     def update_data():
         global session_name
-        with open(CONFIG_PATH, 'r') as file:
-            config = json.load(file)
-        session_name = sessionname_input.value
-        neuron_path = os.path.join(config['ProcessedFilePath'], session_name, f'{session_name}_v7.mat')
+        input_value = sessionname_input.value.strip()
+
+        # Auto-detect if input is a file path or session name
+        if "/" in input_value or "\\" in input_value or input_value.endswith('.mat'):
+            # Treat as file path
+            neuron_path = os.path.normpath(input_value)
+
+            # Check if it's an absolute path
+            if not os.path.isabs(neuron_path):
+                # If relative path, make it relative to the current working directory
+                neuron_path = os.path.abspath(neuron_path)
+
+            # Extract session name from the file path for saving labels
+            # Assume the session name is the parent directory name
+            session_name = os.path.basename(os.path.dirname(neuron_path))
+        else:
+            # Treat as session name (original behavior)
+            with open(CONFIG_PATH, 'r') as file:
+                config = json.load(file)
+            session_name = input_value
+            neuron_path = os.path.join(config['ProcessedFilePath'], session_name, f'{session_name}_v7.mat')
+
+        # Verify the file exists
+        if not os.path.exists(neuron_path):
+            status_div.text = f"<span style='color: red;'>Error: File not found at {neuron_path}</span>"
+            return
+
         load_and_update_data(neuron_path)
         print(f"{neuron_path} loaded!")
 
