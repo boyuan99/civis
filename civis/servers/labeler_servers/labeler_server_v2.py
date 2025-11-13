@@ -38,7 +38,8 @@ def load_data(filename):
         C_deconvolved = np.transpose(data['C_deconvolved'][()])
         C_reraw = np.transpose(data['C_reraw'][()])
         centroids = np.transpose(data['centroids'][()])
-        virmenPath = data['virmenPath'][()].tobytes().decode('utf-16le')
+        C_extract = np.transpose(data['temporal_weights'][()])
+        virmenPath = None
 
         for i in range(Coor_cell_array.shape[1]):
             ref = Coor_cell_array[0, i]  # Get the reference
@@ -47,7 +48,7 @@ def load_data(filename):
 
             Coor.append(coor_matrix)
 
-    return C, C_raw, Cn, ids, Coor, centroids, virmenPath, C_denoised, C_deconvolved, C_reraw
+    return C, C_raw, Cn, ids, Coor, centroids, virmenPath, C_denoised, C_deconvolved, C_reraw, C_extract
 
 
 def load_tiff_image(image_path, color="red"):
@@ -655,7 +656,7 @@ def labeler_bkapp_v2(doc):
         bfp_input.value = "m_f_n_001_bfp_max.tif"
 
         # Load the data
-        [C, C_raw, Cn, ids, Coor, centroids, virmenPath, C_denoised, C_deconvolved, C_reraw] = load_data(filename)
+        [C, C_raw, Cn, ids, Coor, centroids, virmenPath, C_denoised, C_deconvolved, C_reraw, C_extract] = load_data(filename)
 
         # Store original coordinate data and image shape for coordinate transformation
         Coor_original = Coor

@@ -47,8 +47,8 @@ class CITank(VirmenTank):
         self.ci_rate = ci_rate
         self.session_duration = session_duration
 
-        (self.C, self.C_raw, self.Cn, self.ids, self.Coor, self.centroids,
-         self.C_denoised, self.C_deconvolved, self.C_baseline, self.C_reraw, self.A) = self._load_data(ci_path)
+        (self.C, self.C_raw, self.Cn, self.ids, self.Coor, self.centroids, self.C_denoised, 
+         self.C_deconvolved, self.C_baseline, self.C_reraw, self.A, self.C_extract) = self._load_data(ci_path)
 
         self.neuron_num = self.C_raw.shape[0]
         self.C_raw_deltaF_over_F = self._compute_deltaF_over_F()
@@ -86,6 +86,7 @@ class CITank(VirmenTank):
             C_deconvolved = np.transpose(data['C_deconvolved'][()])
             C_baseline = np.transpose(data['C_baseline'][()])
             C_reraw = np.transpose(data['C_reraw'][()])
+            C_extract = np.transpose(data['temporal_weights'][()])
             centroids = np.transpose(data['centroids'][()])
             A = data['A'][()]
 
@@ -96,7 +97,7 @@ class CITank(VirmenTank):
 
                 Coor.append(np.transpose(coor_matrix))
 
-        return C, C_raw, Cn, ids, Coor, centroids, C_denoised, C_deconvolved, C_baseline, C_reraw, A
+        return C, C_raw, Cn, ids, Coor, centroids, C_denoised, C_deconvolved, C_baseline, C_reraw, A, C_extract
 
     @staticmethod
     def calculate_delta_f_over_f(signal, baseline_percentile=10):
