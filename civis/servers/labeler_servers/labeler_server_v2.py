@@ -32,13 +32,43 @@ def load_data(filename):
         ids = data['ids'][()] - 1
         Coor_cell_array = data['Coor']
         Coor = []
-        C_raw = np.transpose(data['C_raw'][()])
+
+        # Load C first as reference for shape
         C = np.transpose(data['C'][()])
-        C_denoised = np.transpose(data['C_denoised'][()])
-        C_deconvolved = np.transpose(data['C_deconvolved'][()])
-        C_reraw = np.transpose(data['C_reraw'][()])
+        num_neurons, num_frames = C.shape
+
+        # Check and load each variable, initialize with zeros if missing
+        if 'C_raw' in data:
+            C_raw = np.transpose(data['C_raw'][()])
+        else:
+            C_raw = np.zeros((num_neurons, num_frames))
+            print("Warning: C_raw not found, initialized with zeros")
+
+        if 'C_denoised' in data:
+            C_denoised = np.transpose(data['C_denoised'][()])
+        else:
+            C_denoised = np.zeros((num_neurons, num_frames))
+            print("Warning: C_denoised not found, initialized with zeros")
+
+        if 'C_deconvolved' in data:
+            C_deconvolved = np.transpose(data['C_deconvolved'][()])
+        else:
+            C_deconvolved = np.zeros((num_neurons, num_frames))
+            print("Warning: C_deconvolved not found, initialized with zeros")
+
+        if 'C_reraw' in data:
+            C_reraw = np.transpose(data['C_reraw'][()])
+        else:
+            C_reraw = np.zeros((num_neurons, num_frames))
+            print("Warning: C_reraw not found, initialized with zeros")
+
+        if 'temporal_weights' in data:
+            C_extract = np.transpose(data['temporal_weights'][()])
+        else:
+            C_extract = np.zeros((num_neurons, num_frames))
+            print("Warning: temporal_weights (C_extract) not found, initialized with zeros")
+
         centroids = np.transpose(data['centroids'][()])
-        C_extract = np.transpose(data['temporal_weights'][()])
         virmenPath = None
 
         for i in range(Coor_cell_array.shape[1]):
@@ -90,7 +120,7 @@ def load_tiff_image(image_path, color="red"):
 
 
 def labeler_bkapp_v2(doc):
-    global C, C_raw, ids, labels, image_source, session_name, C_denoised, C_deconvolved, C_reraw, Coor_original, Cn_shape
+    global C, C_raw, ids, labels, image_source, session_name, C_denoised, C_deconvolved, C_reraw, C_extract, Coor_original, Cn_shape
     filename = ''
     labels = np.zeros((3, 3), dtype=bool)
     labels[:, 2] = True
@@ -140,7 +170,8 @@ def labeler_bkapp_v2(doc):
                                              'y_raw': [],
                                              'y_denoised': [],
                                              'y_deconvolved': [],
-                                             'y_reraw': []
+                                             'y_reraw': [],
+                                             'y_extract': []
                                              })
 
     image_source = ColumnDataSource(data={'image': []})
@@ -188,6 +219,14 @@ def labeler_bkapp_v2(doc):
     temporal2.legend.click_policy = "hide"
     temporal_tab2 = TabPanel(child=temporal2, title="Rebased")
 
+    # temporal3 for C_extract
+    temporal3 = figure(title="Temporal Activity", width=800, height=400, x_range=temporal1.x_range,
+                       active_scroll="wheel_zoom")
+    temporal3.line('x', 'y_extract', source=temporal_source, line_width=2, color="purple", alpha=0.7,
+                   legend_label="Extract (Temporal Weights)")
+    temporal3.legend.click_policy = "hide"
+    temporal_tab3 = TabPanel(child=temporal3, title="Extract")
+
     # Callback function to print the ID of the selected neuron
     def update_temporal(attr, old, new):
         # 'new' is directly the list of selected indices
@@ -199,6 +238,7 @@ def labeler_bkapp_v2(doc):
             new_y_denoised = C_denoised[neuron_id]
             new_y_deconvolved = C_deconvolved[neuron_id]
             new_y_reraw = C_reraw[neuron_id]
+            new_y_extract = C_extract[neuron_id]
             new_x = np.arange(0, len(C[neuron_id]) / 20, 0.05)
 
             temporal_source.data = {
@@ -207,11 +247,13 @@ def labeler_bkapp_v2(doc):
                 'y_raw': new_y_raw,
                 'y_denoised': new_y_denoised,
                 'y_deconvolved': new_y_deconvolved,
-                'y_reraw': new_y_reraw
+                'y_reraw': new_y_reraw,
+                'y_extract': new_y_extract
             }
 
             temporal1.title.text = f"Temporal Activity: Neuron {neuron_id}"
             temporal2.title.text = f"Temporal Activity: Neuron {neuron_id}"
+            temporal3.title.text = f"Temporal Activity: Neuron {neuron_id}"
             neuron_id_slider.value = selected_index
 
     spatial_source.selected.on_change('indices', update_temporal)
@@ -232,6 +274,7 @@ def labeler_bkapp_v2(doc):
         new_y_denoised = C_denoised[neuron_id]
         new_y_deconvolved = C_deconvolved[neuron_id]
         new_y_reraw = C_reraw[neuron_id]
+        new_y_extract = C_extract[neuron_id]
 
         new_x = np.arange(0, len(C[neuron_id]) / 20, 0.05)
         temporal_source.data = {
@@ -240,10 +283,12 @@ def labeler_bkapp_v2(doc):
             'y_raw': new_y_raw,
             'y_denoised': new_y_denoised,
             'y_deconvolved': new_y_deconvolved,
-            'y_reraw': new_y_reraw
+            'y_reraw': new_y_reraw,
+            'y_extract': new_y_extract
         }
         temporal1.title.text = f"Temporal Activity: Neuron {neuron_id}"  # Adjust text to match ID
         temporal2.title.text = f"Temporal Activity: Neuron {neuron_id}"  # Adjust text to match ID
+        temporal3.title.text = f"Temporal Activity: Neuron {neuron_id}"  # Adjust text to match ID
 
         # Highlight the selected neuron in the spatial plot
         spatial_source.selected.indices = [neuron_id]
@@ -621,7 +666,7 @@ def labeler_bkapp_v2(doc):
         Then re-populate the spatial_source with new shapes and
         reset labels/data for all neurons to 'unknown' by default.
         """
-        global C, C_raw, ids, labels, image_source, C_denoised, C_deconvolved, C_reraw, Coor_original, Cn_shape
+        global C, C_raw, ids, labels, image_source, C_denoised, C_deconvolved, C_reraw, C_extract, Coor_original, Cn_shape
         # Enable navigation controls
         neuron_id_slider.disabled = False
         neuron_index_input.disabled = False
@@ -693,7 +738,8 @@ def labeler_bkapp_v2(doc):
             'y_raw': C_raw[0],
             'y_denoised': C_denoised[0],
             'y_deconvolved': C_deconvolved[0],
-            'y_reraw': C_reraw[0]
+            'y_reraw': C_reraw[0],
+            'y_extract': C_extract[0]
         }
 
         # Reset or update widgets
@@ -746,6 +792,7 @@ def labeler_bkapp_v2(doc):
         spatial.title.text = "Neuronal Segmentation"
         temporal1.title.text = "Temporal Activity: Neuron 0"
         temporal2.title.text = "Temporal Activity: Neuron 0"
+        temporal3.title.text = "Temporal Activity: Neuron 0"
         file_path_input.value = f"{session_name}_neuron_labels.json"
 
         # Update document title
@@ -997,7 +1044,7 @@ def labeler_bkapp_v2(doc):
 
     menus = row(spacer3, row(d1_neurons_select, d2_neurons_select, cholinergic_neurons_select, unknown_neurons_select, discard_neurons_select))
 
-    temporal = Tabs(tabs=[temporal_tab1, temporal_tab2])
+    temporal = Tabs(tabs=[temporal_tab1, temporal_tab2, temporal_tab3])
 
     # Our new row of toggles:
     toggle_row = row(spacer3, toggle_d1, toggle_d2, toggle_cholinergic, toggle_unknown, toggle_discard)
