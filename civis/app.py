@@ -124,6 +124,12 @@ def trajectory_v9_app():
     script = server_document(f'http://localhost:{args.bokeh_port}/trajectory_bkapp_v9')
     return render_template("trajectory/trajectory_v9.html", script=script, template='Flask', port=args.flask_port)
 
+@app.route('/trajectory/v10/')
+def trajectory_v10_app():
+    global args
+    script = server_document(f'http://localhost:{args.bokeh_port}/trajectory_bkapp_v10')
+    return render_template("trajectory/trajectory_v10.html", script=script, template='Flask', port=args.flask_port)
+
 @app.route('/place/v0/')
 def place_v0_app():
     global args
@@ -177,6 +183,7 @@ def bk_worker(bokeh_port, flask_port):
         '/trajectory_bkapp_v7': trajectory_bkapp_v7,
         '/trajectory_bkapp_v8': trajectory_bkapp_v8,
         '/trajectory_bkapp_v9': trajectory_bkapp_v9,
+        '/trajectory_bkapp_v10': trajectory_bkapp_v10,
         '/place_bkapp_v2': place_cell_vis_bkapp_v2,
         '/place_bkapp_v3': place_cell_vis_bkapp_v3,
         '/place_bkapp_v4': place_cell_vis_bkapp_v4

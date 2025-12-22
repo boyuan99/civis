@@ -8,3 +8,4 @@ from .trajectory_server_v6 import trajectory_bkapp_v6
 from .trajectory_server_v7 import trajectory_bkapp_v7
 from .trajectory_server_v8 import trajectory_bkapp_v8
 from .trajectory_server_v9 import trajectory_bkapp_v9
+from .trajectory_server_v10 import trajectory_bkapp_v10
