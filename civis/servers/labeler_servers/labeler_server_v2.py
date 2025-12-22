@@ -127,6 +127,14 @@ def labeler_bkapp_v2(doc):
     Coor_original = None  # Store original coordinate data
     Cn_shape = None  # Store image shape
 
+    # Image translation offsets - store separately for each image type
+    image_offsets = {
+        'gcamp': {'x': 0, 'y': 0, 'shape': None},
+        'orig_tdt': {'x': 0, 'y': 0, 'shape': None},
+        'bfp': {'x': 0, 'y': 0, 'shape': None}
+    }
+    current_image_type = None  # Track which image is currently displayed
+
     """
     ========================================================================================================================
             Bokeh Setup
@@ -859,6 +867,67 @@ def labeler_bkapp_v2(doc):
     # Status message
     status_div = Div(text="", width=400)
 
+    # Image translation controls
+    translate_up_button = Button(label="↑", button_type="default", width=50)
+    translate_down_button = Button(label="↓", button_type="default", width=50)
+    translate_left_button = Button(label="←", button_type="default", width=50)
+    translate_right_button = Button(label="→", button_type="default", width=50)
+    reset_translation_button = Button(label="Reset Position", button_type="warning", width=120)
+
+    # Input for custom translation step
+    translate_step_input = TextInput(value="10", title="Step Size (pixels):", width=150)
+
+    # Display current offset
+    translation_display = Div(text="Offset: X=0, Y=0", width=150, height=30)
+
+    def update_image_translation(dx=0, dy=0, reset=False):
+        """Update image position by translating it"""
+        nonlocal image_offsets, current_image_type
+
+        if current_image_type is None:
+            return  # No image loaded
+
+        if reset:
+            image_offsets[current_image_type]['x'] = 0
+            image_offsets[current_image_type]['y'] = 0
+        else:
+            image_offsets[current_image_type]['x'] += dx
+            image_offsets[current_image_type]['y'] += dy
+
+        # Update display
+        current_x = image_offsets[current_image_type]['x']
+        current_y = image_offsets[current_image_type]['y']
+        translation_display.text = f"Offset: X={current_x}, Y={current_y} ({current_image_type.upper()})"
+
+        # Reload the current image with new offset
+        current_shape = image_offsets[current_image_type]['shape']
+        if current_shape is not None and image_source.data.get('image'):
+            # Remove existing image renderers
+            spatial.renderers = [r for r in spatial.renderers if not isinstance(r, ImageRGBA)]
+
+            # Add image with updated position
+            if image_source.data['image']:
+                height, width = current_shape
+                spatial.image_rgba(image='image',
+                                 x=current_x, y=current_y,
+                                 dw=width, dh=height,
+                                 source=image_source,
+                                 level='glyph')
+
+    # Helper function to get step size from input
+    def get_step_size():
+        try:
+            return int(translate_step_input.value)
+        except ValueError:
+            return 10  # Default to 10 if invalid input
+
+    # Translation button callbacks
+    translate_up_button.on_click(lambda: update_image_translation(dy=get_step_size()))
+    translate_down_button.on_click(lambda: update_image_translation(dy=-get_step_size()))
+    translate_left_button.on_click(lambda: update_image_translation(dx=-get_step_size()))
+    translate_right_button.on_click(lambda: update_image_translation(dx=get_step_size()))
+    reset_translation_button.on_click(lambda: update_image_translation(reset=True))
+
     def load_specific_image(image_type, image_input):
         """
         Load a specific image type (GCaMP, original TDT, or adjusted TDT)
@@ -910,15 +979,25 @@ def labeler_bkapp_v2(doc):
             # Load and process the image
             img, shape = load_tiff_image(image_path, color)
             if img is not None:
-                # Remove only the existing image ren1erers
+                # Update current image type and restore saved offset for this image type
+                nonlocal image_offsets, current_image_type
+                current_image_type = image_type
+                image_offsets[image_type]['shape'] = shape
+
+                # Restore the saved offset for this image type
+                saved_x = image_offsets[image_type]['x']
+                saved_y = image_offsets[image_type]['y']
+                translation_display.text = f"Offset: X={saved_x}, Y={saved_y} ({image_type.upper()})"
+
+                # Remove only the existing image renderers
                 spatial.renderers = [r for r in spatial.renderers if not isinstance(r, ImageRGBA)]
 
-                # Add the image with a level between underlay and overlay
-                image_renderer = spatial.image_rgba(image='image',
-                                                    x=0, y=0,
-                                                    dw=shape[1], dh=shape[0],
-                                                    source=image_source,
-                                                    level='glyph')
+                # Add the image with a level between underlay and overlay (using saved offset)
+                spatial.image_rgba(image='image',
+                                 x=saved_x, y=saved_y,
+                                 dw=shape[1], dh=shape[0],
+                                 source=image_source,
+                                 level='glyph')
 
                 # Update image source with the new image
                 image_source.data = {'image': [img]}
@@ -944,9 +1023,20 @@ def labeler_bkapp_v2(doc):
             status_div.text = f"<span style='color: red;'>Error: {str(e)}</span>"
 
     def remove_image():
-        """Remove the currently displayed image"""
+        """Remove the currently displayed image (preserves offsets for future use)"""
+        nonlocal current_image_type
         image_source.data = {'image': []}
-        status_div.text = "<span style='color: blue;'>Image removed</span>"
+
+        # Display the offset of the removed image type (preserved for next load)
+        if current_image_type is not None:
+            saved_x = image_offsets[current_image_type]['x']
+            saved_y = image_offsets[current_image_type]['y']
+            translation_display.text = f"Offset preserved: X={saved_x}, Y={saved_y} ({current_image_type.upper()})"
+        else:
+            translation_display.text = f"Offset: X=0, Y=0"
+
+        current_image_type = None  # Clear current image type
+        status_div.text = "<span style='color: blue;'>Image removed (offsets preserved)</span>"
 
     # Callbacks for the load buttons
     load_gcamp_button.on_click(lambda: load_specific_image("gcamp", gcamp_input))
@@ -958,12 +1048,26 @@ def labeler_bkapp_v2(doc):
     gcamp_row = row(gcamp_input, column(Spacer(height=20), load_gcamp_button))
     orig_tdt_row = row(orig_tdt_input, column(Spacer(height=20), load_orig_tdt_button))
     bfp_row = row(bfp_input, column(Spacer(height=20), load_bfp_button))
+
+    # Create translation control layout (arrow button grid)
+    translation_controls = column(
+        Div(text="<b>Image Translation:</b>", width=150),
+        translate_step_input,
+        row(Spacer(width=50), translate_up_button),
+        row(translate_left_button, Spacer(width=40), translate_right_button),
+        row(Spacer(width=50), translate_down_button),
+        row(reset_translation_button),
+        translation_display
+    )
+
     # Add the new controls to the layout
     image_controls = column(
         gcamp_row,
         orig_tdt_row,
         bfp_row,
-        row(remove_image_button)
+        row(remove_image_button),
+        Spacer(height=10),
+        translation_controls
     )
 
     """
