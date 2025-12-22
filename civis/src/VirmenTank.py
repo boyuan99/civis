@@ -136,9 +136,18 @@ class VirmenTank:
                     trials.append(data[start:i + 1].to_dict(orient='list'))
                     starts.append(start)
                     start = i + 1
-            
+
             # Add extend_data for straight70v3 maze type to track falls
             self.extend_data = MazeV3Tank(trials, data)
+
+        elif maze_type.lower() == 'wide70':
+            # Same shape as straight70v3 but with walls, so no falls
+            for i in range(len(data)):
+                if data.iloc[i]['y'] >= 70 or data.iloc[i]['y'] <= -70:
+                    trials.append(data[start:i + 1].to_dict(orient='list'))
+                    starts.append(start)
+                    start = i + 1
+            # No extend_data needed since walls prevent falls
 
         elif maze_type.lower() in ['turnv0', 'turnv1']:
             for i in range(len(data)):
@@ -194,6 +203,10 @@ class VirmenTank:
             indices = indices_all[np.where(indices_all < self.vm_rate * self.session_duration)]
 
         elif maze_type.lower() == 'straight70v3':
+            indices_all = np.array(self.virmen_data.index[self.virmen_data['y'].abs() > 70].tolist())
+            indices = indices_all[np.where(indices_all < self.vm_rate * self.session_duration)]
+
+        elif maze_type.lower() == 'wide70':
             indices_all = np.array(self.virmen_data.index[self.virmen_data['y'].abs() > 70].tolist())
             indices = indices_all[np.where(indices_all < self.vm_rate * self.session_duration)]
 
@@ -769,8 +782,8 @@ class VirmenTank:
         if self.maze_type.lower() in ['turnv0', 'turnv1']:
             # Turn mazes are wider and more square
             width, height = 600, 600
-        elif self.maze_type.lower() in ['straight70v3']:
-            # Straight70v3 is narrower and taller
+        elif self.maze_type.lower() in ['straight70v3', 'wide70']:
+            # Straight70v3 and wide70 are narrower and taller
             width, height = 400, 800
         else:
             # Other straight mazes are narrow and tall
@@ -878,11 +891,11 @@ class VirmenTank:
             plot.line(x_range, [-50, -50], line_color='black', line_width=2, 
                      line_dash='dashed')
                      
-        elif self.maze_type.lower() in ['straight70', 'straight70v3']:
+        elif self.maze_type.lower() in ['straight70', 'straight70v3', 'wide70']:
             # Add horizontal boundary lines at ±70
-            plot.line(x_range, [70, 70], line_color='black', line_width=2, 
+            plot.line(x_range, [70, 70], line_color='black', line_width=2,
                      line_dash='dashed', legend_label='Maze Boundary')
-            plot.line(x_range, [-70, -70], line_color='black', line_width=2, 
+            plot.line(x_range, [-70, -70], line_color='black', line_width=2,
                      line_dash='dashed')
                      
         elif self.maze_type.lower() in ['turnv0', 'turnv1']:
