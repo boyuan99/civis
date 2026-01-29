@@ -1421,7 +1421,7 @@ class NeuralConnectivityAnalyzer:
                 top_patterns = pattern_items[:15]  # Show more patterns
                 
                 # Convert tuples to strings
-                pattern_names = [' → '.join(pattern) for pattern, _ in top_patterns]
+                pattern_names = [' -> '.join(pattern) for pattern, _ in top_patterns]
                 pattern_counts = [count for _, count in top_patterns]
                 
                 p3 = figure(width=1200, height=500,  # Made wider and taller
@@ -1776,20 +1776,20 @@ class NeuralConnectivityAnalyzer:
                     percent_change = (norm_val - 1) * 100 if norm_val > 0 else -100
                     
                     if norm_val > 1.5:
-                        print(f"{source} → {target}: {norm_val:.2f}x baseline ({percent_change:+.1f}%, raw={raw_val:.3f}) - STRONG ENHANCEMENT")
+                        print(f"{source} -> {target}: {norm_val:.2f}x baseline ({percent_change:+.1f}%, raw={raw_val:.3f}) - STRONG ENHANCEMENT")
                     elif norm_val > 1.2:
-                        print(f"{source} → {target}: {norm_val:.2f}x baseline ({percent_change:+.1f}%, raw={raw_val:.3f}) - Moderate enhancement")
+                        print(f"{source} -> {target}: {norm_val:.2f}x baseline ({percent_change:+.1f}%, raw={raw_val:.3f}) - Moderate enhancement")
                     elif norm_val < 0.8:
-                        print(f"{source} → {target}: {norm_val:.2f}x baseline ({percent_change:+.1f}%, raw={raw_val:.3f}) - Suppression")
+                        print(f"{source} -> {target}: {norm_val:.2f}x baseline ({percent_change:+.1f}%, raw={raw_val:.3f}) - Suppression")
                     else:
-                        print(f"{source} → {target}: {norm_val:.2f}x baseline ({percent_change:+.1f}%, raw={raw_val:.3f}) - Normal")
+                        print(f"{source} -> {target}: {norm_val:.2f}x baseline ({percent_change:+.1f}%, raw={raw_val:.3f}) - Normal")
         else:
             print(f"\nRaw Conditional Probability Summary:")
             print("=" * 40)
             for i, source in enumerate(cell_types):
                 for j, target in enumerate(cell_types):
                     raw_val = raw_matrix[i, j]
-                    print(f"{source} → {target}: {raw_val:.3f}")
+                    print(f"{source} -> {target}: {raw_val:.3f}")
         
         # Set default save path if none provided
         if save_path is None:
