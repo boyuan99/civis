@@ -63,9 +63,9 @@ def load_data(filename):
             print("Warning: C_reraw not found, initialized with zeros")
 
         if 'temporal_weights' in data:
-            C_extract = data['temporal_weights'][()]
+            C_extract = data['temporal_weights'][()].T
         else:
-            C_extract = np.zeros((num_neurons, num_frames)).T
+            C_extract = np.zeros((num_neurons, num_frames))
             print("Warning: temporal_weights (C_extract) not found, initialized with zeros")
 
         centroids = np.transpose(data['centroids'][()])
