@@ -705,8 +705,8 @@ def labeler_bkapp_v2(doc):
         bfp_input.disabled = False
 
         gcamp_input.value = f"{session_name}_max.tif"
-        orig_tdt_input.value = "m_f_n_001_tdt_max.tif"
-        bfp_input.value = "m_f_n_001_bfp_max.tif"
+        orig_tdt_input.value = f"{session_name}_tdt_max.tif"
+        bfp_input.value = f"{session_name}_bfp_max.tif"
 
         # Load the data
         [C, C_raw, Cn, ids, Coor, centroids, virmenPath, C_denoised, C_deconvolved, C_reraw, C_extract] = load_data(filename)
@@ -960,11 +960,11 @@ def labeler_bkapp_v2(doc):
                     filename = input_value
                     image_path = os.path.join(base_path, session_name, folder_name, filename)
                 elif image_type == "orig_tdt":
-                    folder_name = f'{session_name}_alignment_check'
+                    folder_name = f'{session_name}_tiff_projections'
                     filename = input_value
                     image_path = os.path.join(base_path, session_name, folder_name, filename)
                 elif image_type == "bfp":
-                    folder_name = f'{session_name}_alignment_check'
+                    folder_name = f'{session_name}_tiff_projections'
                     filename = input_value
                     image_path = os.path.join(base_path, session_name, folder_name, filename)
 
