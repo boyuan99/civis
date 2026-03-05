@@ -34,6 +34,12 @@ def labeler_v2_app():
     script = server_document(f'http://localhost:{args.bokeh_port}/labeler_bkapp_v2')
     return render_template("labeler/labeler_v2.html", script=script, template="Flask", port=args.flask_port)
 
+@app.route('/video-viewer/v0/')
+def video_viewer_v0_app():
+    global args
+    script = server_document(f'http://localhost:{args.bokeh_port}/video_viewer_bkapp_v0')
+    return render_template("labeler/video_viewer_v0.html", script=script, template="Flask", port=args.flask_port)
+
 @app.route('/trajectory/v1/')
 def trajectory_v1_app():
     global args
@@ -186,7 +192,8 @@ def bk_worker(bokeh_port, flask_port):
         '/trajectory_bkapp_v10': trajectory_bkapp_v10,
         '/place_bkapp_v2': place_cell_vis_bkapp_v2,
         '/place_bkapp_v3': place_cell_vis_bkapp_v3,
-        '/place_bkapp_v4': place_cell_vis_bkapp_v4
+        '/place_bkapp_v4': place_cell_vis_bkapp_v4,
+        '/video_viewer_bkapp_v0': video_viewer_bkapp_v0
     }
 
     server = Server(bokeh_apps,
