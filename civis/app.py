@@ -5,8 +5,10 @@ from tornado.ioloop import IOLoop
 from bokeh.server.server import Server
 from bokeh.embed import server_document
 from civis.servers import *
+from civis.servers.labeler_servers.neural_viewer import neural_viewer_bp
 
 app = Flask(__name__)
+app.register_blueprint(neural_viewer_bp)
 
 # Global variable to store command-line arguments
 args = None

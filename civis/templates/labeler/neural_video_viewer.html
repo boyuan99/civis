@@ -1,0 +1,821 @@
+{% extends "labeler/labeler_base.html" %}
+
+{% block title %}Neural Video Viewer{% endblock %}
+
+{% set version = "Neural Video Viewer" %}
+
+{% block additional_content %}
+<style>
+    .nv-container { display: flex; flex-wrap: wrap; gap: 16px; padding: 8px; font-family: Arial, sans-serif; font-size: 13px; }
+    .nv-load-bar { width: 100%; display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
+    .nv-load-bar label { font-weight: bold; font-size: 12px; }
+    .nv-load-bar input[type="text"] { width: 350px; padding: 4px 6px; font-size: 13px; }
+    .nv-load-bar button { padding: 5px 14px; cursor: pointer; font-size: 13px; }
+    .nv-main { display: flex; gap: 16px; width: 100%; }
+    .nv-video-panel { flex: 0 0 auto; }
+    .nv-video-viewport { overflow: hidden; background: #000; cursor: grab; display: inline-block; }
+    .nv-video-viewport.dragging { cursor: grabbing; }
+    .nv-video-wrap { position: relative; display: inline-block; transform-origin: 0 0; }
+    .nv-video-wrap video { display: block; max-width: 700px; max-height: 600px; }
+    .nv-video-wrap canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+    .nv-controls { flex: 0 0 260px; }
+    .nv-controls label { display: block; font-weight: bold; margin-top: 10px; font-size: 12px; }
+    .nv-controls input[type="range"] { width: 100%; }
+    .nv-controls input[type="number"] { width: 80px; padding: 3px; }
+    .nv-controls select { width: 100%; padding: 3px; }
+    .nv-controls .cb-row { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+    .nv-playback { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+    .nv-playback button { padding: 4px 12px; cursor: pointer; }
+    .nv-signal-panel { width: 100%; }
+    .nv-signal-panel canvas { width: 100%; height: 220px; border: 1px solid #ccc; background: #1a1a2e; }
+    .nv-status { color: #666; margin-top: 6px; min-height: 18px; }
+    .nv-status.error { color: red; }
+    .nv-status.ok { color: green; }
+    .nv-frame-slider { width: 100%; margin-top: 6px; }
+    .nv-info { font-size: 12px; color: #555; margin-top: 4px; }
+</style>
+
+<!-- SVG color tint filters for grayscale video -->
+<svg style="position:absolute;width:0;height:0;">
+    <defs>
+        <filter id="tint-green" color-interpolation-filters="sRGB">
+            <feColorMatrix type="matrix" values="0 0 0 0 0  0.299 0.587 0.114 0 0  0 0 0 0 0  0 0 0 1 0"/>
+        </filter>
+        <filter id="tint-red" color-interpolation-filters="sRGB">
+            <feColorMatrix type="matrix" values="0.299 0.587 0.114 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0"/>
+        </filter>
+        <filter id="tint-blue" color-interpolation-filters="sRGB">
+            <feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0.299 0.587 0.114 0 0  0 0 0 1 0"/>
+        </filter>
+        <filter id="tint-cyan" color-interpolation-filters="sRGB">
+            <feColorMatrix type="matrix" values="0 0 0 0 0  0.299 0.587 0.114 0 0  0.299 0.587 0.114 0 0  0 0 0 1 0"/>
+        </filter>
+        <filter id="tint-magenta" color-interpolation-filters="sRGB">
+            <feColorMatrix type="matrix" values="0.299 0.587 0.114 0 0  0 0 0 0 0  0.299 0.587 0.114 0 0  0 0 0 1 0"/>
+        </filter>
+        <filter id="tint-yellow" color-interpolation-filters="sRGB">
+            <feColorMatrix type="matrix" values="0.299 0.587 0.114 0 0  0.299 0.587 0.114 0 0  0 0 0 0 0  0 0 0 1 0"/>
+        </filter>
+    </defs>
+</svg>
+
+<div class="nv-container">
+    <!-- Load Bar -->
+    <div class="nv-load-bar">
+        <div>
+            <label>Neuron Data (.mat)</label>
+            <input type="text" id="nv-mat-path" placeholder="Path to .mat file">
+        </div>
+        <button id="nv-load-data-btn">Load Data</button>
+        <div>
+            <label>Video (.mp4)</label>
+            <input type="text" id="nv-video-path" placeholder="Path to .mp4 file">
+        </div>
+        <button id="nv-load-video-btn">Load Video</button>
+    </div>
+
+    <!-- Main area -->
+    <div class="nv-main">
+        <!-- Video + masks -->
+        <div class="nv-video-panel">
+            <div class="nv-video-viewport" id="nv-video-viewport">
+                <div class="nv-video-wrap" id="nv-video-wrap">
+                    <video id="nv-video" preload="metadata"></video>
+                    <canvas id="nv-mask-canvas"></canvas>
+                </div>
+            </div>
+            <input type="range" id="nv-frame-slider" class="nv-frame-slider" min="0" max="100" value="0" step="1" disabled>
+            <div class="nv-playback">
+                <button id="nv-play-btn" disabled>Play</button>
+                <button id="nv-reset-zoom-btn" style="font-size:11px;">Reset Zoom</button>
+                <label style="margin:0;font-size:12px;">Speed:</label>
+                <input type="range" id="nv-speed-slider" min="0.25" max="3" value="1" step="0.25" style="width:100px;" disabled>
+                <span id="nv-speed-label">1x</span>
+            </div>
+            <div class="nv-info" id="nv-frame-info"></div>
+            <div class="nv-status" id="nv-status"></div>
+        </div>
+
+        <!-- Controls -->
+        <div class="nv-controls">
+            <label>Neuron ID</label>
+            <input type="range" id="nv-neuron-slider" min="0" max="0" value="0" step="1" disabled>
+            <input type="number" id="nv-neuron-input" value="0" min="0" max="0" disabled>
+            <span id="nv-neuron-count"></span>
+
+            <label>Signal Type</label>
+            <select id="nv-signal-select" disabled>
+                <option value="C">C (Lowpass)</option>
+                <option value="C_raw">C_raw (Raw)</option>
+                <option value="C_denoised">C_denoised</option>
+                <option value="C_deconvolved">C_deconvolved</option>
+                <option value="C_reraw">C_reraw</option>
+                <option value="C_extract">C_extract</option>
+            </select>
+
+            <div class="cb-row">
+                <input type="checkbox" id="nv-show-all" checked>
+                <label style="margin:0">Show all masks</label>
+            </div>
+
+            <label>Mask Opacity</label>
+            <input type="range" id="nv-opacity-slider" min="0" max="1" value="0.25" step="0.05">
+
+            <div class="cb-row">
+                <input type="checkbox" id="nv-swap-xy" checked>
+                <label style="margin:0">Swap X-Y</label>
+            </div>
+
+            <label style="margin-top:14px; border-top:1px solid #ccc; padding-top:8px;">Video Adjustments</label>
+
+            <label>Brightness</label>
+            <input type="range" id="nv-brightness" min="0.2" max="3" value="1" step="0.05">
+            <span id="nv-brightness-val" style="font-size:11px;">1.00</span>
+
+            <label>Contrast</label>
+            <input type="range" id="nv-contrast" min="0.2" max="3" value="1" step="0.05">
+            <span id="nv-contrast-val" style="font-size:11px;">1.00</span>
+
+            <label>Color Tint</label>
+            <select id="nv-color-tint">
+                <option value="none">Grayscale (original)</option>
+                <option value="green">Green</option>
+                <option value="red">Red</option>
+                <option value="blue">Blue</option>
+                <option value="cyan">Cyan</option>
+                <option value="magenta">Magenta</option>
+                <option value="yellow">Yellow</option>
+            </select>
+
+            <div class="cb-row">
+                <input type="checkbox" id="nv-invert">
+                <label style="margin:0">Invert</label>
+            </div>
+
+            <button id="nv-reset-adjustments" style="margin-top:6px;font-size:11px;">Reset Adjustments</button>
+
+            <label style="margin-top:14px; border-top:1px solid #ccc; padding-top:8px;">Signal Display</label>
+            <div class="cb-row">
+                <input type="checkbox" id="nv-show-secondary" checked>
+                <label style="margin:0">Show C_raw overlay</label>
+            </div>
+        </div>
+    </div>
+
+    <!-- Signal trace -->
+    <div class="nv-signal-panel">
+        <canvas id="nv-signal-canvas"></canvas>
+    </div>
+</div>
+
+<script>
+(function() {
+    'use strict';
+
+    // ==================== DOM refs ====================
+    const video = document.getElementById('nv-video');
+    const maskCanvas = document.getElementById('nv-mask-canvas');
+    const signalCanvas = document.getElementById('nv-signal-canvas');
+    const maskCtx = maskCanvas.getContext('2d');
+    const signalCtx = signalCanvas.getContext('2d');
+
+    const matPathInput = document.getElementById('nv-mat-path');
+    const videoPathInput = document.getElementById('nv-video-path');
+    const loadDataBtn = document.getElementById('nv-load-data-btn');
+    const loadVideoBtn = document.getElementById('nv-load-video-btn');
+    const frameSlider = document.getElementById('nv-frame-slider');
+    const playBtn = document.getElementById('nv-play-btn');
+    const speedSlider = document.getElementById('nv-speed-slider');
+    const speedLabel = document.getElementById('nv-speed-label');
+    const neuronSlider = document.getElementById('nv-neuron-slider');
+    const neuronInput = document.getElementById('nv-neuron-input');
+    const neuronCount = document.getElementById('nv-neuron-count');
+    const signalSelect = document.getElementById('nv-signal-select');
+    const showAllCb = document.getElementById('nv-show-all');
+    const opacitySlider = document.getElementById('nv-opacity-slider');
+    const swapXyCb = document.getElementById('nv-swap-xy');
+    const showSecondaryCb = document.getElementById('nv-show-secondary');
+    const frameInfo = document.getElementById('nv-frame-info');
+    const statusDiv = document.getElementById('nv-status');
+
+    // ==================== State ====================
+    const state = {
+        matPath: '',
+        coor: [],           // coor[neuronIdx] = [[y,x], [y,x], ...]
+        ids: [],
+        centroids: [],
+        cnShape: [0, 0],    // [height, width]
+        numNeurons: 0,
+        numFrames: 0,
+        fps: 20,
+
+        selectedNeuron: -1,
+        signals: null,      // { C: [...], C_raw: [...], ... }
+        loadingSignals: false,
+
+        videoLoaded: false,
+        dataLoaded: false,
+    };
+
+    const COLORS = [
+        '#e6194B', '#3cb44b', '#ffe119', '#4363d8', '#f58231',
+        '#911eb4', '#42d4f4', '#f032e6', '#bfef45', '#fabed4',
+        '#469990', '#dcbeff', '#9A6324', '#fffac8', '#800000',
+        '#aaffc3', '#808000', '#ffd8b1', '#000075',
+    ];
+
+    function setStatus(msg, type) {
+        statusDiv.textContent = msg;
+        statusDiv.className = 'nv-status' + (type ? ' ' + type : '');
+    }
+
+    // ==================== Load Data ====================
+    loadDataBtn.addEventListener('click', async () => {
+        const path = matPathInput.value.trim();
+        if (!path) { setStatus('Please enter .mat file path', 'error'); return; }
+        setStatus('Loading neuron data...');
+        try {
+            const resp = await fetch('/api/neuron-data?mode=metadata&path=' + encodeURIComponent(path));
+            if (!resp.ok) { const e = await resp.json(); throw new Error(e.error); }
+            const data = await resp.json();
+
+            state.matPath = path;
+            state.coor = data.coor;
+            state.ids = data.ids;
+            state.centroids = data.centroids;
+            state.cnShape = data.cn_shape;
+            state.numNeurons = data.num_neurons;
+            state.numFrames = data.num_frames;
+            state.dataLoaded = true;
+            state.selectedNeuron = -1;
+            state.signals = null;
+
+            // Enable controls
+            neuronSlider.max = data.num_neurons - 1;
+            neuronSlider.disabled = false;
+            neuronSlider.value = 0;
+            neuronInput.max = data.num_neurons - 1;
+            neuronInput.disabled = false;
+            neuronInput.value = 0;
+            signalSelect.disabled = false;
+            neuronCount.textContent = '/ ' + (data.num_neurons - 1);
+
+            // Update frame slider if video is loaded
+            if (state.videoLoaded) {
+                frameSlider.max = Math.floor(video.duration * state.fps) - 1;
+            }
+
+            drawMasks();
+            drawSignal();
+            setStatus('Data loaded: ' + data.num_neurons + ' neurons, ' + data.num_frames + ' frames', 'ok');
+        } catch (e) {
+            setStatus('Error: ' + e.message, 'error');
+        }
+    });
+
+    // ==================== Load Video ====================
+    loadVideoBtn.addEventListener('click', () => {
+        const path = videoPathInput.value.trim();
+        if (!path) { setStatus('Please enter video path', 'error'); return; }
+        setStatus('Loading video...');
+        video.src = '/api/stream-video?path=' + encodeURIComponent(path);
+    });
+
+    video.addEventListener('loadedmetadata', () => {
+        state.videoLoaded = true;
+
+        // Size the mask canvas to match video natural resolution
+        maskCanvas.width = video.videoWidth;
+        maskCanvas.height = video.videoHeight;
+
+        // Enable playback controls
+        const totalFrames = Math.floor(video.duration * state.fps);
+        frameSlider.max = totalFrames - 1;
+        frameSlider.value = 0;
+        frameSlider.disabled = false;
+        playBtn.disabled = false;
+        speedSlider.disabled = false;
+
+        drawMasks();
+        updateFrameInfo();
+        setStatus('Video loaded: ' + video.videoWidth + 'x' + video.videoHeight + ', ' + video.duration.toFixed(1) + 's', 'ok');
+    });
+
+    video.addEventListener('error', () => {
+        setStatus('Error loading video', 'error');
+    });
+
+    // ==================== Video Sync ====================
+    let rafId = null;
+
+    function syncLoop() {
+        if (!video.paused) {
+            const frameIdx = Math.floor(video.currentTime * state.fps);
+            frameSlider.value = frameIdx;
+            updateFrameInfo();
+            drawSignal();
+            rafId = requestAnimationFrame(syncLoop);
+        }
+    }
+
+    video.addEventListener('play', () => {
+        playBtn.textContent = 'Pause';
+        rafId = requestAnimationFrame(syncLoop);
+    });
+
+    video.addEventListener('pause', () => {
+        playBtn.textContent = 'Play';
+        if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+        updateFrameInfo();
+        drawSignal();
+    });
+
+    // --- Seek: fastSeek while dragging (keyframe-snap), precise seek on release ---
+    let _seeking = false;
+    let _pendingSeekTime = null;
+    let _scrubbing = false;
+
+    function seekTo(time) {
+        if (_seeking) {
+            _pendingSeekTime = time;
+        } else {
+            _seeking = true;
+            _pendingSeekTime = null;
+            video.currentTime = time;
+        }
+    }
+
+    function fastSeekTo(time) {
+        // fastSeek snaps to nearest keyframe — instant, like a real video player
+        if (video.fastSeek) {
+            video.fastSeek(time);
+        } else {
+            // Fallback for browsers without fastSeek
+            video.currentTime = time;
+        }
+        updateFrameInfo();
+        drawSignal();
+    }
+
+    video.addEventListener('seeked', () => {
+        updateFrameInfo();
+        drawSignal();
+        if (_pendingSeekTime !== null) {
+            const t = _pendingSeekTime;
+            _pendingSeekTime = null;
+            video.currentTime = t;
+        } else {
+            _seeking = false;
+        }
+    });
+
+    playBtn.addEventListener('click', () => {
+        if (video.paused) video.play();
+        else video.pause();
+    });
+
+    speedSlider.addEventListener('input', () => {
+        const speed = parseFloat(speedSlider.value);
+        video.playbackRate = speed;
+        speedLabel.textContent = speed + 'x';
+    });
+
+    // While dragging: fastSeek (keyframe-snap, instant). On release: precise seek.
+    frameSlider.addEventListener('input', () => {
+        _scrubbing = true;
+        const frameIdx = parseInt(frameSlider.value);
+        fastSeekTo(frameIdx / state.fps);
+    });
+
+    frameSlider.addEventListener('change', () => {
+        // 'change' fires when user releases the slider
+        _scrubbing = false;
+        const frameIdx = parseInt(frameSlider.value);
+        seekTo(frameIdx / state.fps);
+    });
+
+    function updateFrameInfo() {
+        const frameIdx = Math.floor(video.currentTime * state.fps);
+        const total = parseInt(frameSlider.max) || 0;
+        frameInfo.textContent = 'Frame: ' + frameIdx + ' / ' + total + ' | Time: ' + video.currentTime.toFixed(2) + 's';
+    }
+
+    // ==================== Mask Rendering ====================
+    function getTransformedPoints(neuronIdx) {
+        const coords = state.coor[neuronIdx];
+        if (!coords || coords.length === 0) return [];
+        const swap = swapXyCb.checked;
+        // coords[i] = [row, col] from the .mat file
+        // Canvas: top-left origin, same as video pixels — no Y-flip needed
+        return coords.map(pt => {
+            const x = swap ? pt[1] : pt[0];
+            const y = swap ? pt[0] : pt[1];
+            return [x, y];
+        });
+    }
+
+    function drawMasks() {
+        if (!state.dataLoaded) return;
+
+        const w = maskCanvas.width;
+        const h = maskCanvas.height;
+        maskCtx.clearRect(0, 0, w, h);
+
+        const showAll = showAllCb.checked;
+        const opacity = parseFloat(opacitySlider.value);
+
+        for (let i = 0; i < state.numNeurons; i++) {
+            const isSelected = (i === state.selectedNeuron);
+            if (!showAll && !isSelected) continue;
+
+            const pts = getTransformedPoints(i);
+            if (pts.length < 3) continue;
+
+            maskCtx.beginPath();
+            maskCtx.moveTo(pts[0][0], pts[0][1]);
+            for (let j = 1; j < pts.length; j++) {
+                maskCtx.lineTo(pts[j][0], pts[j][1]);
+            }
+            maskCtx.closePath();
+
+            if (isSelected) {
+                maskCtx.fillStyle = 'rgba(255, 255, 0, 0.5)';
+                maskCtx.strokeStyle = '#ffff00';
+                maskCtx.lineWidth = 2.5;
+            } else {
+                const color = COLORS[i % COLORS.length];
+                maskCtx.fillStyle = hexToRgba(color, opacity);
+                maskCtx.strokeStyle = color;
+                maskCtx.lineWidth = 1;
+            }
+            maskCtx.fill();
+            maskCtx.stroke();
+        }
+    }
+
+    function hexToRgba(hex, alpha) {
+        const r = parseInt(hex.slice(1, 3), 16);
+        const g = parseInt(hex.slice(3, 5), 16);
+        const b = parseInt(hex.slice(5, 7), 16);
+        return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+    }
+
+    // ==================== Click to Select ====================
+    maskCanvas.addEventListener('click', (e) => {
+        if (!state.dataLoaded) return;
+        // Ignore click if it was a drag (panning)
+        if (Math.abs(e.clientX - zoom.startX) > 3 || Math.abs(e.clientY - zoom.startY) > 3) return;
+        const rect = maskCanvas.getBoundingClientRect();
+        const scaleX = maskCanvas.width / rect.width;
+        const scaleY = maskCanvas.height / rect.height;
+        const mx = (e.clientX - rect.left) * scaleX;
+        const my = (e.clientY - rect.top) * scaleY;
+
+        // Check neurons in reverse order (top-drawn last)
+        for (let i = state.numNeurons - 1; i >= 0; i--) {
+            const pts = getTransformedPoints(i);
+            if (pts.length < 3) continue;
+
+            maskCtx.beginPath();
+            maskCtx.moveTo(pts[0][0], pts[0][1]);
+            for (let j = 1; j < pts.length; j++) {
+                maskCtx.lineTo(pts[j][0], pts[j][1]);
+            }
+            maskCtx.closePath();
+
+            if (maskCtx.isPointInPath(mx, my)) {
+                selectNeuron(i);
+                return;
+            }
+        }
+        // Click on empty area
+        selectNeuron(-1);
+    });
+
+    // ==================== Neuron Selection ====================
+    async function selectNeuron(idx) {
+        state.selectedNeuron = idx;
+        neuronSlider.value = Math.max(0, idx);
+        neuronInput.value = Math.max(0, idx);
+        drawMasks();
+
+        if (idx < 0) {
+            state.signals = null;
+            drawSignal();
+            return;
+        }
+
+        // Fetch signal data
+        state.loadingSignals = true;
+        try {
+            const resp = await fetch('/api/neuron-data?mode=signals&path=' + encodeURIComponent(state.matPath) + '&neuron_idx=' + idx);
+            if (!resp.ok) { const e = await resp.json(); throw new Error(e.error); }
+            const data = await resp.json();
+            // Only update if still the same neuron
+            if (state.selectedNeuron === idx) {
+                state.signals = data.signals;
+                drawSignal();
+            }
+        } catch (e) {
+            setStatus('Error loading signals: ' + e.message, 'error');
+        }
+        state.loadingSignals = false;
+    }
+
+    neuronSlider.addEventListener('input', () => {
+        const idx = parseInt(neuronSlider.value);
+        neuronInput.value = idx;
+        selectNeuron(idx);
+    });
+
+    neuronInput.addEventListener('change', () => {
+        let idx = parseInt(neuronInput.value) || 0;
+        idx = Math.max(0, Math.min(idx, state.numNeurons - 1));
+        neuronInput.value = idx;
+        neuronSlider.value = idx;
+        selectNeuron(idx);
+    });
+
+    // ==================== Signal Trace Drawing ====================
+    function drawSignal() {
+        // Set canvas internal resolution to its CSS pixel size (for sharpness)
+        const rect = signalCanvas.getBoundingClientRect();
+        const dpr = window.devicePixelRatio || 1;
+        const W = Math.floor(rect.width * dpr);
+        const H = Math.floor(rect.height * dpr);
+        if (signalCanvas.width !== W || signalCanvas.height !== H) {
+            signalCanvas.width = W;
+            signalCanvas.height = H;
+        }
+
+        const ctx = signalCtx;
+        ctx.clearRect(0, 0, W, H);
+
+        if (!state.signals || state.selectedNeuron < 0) {
+            ctx.fillStyle = '#888';
+            ctx.font = (14 * dpr) + 'px Arial';
+            ctx.fillText('Select a neuron to view signal traces', 20 * dpr, H / 2);
+            return;
+        }
+
+        const pad = { left: 50 * dpr, right: 20 * dpr, top: 30 * dpr, bottom: 25 * dpr };
+        const plotW = W - pad.left - pad.right;
+        const plotH = H - pad.top - pad.bottom;
+
+        const primaryKey = signalSelect.value;
+        const primaryData = state.signals[primaryKey];
+        if (!primaryData) return;
+
+        const showSecondary = showSecondaryCb.checked && primaryKey !== 'C_raw';
+        const secondaryData = showSecondary ? state.signals['C_raw'] : null;
+
+        // Compute y range across visible signals
+        let yMin = Infinity, yMax = -Infinity;
+        for (let i = 0; i < primaryData.length; i++) {
+            if (primaryData[i] < yMin) yMin = primaryData[i];
+            if (primaryData[i] > yMax) yMax = primaryData[i];
+        }
+        if (secondaryData) {
+            for (let i = 0; i < secondaryData.length; i++) {
+                if (secondaryData[i] < yMin) yMin = secondaryData[i];
+                if (secondaryData[i] > yMax) yMax = secondaryData[i];
+            }
+        }
+        const yPad = (yMax - yMin) * 0.1 || 1;
+        yMin -= yPad;
+        yMax += yPad;
+
+        const N = primaryData.length;
+        const toX = (i) => pad.left + (i / (N - 1)) * plotW;
+        const toY = (v) => pad.top + (1 - (v - yMin) / (yMax - yMin)) * plotH;
+
+        // Title
+        ctx.fillStyle = '#ccc';
+        ctx.font = 'bold ' + (13 * dpr) + 'px Arial';
+        ctx.fillText('Neuron ' + state.selectedNeuron + ' - ' + primaryKey, pad.left, 18 * dpr);
+
+        // Y axis ticks
+        ctx.fillStyle = '#888';
+        ctx.font = (10 * dpr) + 'px Arial';
+        ctx.textAlign = 'right';
+        const nTicks = 5;
+        for (let t = 0; t <= nTicks; t++) {
+            const v = yMin + (yMax - yMin) * t / nTicks;
+            const y = toY(v);
+            ctx.fillText(v.toFixed(2), pad.left - 4 * dpr, y + 3 * dpr);
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 0.5;
+            ctx.beginPath();
+            ctx.moveTo(pad.left, y);
+            ctx.lineTo(W - pad.right, y);
+            ctx.stroke();
+        }
+        ctx.textAlign = 'left';
+
+        // X axis ticks (time in seconds)
+        const totalTime = N / state.fps;
+        ctx.fillStyle = '#888';
+        const xTicks = 6;
+        for (let t = 0; t <= xTicks; t++) {
+            const sec = totalTime * t / xTicks;
+            const x = toX(sec * state.fps);
+            ctx.fillText(sec.toFixed(0) + 's', x, H - 5 * dpr);
+        }
+
+        // Draw secondary (C_raw) first, behind
+        if (secondaryData) {
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(100, 100, 255, 0.5)';
+            ctx.lineWidth = 1;
+            for (let i = 0; i < secondaryData.length; i++) {
+                const x = toX(i), y = toY(secondaryData[i]);
+                if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+        }
+
+        // Draw primary signal
+        ctx.beginPath();
+        ctx.strokeStyle = '#00ff88';
+        ctx.lineWidth = 1.5;
+        for (let i = 0; i < N; i++) {
+            const x = toX(i), y = toY(primaryData[i]);
+            if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+
+        // Draw playback position line
+        if (state.videoLoaded) {
+            const frameIdx = Math.floor(video.currentTime * state.fps);
+            const lineX = toX(frameIdx);
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(255, 50, 50, 0.9)';
+            ctx.lineWidth = 2 * dpr;
+            ctx.moveTo(lineX, pad.top);
+            ctx.lineTo(lineX, pad.top + plotH);
+            ctx.stroke();
+        }
+
+        // Legend
+        const legendY = 18 * dpr;
+        const legendX = W - pad.right - 200 * dpr;
+        ctx.font = (10 * dpr) + 'px Arial';
+        ctx.fillStyle = '#00ff88';
+        ctx.fillText(primaryKey, legendX, legendY);
+        if (secondaryData) {
+            ctx.fillStyle = 'rgba(100, 100, 255, 0.8)';
+            ctx.fillText('C_raw', legendX + 80 * dpr, legendY);
+        }
+    }
+
+    // ==================== Click on Signal Canvas to Seek ====================
+    signalCanvas.addEventListener('click', (e) => {
+        if (!state.videoLoaded || !state.signals) return;
+        const rect = signalCanvas.getBoundingClientRect();
+        const dpr = window.devicePixelRatio || 1;
+        const pad = { left: 50 * dpr, right: 20 * dpr };
+        const W = signalCanvas.width;
+        const plotW = W - pad.left - pad.right;
+        const clickX = (e.clientX - rect.left) * dpr;
+        const ratio = (clickX - pad.left) / plotW;
+        if (ratio >= 0 && ratio <= 1) {
+            const N = state.signals[signalSelect.value].length;
+            const frameIdx = Math.floor(ratio * (N - 1));
+            seekTo(frameIdx / state.fps);
+            frameSlider.value = frameIdx;
+        }
+    });
+
+    // ==================== Zoom & Pan ====================
+    const viewport = document.getElementById('nv-video-viewport');
+    const videoWrap = document.getElementById('nv-video-wrap');
+    const resetZoomBtn = document.getElementById('nv-reset-zoom-btn');
+
+    const zoom = { scale: 1, panX: 0, panY: 0, dragging: false, startX: 0, startY: 0, startPanX: 0, startPanY: 0 };
+    const MIN_ZOOM = 1;
+    const MAX_ZOOM = 10;
+
+    function applyTransform() {
+        videoWrap.style.transform = 'translate(' + zoom.panX + 'px,' + zoom.panY + 'px) scale(' + zoom.scale + ')';
+    }
+
+    function clampPan() {
+        if (zoom.scale <= 1) { zoom.panX = 0; zoom.panY = 0; return; }
+        const rect = viewport.getBoundingClientRect();
+        const minX = rect.width - videoWrap.scrollWidth * zoom.scale;
+        const minY = rect.height - videoWrap.scrollHeight * zoom.scale;
+        zoom.panX = Math.min(0, Math.max(minX, zoom.panX));
+        zoom.panY = Math.min(0, Math.max(minY, zoom.panY));
+    }
+
+    viewport.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const rect = viewport.getBoundingClientRect();
+        // Mouse position relative to viewport
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        // Mouse position in content space before zoom
+        const cx = (mx - zoom.panX) / zoom.scale;
+        const cy = (my - zoom.panY) / zoom.scale;
+
+        const delta = e.deltaY > 0 ? 0.9 : 1.1;
+        zoom.scale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom.scale * delta));
+
+        // Adjust pan so the point under cursor stays fixed
+        zoom.panX = mx - cx * zoom.scale;
+        zoom.panY = my - cy * zoom.scale;
+        clampPan();
+        applyTransform();
+    }, { passive: false });
+
+    viewport.addEventListener('mousedown', (e) => {
+        if (zoom.scale <= 1) return;
+        zoom.dragging = true;
+        zoom.startX = e.clientX;
+        zoom.startY = e.clientY;
+        zoom.startPanX = zoom.panX;
+        zoom.startPanY = zoom.panY;
+        viewport.classList.add('dragging');
+        e.preventDefault();
+    });
+
+    window.addEventListener('mousemove', (e) => {
+        if (!zoom.dragging) return;
+        zoom.panX = zoom.startPanX + (e.clientX - zoom.startX);
+        zoom.panY = zoom.startPanY + (e.clientY - zoom.startY);
+        clampPan();
+        applyTransform();
+    });
+
+    window.addEventListener('mouseup', () => {
+        if (zoom.dragging) {
+            zoom.dragging = false;
+            viewport.classList.remove('dragging');
+        }
+    });
+
+    resetZoomBtn.addEventListener('click', () => {
+        zoom.scale = 1; zoom.panX = 0; zoom.panY = 0;
+        applyTransform();
+    });
+
+    // ==================== Video Adjustments ====================
+    const brightnessSlider = document.getElementById('nv-brightness');
+    const brightnessVal = document.getElementById('nv-brightness-val');
+    const contrastSlider = document.getElementById('nv-contrast');
+    const contrastVal = document.getElementById('nv-contrast-val');
+    const colorTintSelect = document.getElementById('nv-color-tint');
+    const invertCb = document.getElementById('nv-invert');
+    const resetAdjBtn = document.getElementById('nv-reset-adjustments');
+
+    function applyVideoFilters() {
+        // CSS filters for brightness, contrast, invert (GPU-accelerated)
+        const b = parseFloat(brightnessSlider.value);
+        const c = parseFloat(contrastSlider.value);
+        const inv = invertCb.checked ? ' invert(1)' : '';
+        brightnessVal.textContent = b.toFixed(2);
+        contrastVal.textContent = c.toFixed(2);
+
+        const cssFilter = 'brightness(' + b + ') contrast(' + c + ')' + inv;
+
+        // SVG filter for color tint
+        const tint = colorTintSelect.value;
+        const svgFilter = tint !== 'none' ? ' url(#tint-' + tint + ')' : '';
+
+        video.style.filter = cssFilter + svgFilter;
+    }
+
+    brightnessSlider.addEventListener('input', applyVideoFilters);
+    contrastSlider.addEventListener('input', applyVideoFilters);
+    colorTintSelect.addEventListener('change', applyVideoFilters);
+    invertCb.addEventListener('change', applyVideoFilters);
+
+    resetAdjBtn.addEventListener('click', () => {
+        brightnessSlider.value = 1;
+        contrastSlider.value = 1;
+        colorTintSelect.value = 'none';
+        invertCb.checked = false;
+        applyVideoFilters();
+    });
+
+    // ==================== Control Callbacks ====================
+    showAllCb.addEventListener('change', drawMasks);
+    opacitySlider.addEventListener('input', drawMasks);
+    swapXyCb.addEventListener('change', drawMasks);
+    signalSelect.addEventListener('change', drawSignal);
+    showSecondaryCb.addEventListener('change', drawSignal);
+
+    // Resize observer to keep mask canvas aligned with video
+    const resizeObs = new ResizeObserver(() => {
+        // The mask canvas CSS size is 100% of the wrapper via CSS,
+        // so it auto-matches. Just redraw if needed.
+        drawMasks();
+    });
+    resizeObs.observe(document.getElementById('nv-video-wrap'));
+
+    // Redraw signal on window resize
+    window.addEventListener('resize', drawSignal);
+
+})();
+</script>
+{% endblock %}
