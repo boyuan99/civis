@@ -7,3 +7,4 @@ civis/config.json
 /civis.egg-info/
 test/
 .claude
+.vscode/
