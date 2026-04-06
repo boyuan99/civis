@@ -363,6 +363,7 @@ def labeler_bkapp_v2(doc):
     # Create buttons for labeling
     d1_button = Button(label="D1", button_type="default", disabled=True)
     d2_button = Button(label="D2", button_type="default", disabled=True)
+    pv_button = Button(label="PV", button_type="default", disabled=True)
     cholinergic_button = Button(label="Cholinergic", button_type="default", disabled=True)
     unknown_button = Button(label="Unknown", button_type="default", disabled=True)
     discard_button = Button(label="Discard", button_type="default", disabled=True)
@@ -382,6 +383,7 @@ def labeler_bkapp_v2(doc):
     """
     toggle_d1 = Toggle(label="Show D1", button_type="success", active=True)
     toggle_d2 = Toggle(label="Show D2", button_type="success", active=True)
+    toggle_pv = Toggle(label="Show PV", button_type="success", active=True)
     toggle_cholinergic = Toggle(label="Show Cholinergic", button_type="success", active=True)
     toggle_unknown = Toggle(label="Show Unknown", button_type="success", active=True)
     toggle_discard = Toggle(label="Show Discard", button_type="success", active=True)
@@ -421,7 +423,7 @@ def labeler_bkapp_v2(doc):
 
     def update_toggle_colors():
         """Update toggle button colors and labels based on their state"""
-        for toggle, label_base in [(toggle_d1, "D1"), (toggle_d2, "D2"), 
+        for toggle, label_base in [(toggle_d1, "D1"), (toggle_d2, "D2"), (toggle_pv, "PV"),
                                  (toggle_cholinergic, "Cholinergic"), (toggle_unknown, "Unknown"), (toggle_discard, "Discard")]:
             toggle.button_type = "danger" if toggle.active else "success"
             toggle.label = f"Hide {label_base}" if toggle.active else f"Show {label_base}"
@@ -434,6 +436,7 @@ def labeler_bkapp_v2(doc):
     # Update toggle callbacks
     toggle_d1.on_change('active', lambda attr, old, new: toggle_callback(toggle_d1))
     toggle_d2.on_change('active', lambda attr, old, new: toggle_callback(toggle_d2))
+    toggle_pv.on_change('active', lambda attr, old, new: toggle_callback(toggle_pv))
     toggle_cholinergic.on_change('active', lambda attr, old, new: toggle_callback(toggle_cholinergic))
     toggle_unknown.on_change('active', lambda attr, old, new: toggle_callback(toggle_unknown))
     toggle_discard.on_change('active', lambda attr, old, new: toggle_callback(toggle_discard))
@@ -466,16 +469,19 @@ def labeler_bkapp_v2(doc):
         # Get current lists of neurons from dropdowns (excluding the default option)
         d1_neurons = [int(x) for x in d1_neurons_select.options if x != "Click to see options..."]
         d2_neurons = [int(x) for x in d2_neurons_select.options if x != "Click to see options..."]
+        pv_neurons = [int(x) for x in pv_neurons_select.options if x != "Click to see options..."]
         cholinergic_neurons = [int(x) for x in cholinergic_neurons_select.options if x != "Click to see options..."]
         unknown_neurons = [int(x) for x in unknown_neurons_select.options if x != "Click to see options..."]
         discard_neurons = [int(x) for x in discard_neurons_select.options if x != "Click to see options..."]
-        
+
         for i in range(len(spatial_source.data['xs'])):
             # Check which list the neuron belongs to
             if i in d1_neurons:
                 visible = toggle_d1.active
             elif i in d2_neurons:
                 visible = toggle_d2.active
+            elif i in pv_neurons:
+                visible = toggle_pv.active
             elif i in discard_neurons:
                 visible = toggle_discard.active
             elif i in unknown_neurons:
@@ -568,6 +574,7 @@ def labeler_bkapp_v2(doc):
     # Callbacks for label buttons
     d1_button.on_click(lambda: update_labels("D1"))
     d2_button.on_click(lambda: update_labels("D2"))
+    pv_button.on_click(lambda: update_labels("PV"))
     cholinergic_button.on_click(lambda: update_labels("cholinergic"))
     unknown_button.on_click(lambda: update_labels("unknown"))
     discard_button.on_click(lambda: update_labels("discard"))
@@ -581,6 +588,7 @@ def labeler_bkapp_v2(doc):
         # Reset all buttons to default
         d1_button.button_type = "default"
         d2_button.button_type = "default"
+        pv_button.button_type = "default"
         cholinergic_button.button_type = "default"
         unknown_button.button_type = "default"
         discard_button.button_type = "default"
@@ -590,6 +598,8 @@ def labeler_bkapp_v2(doc):
             d1_button.button_type = "success"
         elif current_label == "D2":
             d2_button.button_type = "success"
+        elif current_label == "PV":
+            pv_button.button_type = "success"
         elif current_label == "cholinergic":
             cholinergic_button.button_type = "success"
         elif current_label == "discard":
@@ -602,16 +612,17 @@ def labeler_bkapp_v2(doc):
             Div Plain Text Bokeh
     ========================================================================================================================
     """
-    labeled_count_div = Div(text="D1: 0 | D2: 0 | Cholinergic: 0 | Unknown: 0 | Discard: 0", width=400, height=30)
+    labeled_count_div = Div(text="D1: 0 | D2: 0 | PV: 0 | Cholinergic: 0 | Unknown: 0 | Discard: 0", width=500, height=30)
 
     # Function to update the counts displayed in the Div
     def update_labeled_count():
         d1_count = sum(1 for label in labels.values() if label == "D1")
         d2_count = sum(1 for label in labels.values() if label == "D2")
+        pv_count = sum(1 for label in labels.values() if label == "PV")
         cholinergic_count = sum(1 for label in labels.values() if label == "cholinergic")
         unknown_count = sum(1 for label in labels.values() if label == "unknown")
         discard_count = sum(1 for label in labels.values() if label == "discard")
-        labeled_count_div.text = f"D1: {d1_count} | D2: {d2_count} | Cholinergic: {cholinergic_count} | Unknown: {unknown_count} | Discard: {discard_count}"
+        labeled_count_div.text = f"D1: {d1_count} | D2: {d2_count} | PV: {pv_count} | Cholinergic: {cholinergic_count} | Unknown: {unknown_count} | Discard: {discard_count}"
 
     """
     ========================================================================================================================
@@ -620,6 +631,7 @@ def labeler_bkapp_v2(doc):
     """
     d1_neurons_select = Select(title="D1 Neurons", options=[], disabled=True)
     d2_neurons_select = Select(title="D2 Neurons", options=[], disabled=True)
+    pv_neurons_select = Select(title="PV Neurons", options=[], disabled=True)
     cholinergic_neurons_select = Select(title="Cholinergic Neurons", options=[], disabled=True)
     unknown_neurons_select = Select(title="Unknown Neurons", options=[], disabled=True)
     discard_neurons_select = Select(title="Discarded Neurons", options=[], disabled=True)
@@ -629,6 +641,7 @@ def labeler_bkapp_v2(doc):
         # Sort neurons by their ID (converting to int for proper numerical sorting)
         d1_ids = sorted([i for i, label in labels.items() if label == "D1"], key=int)
         d2_ids = sorted([i for i, label in labels.items() if label == "D2"], key=int)
+        pv_ids = sorted([i for i, label in labels.items() if label == "PV"], key=int)
         cholinergic_ids = sorted([i for i, label in labels.items() if label == "cholinergic"], key=int)
         unknown_ids = sorted([i for i, label in labels.items() if label == "unknown"], key=int)
         discard_ids = sorted([i for i, label in labels.items() if label == "discard"], key=int)
@@ -636,6 +649,7 @@ def labeler_bkapp_v2(doc):
         # Update dropdown options
         d1_neurons_select.options = ["Click to see options..."] + d1_ids
         d2_neurons_select.options = ["Click to see options..."] + d2_ids
+        pv_neurons_select.options = ["Click to see options..."] + pv_ids
         cholinergic_neurons_select.options = ["Click to see options..."] + cholinergic_ids
         unknown_neurons_select.options = ["Click to see options..."] + unknown_ids
         discard_neurons_select.options = ["Click to see options..."] + discard_ids
@@ -643,6 +657,7 @@ def labeler_bkapp_v2(doc):
         # Reset selections to default
         d1_neurons_select.value = "Click to see options..."
         d2_neurons_select.value = "Click to see options..."
+        pv_neurons_select.value = "Click to see options..."
         cholinergic_neurons_select.value = "Click to see options..."
         unknown_neurons_select.value = "Click to see options..."
         discard_neurons_select.value = "Click to see options..."
@@ -654,6 +669,7 @@ def labeler_bkapp_v2(doc):
     # Attach the callback to all three select widgets
     d1_neurons_select.on_change('value', neuron_selected)
     d2_neurons_select.on_change('value', neuron_selected)
+    pv_neurons_select.on_change('value', neuron_selected)
     cholinergic_neurons_select.on_change('value', neuron_selected)
     unknown_neurons_select.on_change('value', neuron_selected)
     discard_neurons_select.on_change('value', neuron_selected)
@@ -684,6 +700,7 @@ def labeler_bkapp_v2(doc):
         # Enable labeling buttons
         d1_button.disabled = False
         d2_button.disabled = False
+        pv_button.disabled = False
         cholinergic_button.disabled = False
         unknown_button.disabled = False
         discard_button.disabled = False
@@ -693,6 +710,7 @@ def labeler_bkapp_v2(doc):
         # Enable select menus
         d1_neurons_select.disabled = False
         d2_neurons_select.disabled = False
+        pv_neurons_select.disabled = False
         cholinergic_neurons_select.disabled = False
         unknown_neurons_select.disabled = False
         discard_neurons_select.disabled = False
@@ -1140,18 +1158,18 @@ def labeler_bkapp_v2(doc):
     labelling = row(
         spacer3,
         column(
-            row(d1_button, d2_button, cholinergic_button, unknown_button, discard_button),
+            row(d1_button, d2_button, pv_button, cholinergic_button, unknown_button, discard_button),
             row(file_path_input, column(spacer2, row(save_labels_button, load_labels_button))),
             labeled_count_div
         )
     )
 
-    menus = row(spacer3, row(d1_neurons_select, d2_neurons_select, cholinergic_neurons_select, unknown_neurons_select, discard_neurons_select))
+    menus = row(spacer3, row(d1_neurons_select, d2_neurons_select, pv_neurons_select, cholinergic_neurons_select, unknown_neurons_select, discard_neurons_select))
 
     temporal = Tabs(tabs=[temporal_tab1, temporal_tab2, temporal_tab3])
 
     # Our new row of toggles:
-    toggle_row = row(spacer3, toggle_d1, toggle_d2, toggle_cholinergic, toggle_unknown, toggle_discard)
+    toggle_row = row(spacer3, toggle_d1, toggle_d2, toggle_pv, toggle_cholinergic, toggle_unknown, toggle_discard)
 
     # Coordinate transformation toggle in a separate row
     transform_row = row(spacer3, toggle_transform)
